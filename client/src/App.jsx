@@ -1,121 +1,83 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { lazy, Suspense, useEffect } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { clearSession, finishHydration, setSession, setStatus } from "./redux/slices/authSlice";
+import AppSkeleton from "./components/AppSkeleton";
+import { getSessionFromRefresh } from "./utils/api";
+import AppShell from "./layouts/AppShell";
+import ProtectedRoute from "./components/ProtectedRoute";
+import "./App.css";
+
+const LandingPage  = lazy(() => import("./pages/LandingPage"));
+const LoginPage    = lazy(() => import("./pages/LoginPage"));
+const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const ChatPage     = lazy(() => import("./pages/ChatPage"));
+const IngestPage   = lazy(() => import("./pages/IngestPage"));
+const GraphPage    = lazy(() => import("./pages/GraphPage"));
 
 function App() {
-  const [count, setCount] = useState(0)
+  const dispatch = useDispatch();
+  const { initialized, status } = useSelector((state) => state.auth);
+
+  useEffect(() => {
+    let active = true;
+
+    const bootstrap = async () => {
+      dispatch(setStatus("loading"));
+      try {
+        const session = await getSessionFromRefresh();
+        if (!active) return;
+        dispatch(
+          setSession({
+            accessToken: session.access_token,
+            user:        session.user,
+            expiresAt:   session.expires_at ?? null,
+          }),
+        );
+        // setSession already sets initialized = true, but call finishHydration
+        // as a safety net in case the shape differs at runtime.
+        dispatch(finishHydration());
+      } catch {
+        if (!active) return;
+        dispatch(clearSession());
+        // clearSession sets initialized = true; finishHydration is a no-op here
+        // but keeps the bootstrap contract explicit.
+        dispatch(finishHydration());
+      }
+    };
+
+    void bootstrap();
+    return () => {
+      active = false;
+    };
+  }, [dispatch]);
+
+  // Block render only during the initial token refresh attempt.
+  if (!initialized && status === "loading") {
+    return <AppSkeleton label="Restoring your workspace..." />;
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+    <Suspense fallback={<AppSkeleton label="Loading CortexWiki..." />}>
+      <Routes>
+        <Route path="/"         element={<LandingPage />} />
+        <Route path="/login"    element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route
+          element={
+            <ProtectedRoute>
+              <AppShell />
+            </ProtectedRoute>
+          }
         >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+          <Route path="/chat"   element={<ChatPage />} />
+          <Route path="/ingest" element={<IngestPage />} />
+          <Route path="/graph"  element={<GraphPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
+  );
 }
 
-export default App
+export default App;
