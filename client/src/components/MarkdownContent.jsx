@@ -28,8 +28,6 @@ function CopyCodeButton({ value }) {
 }
 
 function MarkdownContent({ content }) {
-  // Memoize components so ReactMarkdown never rebuilds the renderer map on
-  // every re-render (critical during streaming when content changes rapidly).
   const components = useMemo(
     () => ({
       a: ({ href, children, ...props }) => (
@@ -37,10 +35,8 @@ function MarkdownContent({ content }) {
           {children}
         </a>
       ),
-      // react-markdown v9+ passes `node` — use that to detect block vs inline.
       code({ node, className, children, ...props }) {
         const code = String(children).replace(/\n$/, "");
-        // A code element is inline when its parent is NOT a <pre>.
         const isInline = node?.position
           ? !className && !code.includes("\n")
           : !className;
@@ -76,17 +72,12 @@ function MarkdownContent({ content }) {
   );
 
   return (
-    <ReactMarkdown
-      className="markdown-content"
-      remarkPlugins={[remarkGfm]}
-      components={components}
-    >
-      {content}
-    </ReactMarkdown>
+    <div className="markdown-content">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }
 
-// Memo: skip re-render when content string hasn't changed.
-// This is the key fix for streaming flicker — parent re-renders every chunk
-// but MarkdownContent only re-renders when its own content prop changes.
 export default memo(MarkdownContent);

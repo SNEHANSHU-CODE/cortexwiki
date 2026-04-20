@@ -1,218 +1,122 @@
-from datetime import UTC, datetime
+from fastapi import APIRouter, Depends
 
-from fastapi import Response
+from app.api.deps import get_current_user
+from app.schemas.query import QueryData, QueryRequest, QuerySource
+from app.services.graph_service import get_graph_service
+from app.services.llm import get_llm_service
+from app.utils.text import clean_text
+from app.db.mongo import get_mongo_manager
 
-from app.core.config import settings
-from app.core.redis import get_redis_store
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    hash_password,
-    hash_refresh_token,
-    verify_password,
+
+router = APIRouter(prefix="/query", tags=["query"])
+
+_NO_KNOWLEDGE_RESPONSE = QueryData(
+    answer="I do not have enough ingested knowledge to answer that yet. Add a source first, then ask again.",
+    strategy="knowledge_base",
+    confidence=0.18,
+    is_grounded=False,
+    sources=[],
 )
-from app.utils.errors import AppError
-from app.utils.logging import get_logger
-from modules.db.mongo import get_mongo_manager
 
 
-logger = get_logger("services.auth")
+@router.post("", response_model=QueryData)
+async def query(payload: QueryRequest, current_user: dict = Depends(get_current_user)):
+    mongo = get_mongo_manager()
+    llm = get_llm_service()
+    graph_service = get_graph_service()
 
+    query_embedding = await llm.embed_text(payload.question)
+    wiki_pages = await mongo.search_wiki_pages(
+        user_id=current_user["id"],
+        query=payload.question,
+        query_embedding=query_embedding,
+        limit=5,
+    )
+    related_concepts = await graph_service.get_related_concepts(
+        user_id=current_user["id"],
+        query=payload.question,
+        limit=8,
+    )
 
-class AuthService:
-    """Stateless service — resolves mongo/redis per call to avoid stale references."""
-
-    @property
-    def mongo(self):
-        return get_mongo_manager()
-
-    @property
-    def redis(self):
-        return get_redis_store()
-
-    async def register_user(
-        self,
-        *,
-        email: str,
-        username: str,
-        password: str,
-        full_name: str = "",
-        user_agent: str = "",
-        ip_address: str = "",
-    ) -> dict:
-        if await self.mongo.get_user_by_email(email):
-            raise AppError(status_code=409, code="email_in_use", message="Email is already registered.")
-        if await self.mongo.get_user_by_username(username):
-            raise AppError(status_code=409, code="username_in_use", message="Username is already registered.")
-
-        try:
-            user = await self.mongo.create_user(
-                {
-                    "email": email,
-                    "username": username,
-                    "full_name": full_name,
-                    "password_hash": hash_password(password),
-                }
+    if not wiki_pages and not related_concepts:
+        if payload.debug:
+            return _NO_KNOWLEDGE_RESPONSE.model_copy(
+                update={"debug": {"wiki_results": [], "related_concepts": []}}
             )
-        except ValueError as exc:
-            raise AppError(status_code=409, code="user_exists", message=str(exc)) from exc
+        return _NO_KNOWLEDGE_RESPONSE
 
-        await self.mongo.create_agent_log(
-            {
-                "user_id": user["id"],
-                "event_type": "auth",
-                "event_name": "register",
-                "details": {"email": user["email"], "ip_address": ip_address, "user_agent": user_agent},
-            }
-        )
-        logger.info("Registered user %s", user["email"])
-        return await self._issue_session(user=user, user_agent=user_agent, ip_address=ip_address)
-
-    async def login_user(
-        self,
-        *,
-        email: str,
-        password: str,
-        user_agent: str = "",
-        ip_address: str = "",
-    ) -> dict:
-        user = await self.mongo.get_user_by_email(email)
-        if not user or not verify_password(password, user["password_hash"]):
-            raise AppError(status_code=401, code="invalid_credentials", message="Invalid email or password.")
-
-        await self.mongo.update_user_login(user["id"])
-        await self.mongo.create_agent_log(
-            {
-                "user_id": user["id"],
-                "event_type": "auth",
-                "event_name": "login",
-                "details": {"ip_address": ip_address, "user_agent": user_agent},
-            }
-        )
-        logger.info("Logged in user %s", user["email"])
-        return await self._issue_session(user=user, user_agent=user_agent, ip_address=ip_address)
-
-    async def refresh_session(
-        self,
-        *,
-        refresh_token: str,
-        user_agent: str = "",
-        ip_address: str = "",
-    ) -> dict:
-        token_hash = hash_refresh_token(refresh_token)
-        record = await self.mongo.find_refresh_token(token_hash)
-        if not record:
-            raise AppError(status_code=401, code="refresh_token_invalid", message="Refresh token is invalid.")
-        if record["expires_at"] <= datetime.now(UTC):
-            await self.mongo.revoke_refresh_token(token_hash)
-            raise AppError(status_code=401, code="refresh_token_expired", message="Refresh token expired.")
-
-        user = await self.mongo.get_user_by_id(record["user_id"])
-        if not user:
-            await self.mongo.revoke_refresh_token(token_hash)
-            raise AppError(status_code=401, code="user_not_found", message="Authenticated user no longer exists.")
-
-        # Rotate: revoke old token before issuing new session
-        await self.mongo.revoke_refresh_token(token_hash)
-        await self.mongo.create_agent_log(
-            {
-                "user_id": user["id"],
-                "event_type": "auth",
-                "event_name": "refresh",
-                "details": {"ip_address": ip_address, "user_agent": user_agent},
-            }
-        )
-        return await self._issue_session(user=user, user_agent=user_agent, ip_address=ip_address)
-
-    async def logout_user(
-        self,
-        *,
-        user_id: str | None,
-        access_token_jti: str | None,
-        refresh_token: str | None,
-    ) -> None:
-        if user_id:
-            # Revoke ALL tokens for this user in one pass — no need to also
-            # call revoke_access_token individually for the current jti.
-            await self.redis.revoke_user_tokens(user_id)
-            await self.mongo.revoke_user_refresh_tokens(user_id)
-            await self.mongo.create_agent_log(
-                {
-                    "user_id": user_id,
-                    "event_type": "auth",
-                    "event_name": "logout",
-                    "details": {},
-                }
-            )
-        else:
-            # Unauthenticated logout — best-effort revocation
-            if access_token_jti:
-                await self.redis.revoke_access_token(access_token_jti)
-            if refresh_token:
-                await self.mongo.revoke_refresh_token(hash_refresh_token(refresh_token))
-
-    def set_refresh_cookie(self, response: Response, refresh_token: str, expires_at: datetime) -> None:
-        response.set_cookie(
-            key=settings.REFRESH_COOKIE_NAME,
-            value=refresh_token,
-            httponly=True,
-            secure=settings.COOKIE_SECURE,
-            samesite=settings.COOKIE_SAMESITE,
-            expires=expires_at,
-            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-            path="/",
-            domain=settings.COOKIE_DOMAIN,
-        )
-
-    def clear_refresh_cookie(self, response: Response) -> None:
-        response.delete_cookie(
-            key=settings.REFRESH_COOKIE_NAME,
-            httponly=True,
-            secure=settings.COOKIE_SECURE,
-            samesite=settings.COOKIE_SAMESITE,
-            path="/",
-            domain=settings.COOKIE_DOMAIN,
-        )
-
-    async def _issue_session(self, *, user: dict, user_agent: str, ip_address: str) -> dict:
-        access_token, jti, access_expires_at = create_access_token(
-            user_id=user["id"],
-            email=user["email"],
-        )
-        refresh_token, refresh_expires_at = create_refresh_token()
-
-        await self.redis.store_access_token(
-            jti=jti,
-            user_id=user["id"],
-            expires_at=access_expires_at,
-            token=access_token,
-        )
-        await self.mongo.save_refresh_token(
-            {
-                "user_id": user["id"],
-                "token_hash": hash_refresh_token(refresh_token),
-                "expires_at": refresh_expires_at,
-                "user_agent": user_agent,
-                "ip_address": ip_address,
-            }
-        )
-
-        return {
-            "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "username": user["username"],
-                "full_name": user.get("full_name", ""),
-            },
-            "access_token": access_token,
-            "access_token_expires_at": access_expires_at,
-            "refresh_token": refresh_token,
-            "refresh_token_expires_at": refresh_expires_at,
+    context_blocks = [
+        {
+            "title": page["title"],
+            "source_url": page["source_url"],
+            "summary": page.get("summary", ""),
+            "concepts": page.get("concepts", []),
         }
+        for page in wiki_pages
+    ]
+    graph_context = [
+        f'{item["source"]} {item["relationship"]} {item["target"]}'
+        for item in related_concepts
+    ]
+
+    if getattr(llm, "api_key", None):
+        answer = await llm.generate_text(
+            system_instruction=(
+                "You are CortexWiki. Answer only from the provided knowledge base context. "
+                "If the context is insufficient, say so plainly. Do not invent facts."
+            ),
+            prompt=(
+                f"Question: {payload.question}\n\n"
+                f"Knowledge base pages:\n{context_blocks}\n\n"
+                f"Graph relationships:\n{graph_context}\n\n"
+                "Write a concise, grounded answer."
+            ),
+            temperature=0.2,
+            max_output_tokens=360,
+        )
+    else:
+        answer = _build_fallback_answer(wiki_pages=wiki_pages, graph_context=graph_context)
+
+    sources = [
+        QuerySource(
+            title=page["title"],
+            url=page["source_url"],
+            source_type=page.get("source_type", "wiki_page"),
+        )
+        for page in wiki_pages
+    ]
+    confidence = round(min(0.96, 0.4 + (0.1 * len(wiki_pages)) + (0.03 * len(related_concepts))), 2)
+    debug = (
+        {
+            "wiki_results": [page["title"] for page in wiki_pages],
+            "related_concepts": graph_context,
+            "context_pages": len(context_blocks),
+        }
+        if payload.debug
+        else None
+    )
+
+    return QueryData(
+        answer=clean_text(answer),
+        strategy="knowledge_base",
+        confidence=confidence,
+        is_grounded=True,
+        sources=sources,
+        debug=debug,
+    )
 
 
-_auth_service = AuthService()
+def _build_fallback_answer(*, wiki_pages: list[dict], graph_context: list[str]) -> str:
+    parts: list[str] = []
 
+    if wiki_pages:
+        lead_page = wiki_pages[0]
+        parts.append(lead_page.get("summary") or f"The strongest matching source is {lead_page['title']}.")
+        if len(wiki_pages) > 1:
+            related_titles = ", ".join(page["title"] for page in wiki_pages[1:3])
+            parts.append(f"Related ingested sources include {related_titles}.")
 
-def get_auth_service() -> AuthService:
-    return _auth_service
+    if graph_context:
+        parts.append(f"Connected concepts in the graph include {'; '.join(graph_context[:3])}.")
+
+    return " ".join(parts) or "I found matching knowledge, but not enough grounded detail to answer cleanly yet."

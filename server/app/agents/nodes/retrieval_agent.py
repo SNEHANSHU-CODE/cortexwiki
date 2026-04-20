@@ -8,7 +8,7 @@ logger = get_logger("agents.retrieval")
 class RetrievalAgent:
     @property
     def _mongo(self):
-        from modules.db.mongo import get_mongo_manager
+        from app.db.mongo import get_mongo_manager
         return get_mongo_manager()
 
     @property

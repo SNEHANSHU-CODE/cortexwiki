@@ -13,43 +13,49 @@ from app.core.security import (
 )
 from app.utils.errors import AppError
 from app.utils.logging import get_logger
-from modules.db.mongo import get_mongo_manager
+from app.db.mongo import get_mongo_manager
 
 
 logger = get_logger("services.auth")
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """Make datetime timezone-aware (UTC) if it is naive — MongoDB returns naive datetimes."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 class AuthService:
-    def __init__(self) -> None:
-        self.mongo = get_mongo_manager()
-        self.redis = get_redis_store()
+    @property
+    def mongo(self):
+        return get_mongo_manager()
+
+    @property
+    def redis(self):
+        return get_redis_store()
 
     async def register_user(self, *, email: str, username: str, password: str, full_name: str = "", user_agent: str = "", ip_address: str = "") -> dict:
         if await self.mongo.get_user_by_email(email):
             raise AppError(status_code=409, code="email_in_use", message="Email is already registered.")
         if await self.mongo.get_user_by_username(username):
             raise AppError(status_code=409, code="username_in_use", message="Username is already registered.")
-
         try:
-            user = await self.mongo.create_user(
-                {
-                    "email": email,
-                    "username": username,
-                    "full_name": full_name,
-                    "password_hash": hash_password(password),
-                }
-            )
+            user = await self.mongo.create_user({
+                "email": email,
+                "username": username,
+                "full_name": full_name,
+                "password_hash": hash_password(password),
+            })
         except ValueError as exc:
             raise AppError(status_code=409, code="user_exists", message=str(exc)) from exc
 
-        await self.mongo.create_agent_log(
-            {
-                "user_id": user["id"],
-                "event_type": "auth",
-                "event_name": "register",
-                "details": {"email": user["email"], "ip_address": ip_address, "user_agent": user_agent},
-            }
-        )
+        await self.mongo.create_agent_log({
+            "user_id": user["id"],
+            "event_type": "auth",
+            "event_name": "register",
+            "details": {"email": user["email"], "ip_address": ip_address, "user_agent": user_agent},
+        })
         logger.info("Registered user %s", user["email"])
         return await self._issue_session(user=user, user_agent=user_agent, ip_address=ip_address)
 
@@ -59,14 +65,12 @@ class AuthService:
             raise AppError(status_code=401, code="invalid_credentials", message="Invalid email or password.")
 
         await self.mongo.update_user_login(user["id"])
-        await self.mongo.create_agent_log(
-            {
-                "user_id": user["id"],
-                "event_type": "auth",
-                "event_name": "login",
-                "details": {"ip_address": ip_address, "user_agent": user_agent},
-            }
-        )
+        await self.mongo.create_agent_log({
+            "user_id": user["id"],
+            "event_type": "auth",
+            "event_name": "login",
+            "details": {"ip_address": ip_address, "user_agent": user_agent},
+        })
         logger.info("Logged in user %s", user["email"])
         return await self._issue_session(user=user, user_agent=user_agent, ip_address=ip_address)
 
@@ -75,7 +79,9 @@ class AuthService:
         record = await self.mongo.find_refresh_token(token_hash)
         if not record:
             raise AppError(status_code=401, code="refresh_token_invalid", message="Refresh token is invalid.")
-        if record["expires_at"] <= datetime.now(UTC):
+
+        # Fix: MongoDB returns naive datetimes — make UTC-aware before comparing
+        if _ensure_utc(record["expires_at"]) <= datetime.now(UTC):
             await self.mongo.revoke_refresh_token(token_hash)
             raise AppError(status_code=401, code="refresh_token_expired", message="Refresh token expired.")
 
@@ -85,32 +91,29 @@ class AuthService:
             raise AppError(status_code=401, code="user_not_found", message="Authenticated user no longer exists.")
 
         await self.mongo.revoke_refresh_token(token_hash)
-        await self.mongo.create_agent_log(
-            {
-                "user_id": user["id"],
-                "event_type": "auth",
-                "event_name": "refresh",
-                "details": {"ip_address": ip_address, "user_agent": user_agent},
-            }
-        )
+        await self.mongo.create_agent_log({
+            "user_id": user["id"],
+            "event_type": "auth",
+            "event_name": "refresh",
+            "details": {"ip_address": ip_address, "user_agent": user_agent},
+        })
         return await self._issue_session(user=user, user_agent=user_agent, ip_address=ip_address)
 
     async def logout_user(self, *, user_id: str | None, access_token_jti: str | None, refresh_token: str | None) -> None:
-        if access_token_jti:
-            await self.redis.revoke_access_token(access_token_jti)
         if user_id:
             await self.redis.revoke_user_tokens(user_id)
             await self.mongo.revoke_user_refresh_tokens(user_id)
-            await self.mongo.create_agent_log(
-                {
-                    "user_id": user_id,
-                    "event_type": "auth",
-                    "event_name": "logout",
-                    "details": {},
-                }
-            )
-        elif refresh_token:
-            await self.mongo.revoke_refresh_token(hash_refresh_token(refresh_token))
+            await self.mongo.create_agent_log({
+                "user_id": user_id,
+                "event_type": "auth",
+                "event_name": "logout",
+                "details": {},
+            })
+        else:
+            if access_token_jti:
+                await self.redis.revoke_access_token(access_token_jti)
+            if refresh_token:
+                await self.mongo.revoke_refresh_token(hash_refresh_token(refresh_token))
 
     def set_refresh_cookie(self, response: Response, refresh_token: str, expires_at: datetime) -> None:
         response.set_cookie(
@@ -145,15 +148,13 @@ class AuthService:
             expires_at=access_expires_at,
             token=access_token,
         )
-        await self.mongo.save_refresh_token(
-            {
-                "user_id": user["id"],
-                "token_hash": hash_refresh_token(refresh_token),
-                "expires_at": refresh_expires_at,
-                "user_agent": user_agent,
-                "ip_address": ip_address,
-            }
-        )
+        await self.mongo.save_refresh_token({
+            "user_id": user["id"],
+            "token_hash": hash_refresh_token(refresh_token),
+            "expires_at": refresh_expires_at,
+            "user_agent": user_agent,
+            "ip_address": ip_address,
+        })
 
         return {
             "user": {
@@ -169,8 +170,8 @@ class AuthService:
         }
 
 
-auth_service = AuthService()
+_auth_service = AuthService()
 
 
 def get_auth_service() -> AuthService:
-    return auth_service
+    return _auth_service

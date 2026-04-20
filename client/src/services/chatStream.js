@@ -1,93 +1,118 @@
-import axios from "axios";
-import { clearSession, finishHydration, setSession } from "../redux/slices/authSlice";
+import { io } from "socket.io-client";
+import { queryKnowledge } from "../utils/api";
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || "";
+const SOCKET_URL         = import.meta.env.VITE_SOCKET_URL         || "";
+const OUTBOUND_EVENT     = import.meta.env.VITE_SOCKET_EMIT_EVENT   || "query:start";
+const START_EVENT        = import.meta.env.VITE_SOCKET_START_EVENT  || "query:started";
+const TOKEN_EVENT        = import.meta.env.VITE_SOCKET_TOKEN_EVENT  || "query:token";
+const COMPLETE_EVENT     = import.meta.env.VITE_SOCKET_COMPLETE_EVENT || "query:complete";
+const ERROR_EVENT        = import.meta.env.VITE_SOCKET_ERROR_EVENT  || "query:error";
 
-export const httpClient = axios.create({
-  baseURL,
-  timeout: 30_000,
-  withCredentials: true,
-});
+function tokenDelay(token) {
+  return Math.min(60, 12 + token.length * 4);
+}
 
-// Separate client for refresh — never intercepted to avoid infinite loops.
-const refreshClient = axios.create({
-  baseURL,
-  timeout: 15_000,
-  withCredentials: true,
-});
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-let boundStore = null;
-// Single in-flight refresh promise shared across all concurrent 401 retries.
-let refreshPromise = null;
+function tokenize(text) {
+  return text.match(/\S+\s*|\n+/g) ?? [];
+}
 
-export function initializeHttpClient(store) {
-  if (boundStore) return; // idempotent
-  boundStore = store;
+async function streamFallbackResponse({
+  payload,
+  signal,
+  requestId,
+  onStart,
+  onToken,
+  onComplete,
+  onError,
+  onConnectionChange,
+}) {
+  try {
+    onConnectionChange?.("fallback");
+    const result = await queryKnowledge(payload, { signal });
+    if (signal?.aborted) return;
 
-  // ── Request: attach latest access token ──────────────────────────────────
-  httpClient.interceptors.request.use((config) => {
-    const token = boundStore.getState().auth.accessToken;
-    if (token) {
-      config.headers = config.headers ?? {};
-      config.headers.Authorization = `Bearer ${token}`;
+    onStart?.({ requestId, transport: "http" });
+
+    const tokens = tokenize(result.answer ?? "");
+    let assembled = "";
+
+    for (const token of tokens) {
+      if (signal?.aborted) return;
+      assembled += token;
+      onToken?.({ requestId, chunk: token, content: assembled });
+      await wait(tokenDelay(token));
     }
-    return config;
-  });
 
-  // ── Response: silent token refresh on 401 ────────────────────────────────
-  httpClient.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-      const original = error.config;
-      const status   = error.response?.status;
-
-      const skip =
-        !boundStore ||
-        status !== 401 ||
-        original?._retry ||
-        original?.url?.includes("/api/auth/refresh") ||
-        original?.url?.includes("/api/auth/login") ||
-        original?.url?.includes("/api/auth/register");
-
-      if (skip) throw error;
-
-      original._retry = true;
-
-      try {
-        const session = await refreshSession();
-        boundStore.dispatch(
-          setSession({
-            accessToken: session.access_token,
-            user:        session.user,
-            expiresAt:   session.expires_at ?? null,
-          }),
-        );
-        original.headers = original.headers ?? {};
-        original.headers.Authorization = `Bearer ${session.access_token}`;
-        return await httpClient(original);
-      } catch (refreshError) {
-        boundStore.dispatch(clearSession());
-        boundStore.dispatch(finishHydration());
-        throw refreshError;
-      }
-    },
-  );
-}
-
-/**
- * Refresh the session. Multiple callers that arrive while a refresh is
- * in-flight all share the same promise — prevents duplicate /refresh calls.
- */
-export async function refreshSession() {
-  if (!refreshPromise) {
-    refreshPromise = refreshClient
-      .post("/api/auth/refresh")
-      .then((res) => res.data)
-      .finally(() => {
-        refreshPromise = null;
-      });
+    if (!signal?.aborted) {
+      onComplete?.({ requestId, content: result.answer, metadata: result });
+    }
+  } catch (error) {
+    if (!signal?.aborted) {
+      onError?.(error);
+    }
   }
-  return refreshPromise;
 }
 
-export default httpClient;
+export function createChatStreamSession({
+  token,
+  onConnectionChange,
+  onStart,
+  onToken,
+  onComplete,
+  onError,
+}) {
+  let socket = null;
+
+  if (SOCKET_URL) {
+    socket = io(SOCKET_URL, {
+      autoConnect:          false,
+      transports:           ["websocket", "polling"],
+      auth:                 token ? { token } : undefined,
+      withCredentials:      true,
+      reconnection:         true,
+      reconnectionAttempts: 5,
+      reconnectionDelay:    1_000,
+      reconnectionDelayMax: 5_000,
+    });
+
+    socket.on("connect",           () => onConnectionChange?.("connected"));
+    socket.on("disconnect",        () => onConnectionChange?.("reconnecting"));
+    socket.on("reconnect_attempt", () => onConnectionChange?.("reconnecting"));
+    socket.on("connect_error",     () => onConnectionChange?.("fallback"));
+    socket.on(START_EVENT,    (data) => onStart?.(data));
+    socket.on(TOKEN_EVENT,    (data) => onToken?.(data));
+    socket.on(COMPLETE_EVENT, (data) => onComplete?.(data));
+    socket.on(ERROR_EVENT,    (data) => onError?.(data));
+
+    socket.connect();
+  } else {
+    onConnectionChange?.("fallback");
+  }
+
+  const disconnect = () => {
+    if (socket) {
+      socket.removeAllListeners();
+      socket.disconnect();
+      socket = null;
+    }
+  };
+
+  const send = async ({ requestId, payload, signal }) => {
+    if (socket?.connected) {
+      socket.emit(OUTBOUND_EVENT, { requestId, ...payload });
+      return;
+    }
+    await streamFallbackResponse({
+      payload, signal, requestId,
+      onStart, onToken, onComplete, onError, onConnectionChange,
+    });
+  };
+
+  return { send, disconnect };
+}
+
+export default { createChatStreamSession };

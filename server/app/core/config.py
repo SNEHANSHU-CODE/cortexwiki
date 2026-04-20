@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
+    # Server
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+
     FRONTEND_ORIGINS: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
     # Auth
@@ -46,7 +50,12 @@ class Settings(BaseSettings):
     NEO4J_USER: str | None = None
     NEO4J_PASSWORD: str | None = None
 
-    # Gemini
+    # Groq — primary LLM (text generation + streaming only)
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+
+    # Gemini — fallback LLM + sole embedding provider
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-1.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"
@@ -100,6 +109,11 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
+
+    @property
+    def base_url(self) -> str:
+        host = "localhost" if self.HOST == "0.0.0.0" else self.HOST
+        return f"http://{host}:{self.PORT}"
 
 
 @lru_cache(maxsize=1)

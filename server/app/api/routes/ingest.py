@@ -1,19 +1,19 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
-from app.schemas.ingest import IngestHistoryItem, IngestResponse, WebIngestRequest, YouTubeIngestRequest
+from app.schemas.ingest import IngestData, IngestHistoryItem, WebIngestRequest, YouTubeIngestRequest
 from app.services.graph_service import get_graph_service
 from app.services.llm import get_llm_service
 from app.utils.web import fetch_web_page_content, fetch_youtube_content
-from modules.db.mongo import get_mongo_manager
+from app.db.mongo import get_mongo_manager
 
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
-def _build_ingest_response(result: dict) -> IngestResponse:
+def _build_ingest_response(result: dict) -> IngestData:
     page = result["wiki_page"]
-    return IngestResponse(
+    return IngestData(
         id=page["id"],
         title=page["title"],
         source_type=page["source_type"],
@@ -25,7 +25,7 @@ def _build_ingest_response(result: dict) -> IngestResponse:
     )
 
 
-@router.post("/youtube", response_model=IngestResponse)
+@router.post("/youtube", response_model=IngestData)
 async def ingest_youtube(payload: YouTubeIngestRequest, current_user: dict = Depends(get_current_user)):
     source = await fetch_youtube_content(str(payload.url))
     result = await _ingest_source(
@@ -38,7 +38,7 @@ async def ingest_youtube(payload: YouTubeIngestRequest, current_user: dict = Dep
     return _build_ingest_response(result)
 
 
-@router.post("/web", response_model=IngestResponse)
+@router.post("/web", response_model=IngestData)
 async def ingest_web(payload: WebIngestRequest, current_user: dict = Depends(get_current_user)):
     source = await fetch_web_page_content(str(payload.url))
     result = await _ingest_source(

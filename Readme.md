@@ -1,309 +1,140 @@
-# CortexWiki 🧠 - Production-Ready Multi-Agent AI System
+# CortexWiki 🧠
 
-> A polished, demo-ready AI knowledge system combining persistent wikis, intelligent retrieval, and real-time responses.
+> An AI workspace where knowledge compounds — ingest sources, build a graph, ask grounded questions.
 
-## 🎯 Core Features
+**Live →** [cortexwiki.vercel.app](https://cortexwiki.vercel.app)
 
-✅ **Multi-Agent Architecture** - 11 specialized agents for ingestion and querying  
-✅ **Persistent Knowledge Wiki** - MongoDB-based knowledge as source of truth  
-✅ **Intelligent Routing** - Automatic decision between wiki, web search, or hybrid  
-✅ **Confidence Scoring** - Every answer includes confidence percentage  
-✅ **Hallucination Guards** - Verify answers are grounded in sources  
-✅ **Debug Mode** - Inspect agent decisions and intermediate outputs  
-✅ **Real-Time Logging** - Track all system operations  
-✅ **World-Class UI** - Modern, responsive chat and ingestion interfaces  
-✅ **Rate Limiting** - Protect backend from abuse  
-✅ **Caching** - Instant responses for repeated queries  
+---
 
-## 🚀 System Architecture
+## The Problem It Solves
 
-### Ingestion Pipeline
+Every AI chatbot has the same flaw: it forgets. Ask it something today, and tomorrow it has no memory of what you told it, what sources you trusted, or what conclusions you reached together.
+
+CortexWiki is built around the opposite idea. You feed it YouTube videos and web pages. It extracts concepts, maps relationships, builds a persistent knowledge graph, and answers every future question **grounded in that specific knowledge** — with a source trail you can follow back.
+
+---
+
+## What It Does
+
+**Ingest** — Paste a YouTube URL or web page. An 8-agent pipeline extracts facts, summarizes content, identifies concepts, maps relationships between them, checks for contradictions with existing knowledge, and stores everything in a versioned wiki. One URL becomes structured, queryable memory.
+
+**Chat** — Ask questions against your knowledge base. Answers stream word-by-word in real time, grounded in ingested sources. Every response includes a confidence score, grounding status, and clickable source attribution. Markdown, code blocks, and copy buttons included.
+
+**Graph** — Explore your knowledge visually. A force-directed graph renders every concept as a node and every relationship as an edge. Click a node to inspect its connections, zoom into a topic cluster, pan across the full graph. The layout stays stable — no jumps, no flicker.
+
+---
+
+## Architecture
+
+### Two Pipelines, 11 Agents
+
 ```
-YouTube URL
-    ↓
-Extract Transcript
-    ↓
-[Ingestion Agent] → Extract top 10 facts
-    ↓
-[Summarizer Agent] → Create summary + key points
-    ↓
-[Concept Extractor] → Extract 5-10 concepts
-    ↓
-[Relationship Agent] → Build concept graph
-    ↓
-[Conflict Detector] → Detect contradictions
-    ↓
-[Wiki Builder] → Store in MongoDB with version control
-    ↓
-wiki_pages (Source of Truth)
-```
-
-### Query Pipeline
-```
-User Question
-    ↓
-[Planner Agent] → Decide: wiki? web? hybrid?
-    ↓
-    ├─→ [Retrieval Agent] ────────────┐
-    └─→ [Internet Search Agent] ──────┤
-                                       ↓
-                         [Answer Agent] → Generate response
-                                       ↓
-                         [Hallucination Guard] → Verify grounding
-                                       ↓
-                         Response + Confidence + Sources
+INGEST                              QUERY
+──────                              ─────
+URL                                 Question
+ ↓                                   ↓
+Transcript / Scrape             Planner Agent
+ ↓                              (wiki / web / hybrid?)
+Ingestion Agent                      ↓
+ ↓                         ┌─ Retrieval Agent
+Summarizer Agent            └─ Web Search Agent
+ ↓                                   ↓
+Concept Extractor               Answer Agent
+ ↓                                   ↓
+Relationship Agent          Hallucination Guard
+ ↓                                   ↓
+Conflict Detector           Confidence Score + Sources
+ ↓
+Wiki Builder → MongoDB
 ```
 
-## 🎨 Frontend Features
+Each agent has one responsibility. Each is independently testable. When something fails, it's immediately obvious where and why — not buried in a 2000-token prompt.
 
-### Chat Interface
-- **Modern UI** with gradient header and smooth animations
-- **Confidence Scores** displayed prominently (0-100%)
-- **Source Attribution** with clickable links
-- **Grounding Status** shows if answer is verified
-- **Debug Mode** for inspecting agent decisions
-- **Typing Animation** during response generation
-- **Auto-scroll** to latest messages
+### Frontend
 
-### Ingest Interface
-- **Real-time Progress** tracking (extracting → processing → updating)
-- **Success Indicators** with visual feedback
-- **Knowledge Base Display** showing all ingested items
-- **Error Handling** with clear messages
-- **Responsive Design** works on mobile/tablet
+| Concern | Approach |
+|---|---|
+| State | Redux Toolkit — 4 slices (auth, chat, graph, ingest), clean async thunks |
+| Streaming | Socket.io with automatic HTTP fallback — users never see a broken experience |
+| Graph | `react-force-graph-2d` with stable position persistence via `useRef` |
+| Markdown | Full GFM + syntax highlighting, memoized renderer — zero flicker during streaming |
+| Auth | JWT access tokens + HttpOnly refresh cookies, silent refresh via Axios interceptor |
+| Routing | React Router v6, lazy-loaded pages, protected routes with hydration guard |
 
-## 🔧 Backend Components
+### Backend
 
-### Orchestrator (`modules/agents/orchestrator_v2.py`)
-- Manages both pipelines (ingestion and query)
-- Handles errors with fallback logic
-- Calculates confidence scores
-- Logs all agent operations
-- Supports debug mode
+**FastAPI** — async Python, structured around route modules for auth, query, ingest, and graph.
 
-### Agents (11 total)
+**LangGraph** — agent orchestration. Each node in the graph is an agent; edges are conditional transitions based on planner output.
 
-| Agent | Purpose | Input | Output |
-|-------|---------|-------|--------|
-| ingestion | Extract facts | raw_content | 10 facts |
-| summarizer | Create summary | content | summary + key points |
-| concept_extractor | Extract concepts | content | 5-10 concepts |
-| relationship | Build graph | concepts | relationships[] |
-| conflict_detector | Flag contradictions | content + wiki | conflicts[] |
-| wiki_builder | Persist data | all above | wiki_updated bool |
-| planner | Route decision | question | strategy (wiki/web/hybrid) |
-| retrieval | Query wiki | question | wiki_pages[] |
-| internet_search | Fetch web | question | web_results[] |
-| answer | Generate response | query + sources | answer text |
-| hallucination_guard | Verify grounding | answer + sources | verified_answer |
+**MongoDB** — wiki pages with full version history. Every update is non-destructive.
 
-### Services
+**Neo4j** — concept graph. MongoDB stores documents; Neo4j stores relationships. Each database does what it's designed for.
 
-**Socket.io** (`app/services/socketio.py`)
-- Real-time client connections
-- Streaming response capability (ready for implementation)
-- Agent step emissions
-- Progress tracking
+---
 
-**Caching** (`app/services/cache.py`)
-- In-memory query result caching (5-minute TTL)
-- Reduces redundant processing
-- Automatic cleanup
+## Engineering Problems Worth Talking About
 
-**Rate Limiting** (`app/services/cache.py`)
-- Per-client request limiting (20 req/min default)
-- Prevents abuse
-- Configurable thresholds
+**Duplicate message bubbles during streaming**
 
-## 📊 API Endpoints
+The assistant placeholder was being created in two places — once optimistically on submit, once when the socket fired `onStart`. The fix was removing the optimistic dispatch entirely and making the session callback the single source of truth for creating the bubble. One line removed, zero duplicates.
 
-### Query Endpoint
+**Graph layout instability**
+
+Node position cache was in `useState`. Every time positions were saved, `normalizedData` recomputed (because `positionCache` was a dependency), which re-ran the force simulation, which saved new positions — an infinite update loop. Moving the cache to `useRef` broke the cycle. State never changed, renders never triggered, layout stayed stable.
+
+**Concurrent 401 refresh race condition**
+
+Ten requests expiring simultaneously each triggered their own `/refresh` call. A shared `refreshPromise` reference ensures all concurrent retries await the same single in-flight refresh, then replay with the new token. Ten network calls collapsed to one.
+
+**Streaming flicker from React re-renders**
+
+`ReactMarkdown`'s `components` prop was a new object on every render, forcing a full remount of the renderer on every token. During a 500-token stream that was 500 unnecessary remounts. Wrapping `components` in `useMemo(() => ..., [])` reduced that to zero.
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, Vite, Redux Toolkit, Bootstrap 5 |
+| Realtime | Socket.io |
+| Backend | FastAPI, Python 3.11 |
+| AI Orchestration | LangGraph, Google Gemini |
+| Document Store | MongoDB Atlas |
+| Graph Store | Neo4j |
+| Auth | JWT + HttpOnly refresh cookies |
+| Deployment | Vercel (frontend) |
+
+---
+
+## Project Structure
+
 ```
-POST /api/query
-{
-  "question": "What is quantum computing?",
-  "debug": false
-}
-
-Response:
-{
-  "question": "What is quantum computing?",
-  "answer": "Quantum computing is...",
-  "confidence": 0.85,
-  "sources": ["wiki:quantum", "web:url"],
-  "is_grounded": true,
-  "strategy": "hybrid",
-  "debug": {...}  // Only if debug=true
-}
+cortexwiki/
+├── client/
+│   └── src/
+│       ├── pages/           # ChatPage, GraphPage, IngestPage, LandingPage
+│       ├── components/      # MessageBubble, GraphViewer, MarkdownContent, Navbar
+│       ├── layouts/         # AppShell
+│       ├── redux/slices/    # auth · chat · graph · ingest
+│       ├── services/        # http.js (Axios + interceptors) · chatStream.js
+│       └── utils/           # api.js · sliceUtils.js
+└── server/
+    ├── app/
+    │   ├── routes/          # auth · query · ingest · graph
+    │   └── services/        # socketio · cache · rate limiting
+    └── modules/agents/      # 11 LangGraph agents + orchestrator
 ```
 
-### Ingest Endpoint
-```
-POST /api/ingest/youtube
-{
-  "url": "https://youtube.com/watch?v=..."
-}
+---
 
-Response:
-{
-  "id": "video_id",
-  "source_type": "youtube",
-  "url": "...",
-  "status": "ingested_and_processed"
-}
-```
+## Also Built
 
-### Health Check
-```
-GET /health
-Response:
-{
-  "status": "healthy",
-  "service": "CortexWiki API",
-  "version": "0.2.0"
-}
-```
+**Finance Tracker** — A production-grade personal finance platform with a 3-server architecture (Node.js REST + GraphQL analytics + Python RAG), Google OAuth, automated monthly PDF reports, AI-powered document vault with PII masking, and Google Calendar sync.
 
-### System Stats
-```
-GET /stats
-Response:
-{
-  "cache_size": 15,
-  "active_clients": 3,
-  "status": "operational"
-}
-```
+→ [financetracker.space](https://financetracker.space) · [Repository](https://github.com/SNEHANSHU-CODE/finance-tracker)
 
-## 🗄️ MongoDB Schema
+---
 
-### wiki_pages
-```javascript
-{
-  _id: ObjectId,
-  title: "Machine Learning",
-  summary: "Brief overview...",
-  content: "Detailed content...",
-  concepts: ["AI", "algorithms"],
-  relations: [{type: "RELATED_TO", target: "AI"}],
-  sources: ["youtube:abc123"],
-  version: 2,
-  has_conflict: false,
-  conflicts: [{source: "url", claim: "..."}],
-  created_at: ISODate,
-  updated_at: ISODate
-}
-```
-
-### wiki_versions
-```javascript
-{
-  wiki_id: ObjectId,  // Reference to wiki_pages
-  title: "Machine Learning",
-  summary: "Old summary...",
-  content: "Old content...",
-  version: 1,
-  created_at: ISODate
-}
-```
-
-### agent_logs
-```javascript
-{
-  type: "ingest|query",
-  operation: "string",
-  timestamp: ISODate
-}
-```
-
-## 💡 Advanced Features
-
-### Confidence Scoring
-```python
-confidence = wiki_score (0.7) + web_score (0.2) + grounding_check
-# Result: 0.0-1.0 scale
-# >0.7 = High confidence (green)
-# 0.4-0.7 = Medium confidence (yellow)
-# <0.4 = Low confidence (red)
-```
-
-### Hallucination Guard
-- Checks word overlap between answer and sources (40%+ threshold)
-- If ungrounded, returns: "I don't have enough verified information"
-- Prevents false claims even if LLM generates them
-
-### Fallback Logic
-```
-Try wiki retrieval
-  → If empty: fallback to web search
-  → If both empty: return "Insufficient information"
-```
-
-
-
-## 🎓 Code Style
-
-- **Language:** Python (backend), React (frontend)
-- **Architecture:** Clean, minimal, no over-engineering
-- **Logging:** Structured logs with timing info
-- **Error Handling:** Graceful degradation
-- **Type Safety:** TypedDict for all agent inputs/outputs
-- **Async:** Full async/await support
-
-## 🚢 Deployment Considerations
-
-For production:
-1. Switch to production credentials (MongoDB Atlas, etc.)
-2. Enable HTTPS
-3. Configure CORS properly (don't use `*`)
-4. Use environment variables for secrets
-5. Add authentication/authorization
-6. Enable rate limiting per user
-7. Setup monitoring and alerts
-8. Use CDN for static assets
-9. Implement caching headers
-10. Add user analytics
-
-## 📦 Dependencies
-
-**Backend:**
-- FastAPI - Web framework
-- Motor - Async MongoDB driver
-- LangGraph - Agent orchestration
-- Gemini API - LLM
-- Neo4j - Knowledge graph
-
-**Frontend:**
-- React 19 - UI framework
-- Vite - Build tool
-- Redux - State management
-- Socket.io - Real-time communication
-- Bootstrap - Styling
-- Axios - HTTP client
-
-## 🐛 Troubleshooting
-
-### MongoDB not found
-```bash
-mongod --bindIp 127.0.0.1
-```
-
-### Port already in use
-```bash
-# Kill process on port 8000 (backend)
-netstat -ano | findstr :8000
-taskkill /PID <PID> /F
-
-# Kill process on port 5173 (frontend)
-netstat -ano | findstr :5173
-taskkill /PID <PID> /F
-```
-
-### Empty responses
-- Check if ingestion succeeded: `db.wiki_pages.find()`
-- Check agent logs: `db.agent_logs.find()`
-- Enable debug mode to see intermediate outputs
-
-### Rate limit errors
-- Increase limit in `app/services/cache.py`
-- Or provide `x-client-id` header
+*Built by [Snehanshu Sekhar Jena](https://linkedin.com/in/snehanshu-sekhar-jena) · [snehanshusekhar99@gmail.com](mailto:snehanshusekhar99@gmail.com)*

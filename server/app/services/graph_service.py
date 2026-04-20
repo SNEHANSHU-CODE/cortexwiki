@@ -2,7 +2,7 @@ import re
 from collections import Counter
 
 from app.utils.text import build_relationships, clean_text, extract_candidate_concepts
-from modules.db.graph import get_graph_manager
+from app.db.graph import get_graph_manager
 
 
 class GraphService:

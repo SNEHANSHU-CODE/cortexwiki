@@ -1,6 +1,6 @@
 from app.services.graph_service import get_graph_service
 from app.services.llm import get_llm_service
-from modules.db.mongo import get_mongo_manager
+from app.db.mongo import get_mongo_manager
 
 
 class IngestionService:

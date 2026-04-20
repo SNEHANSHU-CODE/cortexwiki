@@ -1,6 +1,6 @@
 from app.utils.logging import get_logger
-from modules.db.graph import close_neo4j_connection, connect_to_neo4j
-from modules.db.mongo import close_mongo_connection, connect_to_mongo
+from app.db.graph import close_neo4j_connection, connect_to_neo4j
+from app.db.mongo import close_mongo_connection, connect_to_mongo
 
 
 logger = get_logger("core.database")

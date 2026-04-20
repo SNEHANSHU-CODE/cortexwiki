@@ -9,17 +9,13 @@ function Navbar({
   loggingOut = false,
   onLogout,
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const isWorkspace = variant === "workspace";
 
   return (
     <header className={`app-navbar${isWorkspace ? " is-workspace" : ""}`}>
-      {/* Skip-to-content for keyboard / screen-reader users */}
-      <a className="skip-link" href="#main-content">Skip to content</a>
-
       <div className="app-navbar-inner surface-panel">
-        <Link className="brand-lockup" to="/" aria-label="CortexWiki — home">
+        <Link className="brand-lockup" aria-label="CortexWiki — home">
           <span className="brand-mark" aria-hidden="true">CW</span>
           <span className="brand-copy">
             CortexWiki
@@ -84,56 +80,8 @@ function Navbar({
               ),
             )
           )}
-
-          {/* Mobile hamburger — CSS shows/hides this via media query */}
-          {links.length > 0 && (
-            <button
-              type="button"
-              className="nav-hamburger"
-              aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
-              aria-expanded={menuOpen}
-              aria-controls="mobile-nav"
-              onClick={() => setMenuOpen((o) => !o)}
-            >
-              <span aria-hidden="true" />
-              <span aria-hidden="true" />
-              <span aria-hidden="true" />
-            </button>
-          )}
         </div>
       </div>
-
-      {/* Mobile nav drawer — visibility controlled by CSS + .is-open */}
-      {links.length > 0 && (
-        <nav
-          id="mobile-nav"
-          className={`nav-mobile${menuOpen ? " is-open" : ""}`}
-          aria-label="Mobile navigation"
-          aria-hidden={!menuOpen}
-        >
-          {links.map((item) =>
-            item.href ? (
-              <a
-                key={item.label}
-                href={item.href}
-                className="nav-link"
-                onClick={() => setMenuOpen(false)}
-              >
-                {item.label}
-              </a>
-            ) : (
-              <NavLink
-                key={item.label}
-                to={item.to}
-                className={({ isActive }) => `nav-link${isActive ? " is-active" : ""}`}
-                onClick={() => setMenuOpen(false)}
-              >
-                {item.label}
-              </NavLink>
-            ),
-          )}
-        </nav>
-      )}
     </header>
   );
 }
