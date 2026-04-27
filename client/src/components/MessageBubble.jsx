@@ -1,21 +1,23 @@
 import { memo, useEffect, useRef, useState } from "react";
 import MarkdownContent from "./MarkdownContent";
+import "./styles/Components.css";
+
+// ── Copy button ────────────────────────────────────────────────────────────
 
 function CopyButton({ content }) {
-  const [copied, setCopied]   = useState(false);
-  const timeoutRef            = useRef(null);
+  const [copied, setCopied] = useState(false);
+  const timerRef            = useRef(null);
 
-  // Cleanup timeout on unmount to avoid state update on unmounted component.
-  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = window.setTimeout(() => setCopied(false), 1500);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Clipboard API unavailable — fail silently.
+      // Clipboard unavailable — fail silently
     }
   };
 
@@ -24,12 +26,34 @@ function CopyButton({ content }) {
       type="button"
       className="ghost-button"
       onClick={handleCopy}
-      aria-label={copied ? "Response copied" : "Copy assistant response"}
+      aria-label={copied ? "Response copied" : "Copy response"}
     >
-      {copied ? "Copied ✓" : "Copy"}
+      {copied ? "✓ Copied" : "Copy"}
     </button>
   );
 }
+
+// ── Confidence bar ─────────────────────────────────────────────────────────
+
+function ConfidenceBar({ value }) {
+  const pct   = Math.round(value * 100);
+  const color = pct >= 70 ? "#5eead4" : pct >= 40 ? "#f59e0b" : "#f87171";
+  return (
+    <div className="confidence-bar">
+      <div
+        className="confidence-fill"
+        style={{ width: `${pct}%`, background: color }}
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Confidence: ${pct}%`}
+      />
+    </div>
+  );
+}
+
+// ── Message bubble ─────────────────────────────────────────────────────────
 
 function MessageBubble({ message, onRetry }) {
   const isUser      = message.role === "user";
@@ -45,17 +69,19 @@ function MessageBubble({ message, onRetry }) {
       <div
         className={[
           "message-bubble",
-          isUser ? "bubble-user" : "bubble-assistant",
-          isError     ? " is-error"     : "",
-          isStreaming ? " is-streaming" : "",
-        ].join(" ").trim()}
+          isUser      ? "bubble-user"      : "bubble-assistant",
+          isError     ? "is-error"         : "",
+          isStreaming ? "is-streaming"     : "",
+        ].filter(Boolean).join(" ")}
       >
+        {/* ── Header ─────────────────────────────────────────────────── */}
         <header className="message-header">
-          <span className="message-author">{isUser ? "You" : "CortexWiki"}</span>
+          <span className="message-author">
+            {isUser ? "You" : "CortexWiki"}
+          </span>
 
           {!isUser && (
             <div className="message-actions">
-              {/* Only show copy once there's content */}
               {message.content && !isStreaming && (
                 <CopyButton content={message.content} />
               )}
@@ -68,31 +94,23 @@ function MessageBubble({ message, onRetry }) {
           )}
         </header>
 
-        {/* ── Message body ─────────────────────────────────────────── */}
+        {/* ── Body ───────────────────────────────────────────────────── */}
         {isUser ? (
           <p className="message-plain">{message.content}</p>
         ) : message.content ? (
           <>
             <MarkdownContent content={message.content} />
-            {/* Blinking cursor at end of active stream */}
-            {isStreaming && (
-              <span className="stream-cursor" aria-hidden="true" />
-            )}
+            {isStreaming && <span className="stream-cursor" aria-hidden="true" />}
           </>
         ) : (
-          // Empty placeholder — server hasn't sent first token yet.
-          <div
-            className="thinking-state"
-            aria-label="CortexWiki is thinking…"
-            role="status"
-          >
-            <span className="skeleton-line is-wide" aria-hidden="true" />
-            <span className="skeleton-line"        aria-hidden="true" />
+          <div className="thinking-state" role="status" aria-label="CortexWiki is thinking…">
+            <span className="skeleton-line is-wide"  aria-hidden="true" />
+            <span className="skeleton-line"          aria-hidden="true" />
             <span className="skeleton-line is-short" aria-hidden="true" />
           </div>
         )}
 
-        {/* ── Metadata footer ──────────────────────────────────────── */}
+        {/* ── Metadata ───────────────────────────────────────────────── */}
         {!isUser && metadata && (
           <>
             <footer className="message-meta">
@@ -101,7 +119,7 @@ function MessageBubble({ message, onRetry }) {
               </span>
               {metadata.confidence != null && (
                 <span className="meta-badge">
-                  Confidence {Math.round(metadata.confidence * 100)}%
+                  {Math.round(metadata.confidence * 100)}% confidence
                 </span>
               )}
               {metadata.strategy && (
@@ -109,22 +127,29 @@ function MessageBubble({ message, onRetry }) {
               )}
             </footer>
 
+            {/* Confidence bar */}
+            {metadata.confidence != null && (
+              <ConfidenceBar value={metadata.confidence} />
+            )}
+
+            {/* Sources */}
             {metadata.sources?.length > 0 && (
               <nav className="message-sources" aria-label="Response sources">
-                {metadata.sources.map((source) => (
+                {metadata.sources.map((src) => (
                   <a
-                    key={`${source.url}-${source.title}`}
-                    href={source.url}
+                    key={`${src.url}:${src.title}`}
+                    href={src.url}
                     target="_blank"
                     rel="noreferrer noopener"
                     className="source-pill"
                   >
-                    {source.title}
+                    {src.title}
                   </a>
                 ))}
               </nav>
             )}
 
+            {/* Debug */}
             {metadata.debug && (
               <details className="debug-panel">
                 <summary>Debug context</summary>
@@ -138,7 +163,6 @@ function MessageBubble({ message, onRetry }) {
   );
 }
 
-// Memo: skip re-render when the message object reference hasn't changed.
-// During streaming the slice mutates message.content in-place via Immer,
-// which produces a new reference — so updates still flow through correctly.
+// memo: Immer produces a new object reference on every chunk so streaming
+// updates still flow through, but unchanged messages in the list don't re-render.
 export default memo(MessageBubble);

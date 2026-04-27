@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import "./styles/Components.css";
 
 function CopyCodeButton({ value }) {
   const [copied, setCopied] = useState(false);
@@ -11,7 +12,7 @@ function CopyCodeButton({ value }) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard API unavailable — fail silently
+      // Clipboard API unavailable — fail silently
     }
   };
 
@@ -22,12 +23,14 @@ function CopyCodeButton({ value }) {
       onClick={handleCopy}
       aria-label={copied ? "Code copied" : "Copy code block"}
     >
-      {copied ? "Copied ✓" : "Copy"}
+      {copied ? "✓ Copied" : "Copy"}
     </button>
   );
 }
 
 function MarkdownContent({ content }) {
+  // Memoized components — critical for streaming performance.
+  // Prevents ReactMarkdown from remounting its renderer on every token.
   const components = useMemo(
     () => ({
       a: ({ href, children, ...props }) => (
@@ -36,17 +39,12 @@ function MarkdownContent({ content }) {
         </a>
       ),
       code({ node, className, children, ...props }) {
-        const code = String(children).replace(/\n$/, "");
-        const isInline = node?.position
-          ? !className && !code.includes("\n")
-          : !className;
+        const raw      = String(children).replace(/\n$/, "");
+        // A code node is inline when it has no language class and no newlines
+        const isInline = !className && !raw.includes("\n");
 
         if (isInline) {
-          return (
-            <code className="inline-code" {...props}>
-              {children}
-            </code>
-          );
+          return <code className="inline-code" {...props}>{children}</code>;
         }
 
         const language = className?.replace("language-", "") || "text";
@@ -57,12 +55,10 @@ function MarkdownContent({ content }) {
               <span className="code-lang" aria-label={`Language: ${language}`}>
                 {language}
               </span>
-              <CopyCodeButton value={code} />
+              <CopyCodeButton value={raw} />
             </div>
             <pre>
-              <code className={className} {...props}>
-                {code}
-              </code>
+              <code className={className} {...props}>{raw}</code>
             </pre>
           </div>
         );
@@ -80,4 +76,7 @@ function MarkdownContent({ content }) {
   );
 }
 
+// memo: skip re-render when content hasn't changed.
+// During streaming the parent re-renders on every token, but MarkdownContent
+// only re-renders when its content prop value changes.
 export default memo(MarkdownContent);

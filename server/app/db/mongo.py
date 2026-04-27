@@ -10,7 +10,7 @@ from app.utils.logging import get_logger
 from app.utils.text import cosine_similarity, keyword_score, slugify
 
 
-logger = get_logger("modules.db.mongo")
+logger = get_logger("app.db.mongo")
 
 
 class MongoManager:

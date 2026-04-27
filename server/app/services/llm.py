@@ -33,9 +33,15 @@ _GEMINI_STREAM_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models"
     f"/{settings.GEMINI_MODEL}:streamGenerateContent"
 )
+
+_GEMINI_EMBED_MODEL = (
+    settings.GEMINI_EMBEDDING_MODEL
+    if settings.GEMINI_EMBEDDING_MODEL.startswith("models/")
+    else f"models/{settings.GEMINI_EMBEDDING_MODEL}"
+)
 _GEMINI_EMBED_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models"
-    "/text-embedding-004:embedContent"
+    "https://generativelanguage.googleapis.com/v1beta"
+    f"/{_GEMINI_EMBED_MODEL}:embedContent"
 )
 
 
@@ -314,7 +320,7 @@ class LLMService:
 
     async def _gemini_embed(self, text: str) -> list[float]:
         payload = {
-            "model": f"models/{settings.GEMINI_EMBEDDING_MODEL}",
+            "model": _GEMINI_EMBED_MODEL,
             "content": {"parts": [{"text": text[:4000]}]},
         }
         try:

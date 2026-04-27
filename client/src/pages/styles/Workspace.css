@@ -1,0 +1,792 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   workspace.css — visual upgrade for Chat, Graph, Ingest pages
+   DNA: exact match to LandingPage dark palette
+   Does NOT override App.css layout — only adds visual polish
+───────────────────────────────────────────────────────────────────────── */
+
+/* ── CSS tokens (workspace scope) ────────────────────────────────────── */
+.workspace-page {
+  --ws-ink:       #0a0f1e;
+  --ws-surface:   #111827;
+  --ws-surface-2: #1a2236;
+  --ws-surface-3: #1e293b;
+  --ws-border:    rgba(148, 163, 184, 0.10);
+  --ws-border-2:  rgba(148, 163, 184, 0.16);
+  --ws-accent:    #38bdf8;
+  --ws-accent-2:  #5eead4;
+  --ws-accent-3:  #818cf8;
+  --ws-amber:     #f59e0b;
+  --ws-red:       #ef4444;
+  --ws-green:     #22c55e;
+  --ws-text:      #e2e8f0;
+  --ws-text-2:    #cbd5e1;
+  --ws-text-dim:  #94a3b8;
+  --ws-text-mute: #475569;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--ws-text);
+  background: var(--ws-ink);
+  gap: 1.5rem;
+}
+
+/* ── Page header ──────────────────────────────────────────────────────── */
+.ws-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 2rem 0 1.5rem;
+  border-bottom: 1px solid var(--ws-border);
+  flex-wrap: wrap;
+}
+
+.ws-page-header__copy { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.ws-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--ws-accent);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ws-eyebrow::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--ws-accent);
+  flex-shrink: 0;
+}
+
+.ws-page-header h1 {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #f8fafc;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.ws-page-header p {
+  font-size: 0.9rem;
+  color: var(--ws-text-dim);
+  margin: 0;
+  max-width: 520px;
+  line-height: 1.65;
+  font-weight: 300;
+}
+
+.ws-page-header__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* ── Stats row ────────────────────────────────────────────────────────── */
+.ws-stats {
+  display: flex;
+  gap: 1px;
+  background: var(--ws-border);
+  border: 1px solid var(--ws-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.ws-stat {
+  flex: 1;
+  min-width: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 1rem 1.25rem;
+  background: var(--ws-surface);
+  transition: background 0.15s;
+}
+
+.ws-stat:hover { background: var(--ws-surface-2); }
+
+.ws-stat__label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--ws-text-mute);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ws-stat__value {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--ws-accent);
+  line-height: 1;
+}
+
+/* ── Panels ───────────────────────────────────────────────────────────── */
+.ws-panel {
+  background: var(--ws-surface);
+  border: 1px solid var(--ws-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.ws-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--ws-border);
+}
+
+.ws-panel__title {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  margin: 0;
+}
+
+.ws-panel__body {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.ws-btn--primary {
+  background: var(--ws-accent);
+  color: var(--ws-ink);
+  font-weight: 700;
+}
+
+.ws-btn--primary:hover {
+  background: #7dd3fc;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.28);
+}
+
+.ws-btn--primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.ws-btn--ghost {
+  background: transparent;
+  color: var(--ws-text-dim);
+  border: 1px solid var(--ws-border-2);
+}
+
+.ws-btn--ghost:hover {
+  color: var(--ws-text);
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.ws-btn--ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ws-btn--danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--ws-red);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.ws-btn--danger:hover { background: rgba(239, 68, 68, 0.16); }
+
+/* ── Form fields ──────────────────────────────────────────────────────── */
+.ws-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ws-field__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ws-text-dim);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.ws-field__input,
+.ws-field__textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--ws-border-2);
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--ws-text);
+  font-size: 0.9rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+  resize: none;
+}
+
+.ws-field__input::placeholder,
+.ws-field__textarea::placeholder {
+  color: #334155;
+}
+
+.ws-field__input:focus,
+.ws-field__textarea:focus {
+  border-color: var(--ws-accent);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.ws-field__hint {
+  font-size: 0.75rem;
+  color: var(--ws-text-mute);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  margin: 0;
+}
+
+/* ── Segmented control ────────────────────────────────────────────────── */
+.ws-segments {
+  display: flex;
+  gap: 2px;
+  background: var(--ws-border);
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.ws-segment {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ws-text-dim);
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.ws-segment--active {
+  background: var(--ws-accent);
+  color: var(--ws-ink);
+  font-weight: 700;
+}
+
+/* ── Banners ──────────────────────────────────────────────────────────── */
+.ws-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.ws-banner--error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.ws-banner--success {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+/* ── Connection pill ──────────────────────────────────────────────────── */
+.ws-conn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 100px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--ws-border-2);
+  color: var(--ws-text-mute);
+  background: var(--ws-surface);
+}
+
+.ws-conn-pill::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.ws-conn-pill--connected    { color: var(--ws-accent-2); border-color: rgba(94,234,212,0.2); background: rgba(94,234,212,0.06); }
+.ws-conn-pill--reconnecting { color: var(--ws-amber);    border-color: rgba(245,158,11,0.2); background: rgba(245,158,11,0.06); }
+.ws-conn-pill--fallback     { color: var(--ws-text-dim); }
+
+/* ── Sidebar metric card ──────────────────────────────────────────────── */
+.ws-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 1rem 1.25rem;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 12px;
+}
+
+.ws-metric__label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--ws-text-mute);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ws-metric__value {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--ws-text);
+  line-height: 1;
+}
+
+/* ── Quick prompts ────────────────────────────────────────────────────── */
+.ws-quick-prompts { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.ws-quick-prompt {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  color: var(--ws-text-dim);
+  font-size: 0.825rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1.5;
+}
+
+.ws-quick-prompt:hover {
+  background: var(--ws-surface-3);
+  border-color: rgba(56, 189, 248, 0.2);
+  color: var(--ws-text);
+}
+
+/* ── Chat stream ──────────────────────────────────────────────────────── */
+.ws-chat-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+  flex: 1;
+}
+
+/* ── Composer ─────────────────────────────────────────────────────────── */
+.ws-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 1rem;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 14px;
+  transition: border-color 0.15s;
+}
+
+.ws-composer:focus-within {
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.06);
+}
+
+.ws-composer__textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--ws-text);
+  font-size: 0.925rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  line-height: 1.6;
+  overflow-y: hidden;
+  min-height: 24px;
+}
+
+.ws-composer__textarea::placeholder { color: #334155; }
+
+.ws-composer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ws-composer__hint {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--ws-text-mute);
+  letter-spacing: 0.04em;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+.ws-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 280px;
+  padding: 3rem 2rem;
+}
+
+.ws-empty__icon {
+  font-size: 2rem;
+  opacity: 0.4;
+}
+
+.ws-empty h3 {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  margin: 0;
+}
+
+.ws-empty p {
+  font-size: 0.875rem;
+  color: var(--ws-text-dim);
+  max-width: 340px;
+  line-height: 1.65;
+  margin: 0;
+  font-weight: 300;
+}
+
+/* ── Checkbox ─────────────────────────────────────────────────────────── */
+.ws-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-size: 0.825rem;
+  color: var(--ws-text-dim);
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.ws-checkbox input[type="checkbox"] {
+  width: 16px; height: 16px;
+  accent-color: var(--ws-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Badge / tag ──────────────────────────────────────────────────────── */
+.ws-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 100px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--ws-accent);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.ws-badge--youtube { background: rgba(239,68,68,0.1); color: #f87171; border-color: rgba(239,68,68,0.2); }
+.ws-badge--web     { background: rgba(94,234,212,0.1); color: var(--ws-accent-2); border-color: rgba(94,234,212,0.2); }
+
+.ws-tag {
+  display: inline-flex;
+  padding: 0.2rem 0.65rem;
+  border-radius: 100px;
+  font-size: 0.775rem;
+  color: var(--ws-text-dim);
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+}
+
+/* ── Ingest result callout ────────────────────────────────────────────── */
+.ws-result {
+  background: rgba(56, 189, 248, 0.04);
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  border-radius: 14px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.ws-result__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ws-result__title {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ws-text);
+}
+
+.ws-result__summary {
+  font-size: 0.875rem;
+  color: var(--ws-text-dim);
+  line-height: 1.65;
+  margin: 0;
+  font-weight: 300;
+}
+
+.ws-result__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+/* ── History card ─────────────────────────────────────────────────────── */
+.ws-history-list { display: flex; flex-direction: column; gap: 0; }
+
+.ws-history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--ws-border);
+  transition: background 0.15s;
+}
+
+.ws-history-card:last-child { border-bottom: none; }
+.ws-history-card:hover      { background: var(--ws-surface-2); }
+
+.ws-history-card__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ws-history-card__time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--ws-text-mute);
+  letter-spacing: 0.04em;
+}
+
+.ws-history-card h3 {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.ws-history-card p {
+  font-size: 0.825rem;
+  color: var(--ws-text-dim);
+  margin: 0;
+  line-height: 1.6;
+  font-weight: 300;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ws-history-card__link {
+  font-size: 0.775rem;
+  color: var(--ws-accent);
+  text-decoration: none;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.02em;
+  transition: color 0.15s;
+  align-self: flex-start;
+}
+
+.ws-history-card__link:hover { color: #7dd3fc; }
+
+/* ── Graph search bar ─────────────────────────────────────────────────── */
+.ws-graph-search {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ws-graph-search .ws-field__input {
+  min-width: 200px;
+  max-width: 320px;
+}
+
+/* ── Graph skeleton ───────────────────────────────────────────────────── */
+.ws-graph-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  flex: 1;
+}
+
+.ws-graph-skeleton__canvas {
+  flex: 1;
+  min-height: 420px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.06);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.ws-skeleton-line {
+  height: 0.875rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.ws-skeleton-line--short { width: 35%; }
+.ws-skeleton-line--wide  { width: 85%; }
+.ws-skeleton-line--med   { width: 65%; }
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* ── Skeleton history cards ───────────────────────────────────────────── */
+.ws-history-card--skeleton .ws-skeleton-line {
+  border-radius: 6px;
+}
+
+/* ── Graph details panel ──────────────────────────────────────────────── */
+.ws-details-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem;
+}
+
+.ws-details-metric {
+  padding: 0.875rem 1rem;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+}
+
+.ws-details-metric__label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--ws-text-mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ws-details-metric__value {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ws-text);
+}
+
+.ws-details-node-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.ws-details-node-btn:hover {
+  background: rgba(56, 189, 248, 0.06);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+.ws-details-node-btn strong {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ws-text);
+}
+
+.ws-details-node-btn span {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--ws-text-mute);
+}
+
+.ws-rel-item {
+  padding: 0.75rem 1rem;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ws-rel-item strong {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ws-accent);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.ws-rel-item span {
+  font-size: 0.78rem;
+  color: var(--ws-text-dim);
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .ws-graph-search .ws-field__input { max-width: 100%; }
+}
+
+@media (max-width: 768px) {
+  .ws-page-header { padding: 1.25rem 0 1rem; }
+  .ws-page-header h1 { font-size: 1.6rem; }
+  .ws-stats { flex-wrap: wrap; }
+  .ws-stat  { min-width: calc(50% - 1px); }
+  .ws-details-metrics { grid-template-columns: 1fr; }
+}

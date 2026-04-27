@@ -1,35 +1,27 @@
+import "./styles/Footer.css";
+import { Link } from "react-router-dom";
+
 function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="marketing-footer surface-panel" role="contentinfo">
-      <div className="footer-brand">
-        <strong>CortexWiki</strong>
-        <p>
-          Grounded chat, source ingestion, and graph-native reasoning in one
-          premium workspace.
+    <footer className="cw-footer">
+      <div className="cw-footer__inner">
+        <div className="cw-footer__brand">
+          <span className="cw-footer__mark" aria-hidden="true">CW</span>
+          <span className="cw-footer__name">CortexWiki</span>
+        </div>
+
+        <p className="cw-footer__copy">
+          © {year} Snehanshu Sekhar Jena. All rights reserved.
         </p>
-        <small>© {year} CortexWiki. All rights reserved.</small>
-      </div>
 
-      <div className="footer-columns">
-        <nav className="footer-column" aria-label="Product links">
-          <span>Product</span>
-          <a href="#features">Features</a>
-          <a href="#workflow">How it works</a>
-          <a href="#preview">Preview</a>
-        </nav>
-
-        <nav className="footer-column" aria-label="Company links">
-          <span>Company</span>
-          <a href="#top">Overview</a>
-          <a href="#security">Security</a>
-          <a
-            href="mailto:hello@cortexwiki.ai"
-            aria-label="Email CortexWiki support"
-          >
-            Contact
-          </a>
+        <nav className="cw-footer__links" aria-label="Legal navigation">
+          <Link to="/privacy" className="cw-footer__link">Privacy Policy</Link>
+          <span className="cw-footer__sep" aria-hidden="true">·</span>
+          <Link to="/terms"   className="cw-footer__link">Terms of Service</Link>
+          <span className="cw-footer__sep" aria-hidden="true">·</span>
+          <Link to="/contact" className="cw-footer__link">Contact</Link>
         </nav>
       </div>
     </footer>

@@ -1,0 +1,415 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   auth.css — Login + Register pages
+   DNA: matches LandingPage dark palette exactly
+   Shared by LoginPage.jsx and RegisterPage.jsx
+───────────────────────────────────────────────────────────────────────── */
+
+/* ── Page shell ───────────────────────────────────────────────────────── */
+.auth-page {
+  min-height: 100vh;
+  background: #0a0f1e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 1.5rem 3rem;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ambient orbs — same as landing hero */
+.auth-page__orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.auth-page__orb--a {
+  width: 500px;
+  height: 500px;
+  background: #38bdf8;
+  top: -120px;
+  right: -80px;
+}
+
+.auth-page__orb--b {
+  width: 320px;
+  height: 320px;
+  background: #818cf8;
+  bottom: -60px;
+  left: 5%;
+}
+
+/* Grid background */
+.auth-page__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse at 50% 40%, black 20%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ── Layout ───────────────────────────────────────────────────────────── */
+.auth-layout {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 960px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow:
+    0 40px 80px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(56, 189, 248, 0.06);
+}
+
+/* ── Left panel — brand/feature side ─────────────────────────────────── */
+.auth-side {
+  background: #111827;
+  padding: 3rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  justify-content: center;
+  border-right: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.auth-side__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  color: #38bdf8;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.75rem;
+  border-radius: 100px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  background: rgba(56, 189, 248, 0.06);
+  width: fit-content;
+}
+
+.auth-side__eyebrow::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
+  animation: auth-pulse 2s infinite;
+}
+
+@keyframes auth-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+.auth-side__heading {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: clamp(1.6rem, 2.5vw, 2.1rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.auth-side__heading em {
+  font-style: normal;
+  background: linear-gradient(135deg, #38bdf8, #5eead4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.auth-side__intro {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.9rem;
+  color: #64748b;
+  line-height: 1.7;
+  font-weight: 300;
+  margin: -1rem 0 0;
+}
+
+.auth-side__features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.auth-side__feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.auth-side__feature-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+
+.auth-side__stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.auth-side__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.auth-side__stat-num {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #38bdf8;
+  line-height: 1;
+}
+
+.auth-side__stat-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  color: #475569;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── Right panel — form side ──────────────────────────────────────────── */
+.auth-form-side {
+  background: #0d1424;
+  padding: 3rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.auth-form-side__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.auth-form-side__label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  color: #475569;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.auth-form-side__title {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: -0.025em;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.auth-form-side__sub {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  color: #475569;
+  margin: 0.125rem 0 0;
+  font-weight: 300;
+}
+
+/* ── Form fields ──────────────────────────────────────────────────────── */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.auth-field__label {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.01em;
+}
+
+.auth-field__input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+
+.auth-field__input::placeholder {
+  color: #334155;
+}
+
+.auth-field__input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+  background: rgba(15, 23, 42, 0.8);
+}
+
+/* ── Error banner ─────────────────────────────────────────────────────── */
+.auth-error {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  font-size: 0.85rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.auth-error::before {
+  content: "!";
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  text-align: center;
+  line-height: 18px;
+}
+
+/* ── Submit button ────────────────────────────────────────────────────── */
+.auth-submit-btn {
+  width: 100%;
+  padding: 0.8rem 1.5rem;
+  border-radius: 10px;
+  border: none;
+  background: #38bdf8;
+  color: #0a0f1e;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 0.25rem;
+}
+
+.auth-submit-btn:hover:not(:disabled) {
+  background: #7dd3fc;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(56, 189, 248, 0.28);
+}
+
+.auth-submit-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Footer link ──────────────────────────────────────────────────────── */
+.auth-form__switch {
+  text-align: center;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.82rem;
+  color: #475569;
+  margin: 0;
+}
+
+.auth-form__switch a {
+  color: #38bdf8;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.15s;
+}
+
+.auth-form__switch a:hover {
+  color: #7dd3fc;
+}
+
+/* ── Divider ──────────────────────────────────────────────────────────── */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: -0.25rem 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.auth-divider span {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  color: #334155;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .auth-page {
+    padding: 72px 1rem 2rem;
+    align-items: flex-start;
+  }
+
+  .auth-layout {
+    grid-template-columns: 1fr;
+    border-radius: 16px;
+  }
+
+  .auth-side {
+    padding: 2rem 1.5rem;
+    border-right: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  }
+
+  .auth-side__stat-row { display: none; }
+
+  .auth-form-side {
+    padding: 2rem 1.5rem;
+  }
+}

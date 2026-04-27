@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
+import "./styles/Components.css";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -17,13 +18,20 @@ function seedPosition(id, index, total) {
   return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
 }
 
+// Node color palette — matches landing page DNA
+const NODE_COLORS = {
+  active:      "#f59e0b",   // amber — selected
+  highlighted: "#5eead4",   // teal  — adjacent to active
+  core:        "#38bdf8",   // cyan  — core category
+  default:     "#0f766e",   // dark teal — everything else
+};
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
   const containerRef  = useRef(null);
   const graphRef      = useRef(null);
-  // positionCache lives in a ref — mutations never trigger a re-render and
-  // therefore never cause normalizedData to recompute unnecessarily.
+  // positionCache is a ref — never triggers re-renders
   const positionCache = useRef(new Map());
 
   const [hoveredNodeId, setHoveredNodeId] = useState("");
@@ -33,7 +41,6 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (rect) setSize({ width: rect.width, height: rect.height });
@@ -42,9 +49,7 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     return () => observer.disconnect();
   }, []);
 
-  // ── Normalize graph data ─────────────────────────────────────────────────
-  // Only recomputes when the source nodes/edges arrays change — NOT when
-  // positionCache updates (moved to ref).
+  // ── Normalize — only recomputes when source data changes ─────────────────
   const normalizedData = useMemo(() => {
     const total = graphData.nodes.length || 1;
     return {
@@ -54,13 +59,12 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
       })),
       links: graphData.edges.map((edge) => ({
         ...edge,
-        // Stable composite id for highlighted-link lookup.
         id: `${getNodeId(edge.source)}::${getNodeId(edge.target)}::${edge.label ?? ""}`,
       })),
     };
   }, [graphData.nodes, graphData.edges]);
 
-  // ── Adjacency map for highlight ──────────────────────────────────────────
+  // ── Adjacency map ────────────────────────────────────────────────────────
   const adjacencyMap = useMemo(() => {
     const map = new Map();
     normalizedData.nodes.forEach((n) => map.set(n.id, new Set([n.id])));
@@ -76,7 +80,10 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
   }, [normalizedData.nodes, normalizedData.links]);
 
   const activeNodeId       = hoveredNodeId || selectedNodeId;
-  const highlightedNodeIds = adjacencyMap.get(activeNodeId) ?? (activeNodeId ? new Set([activeNodeId]) : new Set());
+  const highlightedNodeIds = useMemo(
+    () => adjacencyMap.get(activeNodeId) ?? (activeNodeId ? new Set([activeNodeId]) : new Set()),
+    [activeNodeId, adjacencyMap],
+  );
 
   const highlightedLinks = useMemo(() => {
     if (!activeNodeId) return new Set();
@@ -97,32 +104,28 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     const node = normalizedData.nodes.find((n) => n.id === selectedNodeId);
     if (!node) return;
     graphRef.current.centerAt(node.x ?? 0, node.y ?? 0, 500);
-    graphRef.current.zoom(2.5, 700);
+    graphRef.current.zoom(2.2, 600);
   }, [selectedNodeId, normalizedData.nodes]);
 
-  // ── Force configuration — runs once after mount ──────────────────────────
-  // Using a callback ref so we configure forces exactly once when the graph
-  // instance is available, not on every render.
+  // ── Forces — configured once on engine stop ──────────────────────────────
   const configureForces = useCallback(() => {
     const g = graphRef.current;
     if (!g) return;
-    g.d3Force("charge")?.strength?.(-180);
+    g.d3Force("charge")?.strength?.(-200);
     g.d3Force("link")?.distance?.((link) => {
       const src = typeof link.source === "object" ? link.source : normalizedData.nodes.find((n) => n.id === link.source);
       const tgt = typeof link.target === "object" ? link.target : normalizedData.nodes.find((n) => n.id === link.target);
       const imp = Math.max(src?.importance ?? 0.3, tgt?.importance ?? 0.3);
-      return 125 - imp * 32;
+      return 120 - imp * 30;
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [normalizedData.nodes]);
 
-  // ── Persist positions on engine stop / drag end ──────────────────────────
+  // ── Persist positions ─────────────────────────────────────────────────────
   const persistPositions = useCallback(() => {
     normalizedData.nodes.forEach((node) => {
       positionCache.current.set(node.id, {
-        x: node.x ?? 0,
-        y: node.y ?? 0,
-        vx: node.vx ?? 0,
-        vy: node.vy ?? 0,
+        x: node.x ?? 0, y: node.y ?? 0,
+        vx: node.vx ?? 0, vy: node.vy ?? 0,
       });
     });
   }, [normalizedData.nodes]);
@@ -133,43 +136,72 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     persistPositions();
   }, [persistPositions]);
 
-  // ── Canvas node painter ──────────────────────────────────────────────────
+  // ── Canvas painter ────────────────────────────────────────────────────────
   const paintNode = useCallback((node, ctx, globalScale) => {
     const isActive      = activeNodeId === node.id;
     const isHighlighted = highlightedNodeIds.has(node.id);
-    const radius        = 6 + Math.round((node.importance ?? 0.5) * 10);
-    const fontSize      = Math.max(12 / globalScale, 4);
-    const showLabel     = globalScale > 1.15 || isHighlighted || isActive;
+    const radius        = 5 + Math.round((node.importance ?? 0.5) * 11);
+    const fontSize      = Math.max(11 / globalScale, 3.5);
+    const showLabel     = globalScale > 1.1 || isHighlighted || isActive;
+
+    // Glow for active node
+    if (isActive) {
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius + 6, 0, 2 * Math.PI, false);
+      const glow = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius + 6);
+      glow.addColorStop(0, "rgba(245, 158, 11, 0.3)");
+      glow.addColorStop(1, "rgba(245, 158, 11, 0)");
+      ctx.fillStyle = glow;
+      ctx.fill();
+    }
 
     // Node circle
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
     ctx.fillStyle = isActive
-      ? "#f59e0b"
+      ? NODE_COLORS.active
       : isHighlighted
-      ? "#5eead4"
+      ? NODE_COLORS.highlighted
       : node.category === "core"
-      ? "#38bdf8"
-      : "#0f766e";
+      ? NODE_COLORS.core
+      : NODE_COLORS.default;
     ctx.fill();
+
+    // Subtle ring on highlighted
+    if (isHighlighted && !isActive) {
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius + 1.5, 0, 2 * Math.PI, false);
+      ctx.strokeStyle = "rgba(94, 234, 212, 0.4)";
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+    }
 
     if (!showLabel) return;
 
-    // Label background + text
+    // Label
     const label     = node.id;
-    const textX     = node.x + radius + 7;
+    const textX     = node.x + radius + 6;
     const textY     = node.y + fontSize / 3;
-    ctx.font        = `600 ${fontSize}px IBM Plex Sans, Segoe UI, sans-serif`;
+    ctx.font        = `600 ${fontSize}px IBM Plex Mono, monospace`;
     const textWidth = ctx.measureText(label).width;
+    const pad       = 5;
 
-    ctx.fillStyle = "rgba(8, 15, 30, 0.78)";
-    ctx.fillRect(textX - 6, node.y - fontSize, textWidth + 12, fontSize * 1.5);
-    ctx.fillStyle = "#f8fafc";
+    ctx.fillStyle = "rgba(10, 15, 30, 0.82)";
+    ctx.beginPath();
+    ctx.roundRect?.(textX - pad, node.y - fontSize * 0.75, textWidth + pad * 2, fontSize * 1.6, 3);
+    ctx.fill();
+
+    ctx.fillStyle = isActive ? "#fde68a" : isHighlighted ? "#5eead4" : "#cbd5e1";
     ctx.fillText(label, textX, textY);
   }, [activeNodeId, highlightedNodeIds]);
 
   return (
-    <div className="graph-viewer" ref={containerRef} role="img" aria-label="Knowledge graph visualisation">
+    <div
+      className="graph-viewer"
+      ref={containerRef}
+      role="img"
+      aria-label="Interactive knowledge graph — click nodes to inspect relationships"
+    >
       {size.width > 0 && size.height > 0 && (
         <ForceGraph2D
           ref={graphRef}
@@ -179,18 +211,16 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
           backgroundColor="transparent"
           cooldownTicks={180}
           onEngineStop={() => { configureForces(); persistPositions(); }}
-          // Links
-          linkWidth={(l)                 => highlightedLinks.has(l.id) ? 2.8 : 1.1}
-          linkColor={(l)                 => highlightedLinks.has(l.id) ? "rgba(94,234,212,0.9)" : "rgba(148,163,184,0.28)"}
-          linkDirectionalParticles={(l)  => highlightedLinks.has(l.id) ? 2 : 0}
-          linkDirectionalParticleWidth={(l) => highlightedLinks.has(l.id) ? 2 : 0}
-          linkDirectionalArrowLength={3}
+          linkWidth={(l)                    => highlightedLinks.has(l.id) ? 2.5 : 0.9}
+          linkColor={(l)                    => highlightedLinks.has(l.id) ? "rgba(94,234,212,0.85)" : "rgba(148,163,184,0.2)"}
+          linkDirectionalParticles={(l)     => highlightedLinks.has(l.id) ? 3 : 0}
+          linkDirectionalParticleWidth={(l) => highlightedLinks.has(l.id) ? 2.5 : 0}
+          linkDirectionalArrowLength={4}
           linkDirectionalArrowRelPos={1}
-          linkCurvature={0.1}
-          // Nodes
+          linkCurvature={0.12}
           nodeCanvasObject={paintNode}
-          onNodeClick={(node)    => onNodeSelect?.(node)}
-          onNodeHover={(node)    => setHoveredNodeId(node?.id ?? "")}
+          onNodeClick={(node)   => onNodeSelect?.(node)}
+          onNodeHover={(node)   => setHoveredNodeId(node?.id ?? "")}
           onNodeDragEnd={handleNodeDragEnd}
           onBackgroundClick={()  => setHoveredNodeId("")}
         />

@@ -7,17 +7,17 @@ import {
   resetSubmitStatus,
   submitIngestion,
 } from "../redux/slices/ingestSlice";
+import "./styles/Workspace.css";
 
-function IngestHistorySkeleton() {
+function HistorySkeleton() {
   return (
-    <div className="history-list" aria-hidden="true">
+    <div style={{ display: "flex", flexDirection: "column" }}>
       {[0, 1, 2].map((i) => (
-        <article key={i} className="history-card surface-card skeleton-card">
-          <span className="skeleton-line is-short" />
-          <span className="skeleton-line is-wide" />
-          <span className="skeleton-line" />
-          <span className="skeleton-line is-short" />
-        </article>
+        <div key={i} className="ws-history-card ws-history-card--skeleton" aria-hidden="true">
+          <div className="ws-skeleton-line ws-skeleton-line--short" style={{ marginBottom: "0.4rem" }} />
+          <div className="ws-skeleton-line ws-skeleton-line--wide" />
+          <div className="ws-skeleton-line ws-skeleton-line--med" />
+        </div>
       ))}
     </div>
   );
@@ -27,209 +27,194 @@ function IngestPage() {
   const [sourceType, setSourceType] = useState("youtube");
   const [url, setUrl]               = useState("");
   const dispatch = useDispatch();
-  const {
-    items,
-    latestResult,
-    historyStatus,
-    submitStatus,
-    error,
-    successMessage,
-  } = useSelector((s) => s.ingest);
+  const { items, latestResult, historyStatus, submitStatus, error, successMessage } =
+    useSelector((s) => s.ingest);
 
   useEffect(() => {
-    if (historyStatus === "idle") {
-      void dispatch(loadIngestionHistory());
-    }
+    if (historyStatus === "idle") void dispatch(loadIngestionHistory());
   }, [dispatch, historyStatus]);
 
-  // Reset submit status when the user switches source type so the button
-  // doesn't stay in a "succeeded" state across attempts.
   useEffect(() => {
     dispatch(resetSubmitStatus());
     dispatch(clearIngestFeedback());
   }, [sourceType, dispatch]);
 
-  const stats = useMemo(
-    () => [
-      { label: "Sources", value: items.length },
-      { label: "Mode",    value: sourceType === "youtube" ? "Video" : "Web" },
-      { label: "Concepts extracted", value: latestResult?.concepts?.length ?? 0 },
-    ],
-    [items.length, latestResult?.concepts?.length, sourceType],
-  );
+  const stats = useMemo(() => [
+    { label: "Total sources", value: items.length },
+    { label: "Mode",          value: sourceType === "youtube" ? "Video" : "Web page" },
+    { label: "Latest concepts", value: latestResult?.concepts?.length ?? 0 },
+  ], [items.length, latestResult?.concepts?.length, sourceType]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!url.trim() || submitStatus === "loading") return;
-
     dispatch(clearIngestFeedback());
     const action = await dispatch(submitIngestion({ sourceType, url: url.trim() }));
-    if (submitIngestion.fulfilled.match(action)) {
-      setUrl("");
-    }
+    if (submitIngestion.fulfilled.match(action)) setUrl("");
   };
 
   const isSubmitting = submitStatus === "loading";
 
   return (
-    <section className="workspace-page">
-      <header className="hero-panel page-header-panel">
-        <div className="page-header-copy">
-          <span className="eyebrow">Knowledge Intake</span>
+    <section className="workspace-page" style={{ padding: "0 1.5rem 2rem", maxWidth: 1280, margin: "0 auto" }}>
+
+      {/* ── Page header ────────────────────────────────────────────────── */}
+      <header className="ws-page-header">
+        <div className="ws-page-header__copy">
+          <span className="ws-eyebrow">Knowledge intake</span>
           <h1>Turn raw sources into structured memory.</h1>
-          <p>
-            Bring in a YouTube video or a web page, summarize it into reusable
-            concepts, and push the result straight into your graph and chat
-            workflow.
-          </p>
+          <p>Ingest a YouTube video or web page — extract concepts, map relationships, and push the result into your graph and chat workflow.</p>
         </div>
-        <div className="page-header-actions">
-          <Link className="button button-secondary" to="/chat">Open chat</Link>
-          <Link className="button button-primary"   to="/graph">Explore graph</Link>
+        <div className="ws-page-header__actions">
+          <Link to="/chat"  className="ws-btn ws-btn--ghost">Open chat</Link>
+          <Link to="/graph" className="ws-btn ws-btn--primary">Explore graph →</Link>
         </div>
       </header>
 
-      <div className="stats-grid">
-        {stats.map((stat) => (
-          <article key={stat.label} className="metric-card surface-card">
-            <span>{stat.label}</span>
-            <strong>{stat.value}</strong>
-          </article>
+      {/* ── Stats ──────────────────────────────────────────────────────── */}
+      <div className="ws-stats">
+        {stats.map((s) => (
+          <div key={s.label} className="ws-stat">
+            <span className="ws-stat__label">{s.label}</span>
+            <span className="ws-stat__value">{s.value}</span>
+          </div>
         ))}
       </div>
 
-      <div className="workspace-grid ingest-grid">
+      {/* ── Main grid ──────────────────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(360px, 420px) minmax(0,1fr)", gap: "1rem", alignItems: "start" }}>
+
         {/* ── Form panel ─────────────────────────────────────────────── */}
-        <section className="surface-panel ingest-form-panel">
-          <div className="section-heading-inline">
-            <div>
-              <span className="eyebrow">Source setup</span>
-              <h2>Add a new source</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div className="ws-panel">
+            <div className="ws-panel__header">
+              <div>
+                <span className="ws-eyebrow" style={{ marginBottom: "0.25rem" }}>Source setup</span>
+                <h2 className="ws-panel__title">Add a new source</h2>
+              </div>
+            </div>
+            <div className="ws-panel__body">
+
+              {/* Source type toggle */}
+              <div className="ws-segments" role="tablist" aria-label="Source type">
+                {["youtube", "web"].map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    role="tab"
+                    aria-selected={sourceType === type}
+                    className={`ws-segment${sourceType === type ? " ws-segment--active" : ""}`}
+                    onClick={() => setSourceType(type)}
+                  >
+                    {type === "youtube" ? "▶ YouTube" : "🌐 Web page"}
+                  </button>
+                ))}
+              </div>
+
+              {/* URL form */}
+              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+                <div className="ws-field">
+                  <label className="ws-field__label" htmlFor="sourceUrl">
+                    {sourceType === "youtube" ? "YouTube video URL" : "Web page URL"}
+                  </label>
+                  <input
+                    id="sourceUrl"
+                    className="ws-field__input"
+                    type="url"
+                    inputMode="url"
+                    placeholder={sourceType === "youtube" ? "https://youtube.com/watch?v=…" : "https://example.com/article"}
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    required
+                  />
+                  <p className="ws-field__hint">
+                    {sourceType === "youtube"
+                      ? "Transcripts and metadata will be extracted into concepts and relationships."
+                      : "The page will be cleaned, summarized, and indexed inside your workspace."}
+                  </p>
+                </div>
+
+                {error && (
+                  <div className="ws-banner ws-banner--error" role="alert">
+                    <span>{error}</span>
+                    <button type="button" className="ws-btn ws-btn--ghost" style={{ fontSize: "0.8rem", padding: "0.2rem 0.6rem" }}
+                      onClick={() => dispatch(clearIngestFeedback())}>Dismiss</button>
+                  </div>
+                )}
+
+                {successMessage && (
+                  <div className="ws-banner ws-banner--success" role="status">
+                    <span>✓ {successMessage}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="ws-btn ws-btn--primary"
+                  style={{ width: "100%", justifyContent: "center", padding: "0.75rem" }}
+                  disabled={!url.trim() || isSubmitting}
+                  aria-busy={isSubmitting}
+                >
+                  {isSubmitting ? "Building knowledge…" : "Ingest source →"}
+                </button>
+              </form>
             </div>
           </div>
 
-          <div className="segmented-control" role="tablist" aria-label="Ingestion source type">
-            {["youtube", "web"].map((type) => (
-              <button
-                key={type}
-                type="button"
-                role="tab"
-                aria-selected={sourceType === type}
-                className={`segment${sourceType === type ? " is-active" : ""}`}
-                onClick={() => setSourceType(type)}
-              >
-                {type === "youtube" ? "YouTube" : "Web page"}
-              </button>
-            ))}
-          </div>
-
-          <form className="stack-form" onSubmit={handleSubmit}>
-            <label className="field-label" htmlFor="sourceUrl">
-              {sourceType === "youtube" ? "Video URL" : "Page URL"}
-            </label>
-            <input
-              id="sourceUrl"
-              className="text-input"
-              type="url"
-              inputMode="url"
-              placeholder={
-                sourceType === "youtube"
-                  ? "https://youtube.com/watch?v=…"
-                  : "https://example.com/article"
-              }
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              required
-            />
-
-            <p className="field-hint">
-              {sourceType === "youtube"
-                ? "Transcripts and metadata will be summarized into concepts and relationships."
-                : "The page will be cleaned, summarized, and indexed inside your workspace."}
-            </p>
-
-            {error && (
-              <div className="status-banner is-error" role="alert">
-                <span>{error}</span>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => dispatch(clearIngestFeedback())}
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-
-            {successMessage && (
-              <div className="status-banner is-success" role="status">
-                <span>{successMessage}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="button button-primary button-block"
-              disabled={!url.trim() || isSubmitting}
-              aria-busy={isSubmitting}
-            >
-              {isSubmitting ? "Building knowledge…" : "Ingest source"}
-            </button>
-          </form>
-
-          {/* Latest result callout */}
+          {/* Latest result */}
           {latestResult && (
-            <article className="result-callout surface-card">
-              <div className="result-callout-header">
-                <span className="badge">{latestResult.source_type}</span>
-                <strong>{latestResult.title}</strong>
+            <div className="ws-result">
+              <div className="ws-result__header">
+                <span className={`ws-badge ws-badge--${latestResult.source_type}`}>
+                  {latestResult.source_type}
+                </span>
+                <span className="ws-result__title">{latestResult.title}</span>
               </div>
-              <p>{latestResult.summary}</p>
+              <p className="ws-result__summary">{latestResult.summary}</p>
               {Array.isArray(latestResult.concepts) && latestResult.concepts.length > 0 && (
-                <div className="tag-row" aria-label="Extracted concepts">
-                  {latestResult.concepts.slice(0, 8).map((concept) => (
-                    <span key={concept} className="tag">{concept}</span>
+                <div className="ws-result__tags" aria-label="Extracted concepts">
+                  {latestResult.concepts.slice(0, 8).map((c) => (
+                    <span key={c} className="ws-tag">{c}</span>
                   ))}
                 </div>
               )}
-            </article>
+            </div>
           )}
-        </section>
+        </div>
 
         {/* ── History panel ───────────────────────────────────────────── */}
-        <section className="surface-panel ingest-history-panel">
-          <div className="section-heading-inline">
+        <div className="ws-panel">
+          <div className="ws-panel__header">
             <div>
-              <span className="eyebrow">Knowledge history</span>
-              <h2>Recent ingestions</h2>
+              <span className="ws-eyebrow" style={{ marginBottom: "0.25rem" }}>Knowledge history</span>
+              <h2 className="ws-panel__title">Recent ingestions</h2>
             </div>
             <button
               type="button"
-              className="ghost-button"
+              className="ws-btn ws-btn--ghost"
+              style={{ fontSize: "0.8rem" }}
               onClick={() => void dispatch(loadIngestionHistory())}
               disabled={historyStatus === "loading"}
             >
-              Refresh
+              {historyStatus === "loading" ? "Loading…" : "Refresh"}
             </button>
           </div>
 
           {historyStatus === "loading" && items.length === 0 ? (
-            <IngestHistorySkeleton />
+            <HistorySkeleton />
           ) : items.length === 0 ? (
-            <div className="empty-state">
+            <div className="ws-empty" style={{ padding: "3rem 2rem" }}>
+              <span className="ws-empty__icon">📚</span>
               <h3>No sources yet</h3>
-              <p>
-                Ingest your first page or video and it will show up here with a
-                summary and graph-ready concepts.
-              </p>
+              <p>Ingest your first page or video and it will appear here with a summary and graph-ready concepts.</p>
             </div>
           ) : (
-            <div className="history-list">
+            <div className="ws-history-list">
               {items.map((item) => (
-                <article key={item.id} className="history-card surface-card">
-                  <div className="history-card-topline">
-                    <span className="badge">{item.source_type}</span>
-                    <time dateTime={item.created_at}>
+                <article key={item.id} className="ws-history-card">
+                  <div className="ws-history-card__topline">
+                    <span className={`ws-badge ws-badge--${item.source_type}`}>{item.source_type}</span>
+                    <time className="ws-history-card__time" dateTime={item.created_at}>
                       {new Date(item.created_at).toLocaleString()}
                     </time>
                   </div>
@@ -238,8 +223,8 @@ function IngestPage() {
                   <a
                     href={item.source_url}
                     target="_blank"
-                    rel="noreferrer"
-                    className="text-link"
+                    rel="noreferrer noopener"
+                    className="ws-history-card__link"
                   >
                     Open source ↗
                   </a>
@@ -247,7 +232,7 @@ function IngestPage() {
               ))}
             </div>
           )}
-        </section>
+        </div>
       </div>
     </section>
   );

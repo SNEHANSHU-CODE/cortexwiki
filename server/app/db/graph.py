@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.utils.logging import get_logger
 
 
-logger = get_logger("modules.db.graph")
+logger = get_logger("app.db.graph")
 
 
 class GraphManager:
@@ -178,15 +178,19 @@ class GraphManager:
             source = record["n"]
             target = record["m"]
             relationship = record["r"]
-            nodes[source["name"]] = {
-                "id": source["name"],
+
+            source_id = source.get("name") or source.get("id", "unknown")
+            target_id = target.get("name") or target.get("id", "unknown")
+
+            nodes[source_id] = {
+                "id": source_id,
                 "type": source.get("type", "concept"),
                 "description": source.get("description", ""),
                 "importance": float(source.get("importance", 0.5)),
                 "category": source.get("category"),
             }
-            nodes[target["name"]] = {
-                "id": target["name"],
+            nodes[target_id] = {
+                "id": target_id,
                 "type": target.get("type", "concept"),
                 "description": target.get("description", ""),
                 "importance": float(target.get("importance", 0.5)),
@@ -194,8 +198,8 @@ class GraphManager:
             }
             edges.append(
                 {
-                    "source": source["name"],
-                    "target": target["name"],
+                    "source": source_id,
+                    "target": target_id,
                     "label": relationship[1] if isinstance(relationship, tuple) else relationship.get("label", "RELATED_TO"),
                 }
             )

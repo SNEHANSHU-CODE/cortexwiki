@@ -14,6 +14,7 @@ import {
   setConnectionState,
   startAssistantMessage,
 } from "../redux/slices/chatSlice";
+import "./styles/Workspace.css";
 
 const QUICK_PROMPTS = [
   "Summarize the main concepts in my latest source.",
@@ -27,27 +28,38 @@ function extractErrorMessage(err) {
   return err.response?.data?.error?.message || err.message || "Unable to generate an answer.";
 }
 
+function ConnPill({ state }) {
+  const labels = {
+    connected:    "Socket live",
+    reconnecting: "Reconnecting…",
+    fallback:     "HTTP fallback",
+  };
+  return (
+    <span className={`ws-conn-pill ws-conn-pill--${state}`} aria-label={`Connection: ${state}`}>
+      {labels[state] ?? state}
+    </span>
+  );
+}
+
 function ChatPage() {
-  const [input, setInput]   = useState("");
-  const [debug, setDebug]   = useState(false);
-  const dispatch            = useDispatch();
-  const { accessToken }     = useSelector((s) => s.auth);
-  const { messages, pendingMessageId, status, error, connectionState } = useSelector((s) => s.chat);
+  const [input, setInput] = useState("");
+  const [debug, setDebug] = useState(false);
+  const dispatch          = useDispatch();
+  const { accessToken }   = useSelector((s) => s.auth);
+  const { messages, pendingMessageId, status, error, connectionState } =
+    useSelector((s) => s.chat);
 
-  const sessionRef          = useRef(null);
-  const abortRef            = useRef(null);
-  const lastPromptRef       = useRef(null);
-  const scrollAnchorRef     = useRef(null);
-  const textareaRef         = useRef(null);
+  const sessionRef      = useRef(null);
+  const abortRef        = useRef(null);
+  const lastPromptRef   = useRef(null);
+  const scrollAnchorRef = useRef(null);
+  const textareaRef     = useRef(null);
 
-  // ── Session setup ─────────────────────────────────────────────────────────
+  // ── Session ──────────────────────────────────────────────────────────────
   useEffect(() => {
     sessionRef.current = createChatStreamSession({
       token: accessToken,
-      onConnectionChange: (state) => dispatch(setConnectionState(state)),
-      // onStart is called by the fallback AFTER the HTTP response arrives.
-      // For sockets it arrives as a server event. Either way we create the
-      // assistant bubble here — NOT inside submitPrompt — to avoid duplicates.
+      onConnectionChange: (s) => dispatch(setConnectionState(s)),
       onStart: ({ requestId }) =>
         dispatch(startAssistantMessage({ id: requestId, createdAt: new Date().toISOString() })),
       onToken: ({ requestId, chunk }) =>
@@ -55,26 +67,16 @@ function ChatPage() {
       onComplete: ({ requestId, content, metadata }) =>
         dispatch(finishAssistantMessage({ id: requestId, content, metadata })),
       onError: (err) => {
-        const msg       = extractErrorMessage(err);
-        const requestId = lastPromptRef.current?.requestId;
+        const msg = extractErrorMessage(err);
+        const rid = lastPromptRef.current?.requestId;
         dispatch(setChatError(msg));
-        if (requestId) {
-          dispatch(failAssistantMessage({
-            id:      requestId,
-            error:   msg,
-            content: "I ran into an issue while generating that answer.",
-          }));
-        }
+        if (rid) dispatch(failAssistantMessage({ id: rid, error: msg, content: "I ran into an issue generating that answer." }));
       },
     });
-
-    return () => {
-      sessionRef.current?.disconnect();
-      abortRef.current?.abort();
-    };
+    return () => { sessionRef.current?.disconnect(); abortRef.current?.abort(); };
   }, [accessToken, dispatch]);
 
-  // ── Auto-scroll on new content ─────────────────────────────────────────
+  // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({
       behavior: messages.length > 1 ? "smooth" : "auto",
@@ -82,7 +84,7 @@ function ChatPage() {
     });
   }, [messages, pendingMessageId]);
 
-  // ── Auto-resize textarea ───────────────────────────────────────────────
+  // ── Auto-resize textarea ──────────────────────────────────────────────────
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -90,7 +92,7 @@ function ChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [input]);
 
-  // ── Submit ─────────────────────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────────────────────
   const submitPrompt = useCallback(async (question) => {
     const trimmed = question.trim();
     if (!trimmed || pendingMessageId) return;
@@ -99,14 +101,11 @@ function ChatPage() {
     const createdAt = new Date().toISOString();
 
     abortRef.current?.abort();
-    abortRef.current  = new AbortController();
+    abortRef.current      = new AbortController();
     lastPromptRef.current = { question: trimmed, debug, requestId };
 
     dispatch(clearChatError());
     dispatch(addUserMessage({ id: `${requestId}-user`, role: "user", content: trimmed, createdAt }));
-    // NOTE: do NOT dispatch startAssistantMessage here.
-    // The session's onStart callback handles it — this prevents the duplicate
-    // empty bubble that was appearing before the first token arrived.
     setInput("");
 
     try {
@@ -119,176 +118,153 @@ function ChatPage() {
       if (abortRef.current?.signal.aborted) return;
       const msg = extractErrorMessage(err);
       dispatch(setChatError(msg));
-      dispatch(failAssistantMessage({
-        id:      requestId,
-        error:   msg,
-        content: "I ran into an issue while generating that answer.",
-      }));
+      dispatch(failAssistantMessage({ id: requestId, error: msg, content: "I ran into an issue generating that answer." }));
     }
   }, [debug, dispatch, pendingMessageId]);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    void submitPrompt(input);
-  };
-
-  const handleRetry = () => {
-    if (lastPromptRef.current?.question) {
-      void submitPrompt(lastPromptRef.current.question);
-    }
-  };
-
-  const handleQuickPrompt = (prompt) => {
-    startTransition(() => setInput(prompt));
-    textareaRef.current?.focus();
-  };
+  const handleSubmit = (e) => { e.preventDefault(); void submitPrompt(input); };
+  const handleRetry  = () => { if (lastPromptRef.current?.question) void submitPrompt(lastPromptRef.current.question); };
+  const handleQuick  = (p) => { startTransition(() => setInput(p)); textareaRef.current?.focus(); };
 
   const isStreaming = status === "streaming";
 
   return (
-    <section className="workspace-page">
-      <header className="hero-panel page-header-panel">
-        <div className="page-header-copy">
-          <span className="eyebrow">Grounded chat</span>
-          <h1>Ask against your knowledge base.</h1>
-          <p>
-            Streaming answers stay connected to ingested sources and graph
-            relationships, with markdown support, copy actions, and graceful
-            error recovery.
-          </p>
+    <section className="workspace-page" style={{ padding: "0 1.5rem 2rem", maxWidth: 1280, margin: "0 auto" }}>
+
+      {/* ── Page header ────────────────────────────────────────────────── */}
+      <header className="ws-page-header">
+        <div className="ws-page-header__copy">
+          <span className="ws-eyebrow">Grounded chat</span>
+          <h1>Ask your knowledge base.</h1>
+          <p>Streaming answers grounded in ingested sources — markdown, code blocks, copy actions, and graceful error recovery.</p>
         </div>
-        <div className="page-header-actions">
-          <Link className="button button-secondary" to="/ingest">Add source</Link>
-          <Link className="button button-primary"   to="/graph">Open graph</Link>
+        <div className="ws-page-header__actions">
+          <Link to="/ingest" className="ws-btn ws-btn--ghost">Add source</Link>
+          <Link to="/graph"  className="ws-btn ws-btn--primary">Open graph →</Link>
         </div>
       </header>
 
-      <div className="workspace-grid chat-grid">
+      {/* ── Body grid ──────────────────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0,1fr)", gap: "1rem", alignItems: "start" }}>
+
         {/* ── Sidebar ──────────────────────────────────────────────────── */}
-        <aside className="surface-panel chat-sidebar">
-          <article className="metric-card surface-card">
-            <span>Connection</span>
-            <strong>
-              {connectionState === "connected"    ? "Socket live"    :
-               connectionState === "reconnecting" ? "Reconnecting…"  :
-               "HTTP fallback"}
-            </strong>
-          </article>
-
-          <article className="metric-card surface-card">
-            <span>Messages</span>
-            <strong>{messages.length}</strong>
-          </article>
-
-          <div className="sidebar-actions">
-            <button
-              type="button"
-              className="button button-secondary button-block"
-              onClick={() => dispatch(clearMessages())}
-              disabled={messages.length === 0}
-            >
-              Clear chat
-            </button>
-            <label className="checkbox-field" htmlFor="debugMode">
-              <input
-                id="debugMode"
-                type="checkbox"
-                checked={debug}
-                onChange={(e) => setDebug(e.target.checked)}
-              />
-              <span>Include debug context</span>
-            </label>
+        <aside style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <div className="ws-metric">
+            <span className="ws-metric__label">Connection</span>
+            <ConnPill state={connectionState} />
+          </div>
+          <div className="ws-metric">
+            <span className="ws-metric__label">Messages</span>
+            <span className="ws-metric__value">{messages.length}</span>
           </div>
 
-          <div className="quick-prompts">
-            <span className="eyebrow">Quick prompts</span>
-            {QUICK_PROMPTS.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                className="quick-prompt"
-                onClick={() => handleQuickPrompt(prompt)}
-              >
-                {prompt}
-              </button>
-            ))}
+          <button
+            type="button"
+            className="ws-btn ws-btn--ghost"
+            style={{ width: "100%", justifyContent: "center" }}
+            onClick={() => dispatch(clearMessages())}
+            disabled={messages.length === 0}
+          >
+            Clear chat
+          </button>
+
+          <label className="ws-checkbox">
+            <input
+              type="checkbox"
+              checked={debug}
+              onChange={(e) => setDebug(e.target.checked)}
+            />
+            Include debug context
+          </label>
+
+          <div style={{ marginTop: "0.5rem" }}>
+            <span className="ws-eyebrow" style={{ marginBottom: "0.625rem", display: "block" }}>Quick prompts</span>
+            <div className="ws-quick-prompts">
+              {QUICK_PROMPTS.map((p) => (
+                <button key={p} type="button" className="ws-quick-prompt" onClick={() => handleQuick(p)}>
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
         </aside>
 
         {/* ── Chat panel ───────────────────────────────────────────────── */}
-        <section className="surface-panel chat-panel">
-          <header className="section-heading-inline">
-            <div>
-              <span className="eyebrow">Conversation</span>
-              <h2>Grounded answers with clean formatting</h2>
-            </div>
-            <span className={`connection-pill is-${connectionState}`} aria-label={`Connection: ${connectionState}`}>
-              {connectionState}
-            </span>
-          </header>
+        <div className="ws-panel" style={{ display: "grid", gridTemplateRows: "auto minmax(0,1fr) auto auto", minHeight: "76vh" }}>
 
-          <div className="chat-stream" role="log" aria-live="polite" aria-atomic="false">
+          <div className="ws-panel__header">
+            <div>
+              <span className="ws-eyebrow" style={{ marginBottom: "0.25rem" }}>Conversation</span>
+              <h2 className="ws-panel__title">Grounded answers</h2>
+            </div>
+            <ConnPill state={connectionState} />
+          </div>
+
+          {/* Stream */}
+          <div
+            className="ws-chat-stream"
+            style={{ padding: "1.25rem 1.5rem" }}
+            role="log"
+            aria-live="polite"
+            aria-atomic="false"
+          >
             {messages.length === 0 && (
-              <div className="empty-state">
+              <div className="ws-empty">
+                <span className="ws-empty__icon">💬</span>
                 <h3>Start with a grounded question</h3>
-                <p>
-                  Ask about a source you ingested, request a summary, or probe
-                  the relationships inside your graph.
-                </p>
+                <p>Ask about a source you ingested, request a summary, or probe the relationships in your graph.</p>
               </div>
             )}
-            {messages.map((message) => (
+            {messages.map((msg) => (
               <MessageBubble
-                key={message.id}
-                message={message}
-                onRetry={message.status === "error" ? handleRetry : undefined}
+                key={msg.id}
+                message={msg}
+                onRetry={msg.status === "error" ? handleRetry : undefined}
               />
             ))}
             <div ref={scrollAnchorRef} aria-hidden="true" />
           </div>
 
+          {/* Error banner */}
           {error && (
-            <div className="status-banner is-error" role="alert">
+            <div className="ws-banner ws-banner--error" style={{ margin: "0 1.5rem" }} role="alert">
               <span>{error}</span>
-              <button type="button" className="ghost-button" onClick={handleRetry}>
-                Retry
-              </button>
+              <button type="button" className="ws-btn ws-btn--ghost" style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }} onClick={handleRetry}>Retry</button>
             </div>
           )}
 
-          <form className="chat-composer" onSubmit={handleSubmit}>
-            <label className="sr-only" htmlFor="chatInput">Ask CortexWiki</label>
-            <textarea
-              ref={textareaRef}
-              id="chatInput"
-              className="text-area"
-              placeholder="Ask a grounded question about your knowledge base…"
-              value={input}
-              rows={1}
-              onChange={(e) => {
-                dispatch(clearChatError());
-                setInput(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void submitPrompt(input);
-                }
-              }}
-            />
-            <div className="composer-actions">
-              <p className="field-hint">Enter to send · Shift + Enter for new line</p>
-              <button
-                type="submit"
-                className="button button-primary"
-                disabled={!input.trim() || isStreaming}
-                aria-busy={isStreaming}
-              >
-                {isStreaming ? "Streaming…" : "Send"}
-              </button>
-            </div>
-          </form>
-        </section>
+          {/* Composer */}
+          <div style={{ padding: "0 1.5rem 1.5rem" }}>
+            <form onSubmit={handleSubmit}>
+              <label className="sr-only" htmlFor="chatInput">Ask CortexWiki</label>
+              <div className="ws-composer">
+                <textarea
+                  ref={textareaRef}
+                  id="chatInput"
+                  className="ws-composer__textarea"
+                  placeholder="Ask a grounded question about your knowledge base…"
+                  value={input}
+                  rows={1}
+                  onChange={(e) => { dispatch(clearChatError()); setInput(e.target.value); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitPrompt(input); }
+                  }}
+                />
+                <div className="ws-composer__footer">
+                  <span className="ws-composer__hint">↵ send · ⇧↵ new line</span>
+                  <button
+                    type="submit"
+                    className="ws-btn ws-btn--primary"
+                    disabled={!input.trim() || isStreaming}
+                    aria-busy={isStreaming}
+                  >
+                    {isStreaming ? "Streaming…" : "Send →"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
     </section>
   );

@@ -14,17 +14,18 @@ from app.core.database import close_datastores, initialize_datastores
 from app.core.redis import close_redis, get_redis_store, initialize_redis
 from app.core.security import decode_access_token
 from app.utils.errors import AppError, app_error_handler, generic_exception_handler, validation_exception_handler
-from app.utils.logging import configure_logging, request_context_middleware
+from app.utils.logging import configure_logging, get_logger, request_context_middleware
 from app.db.mongo import get_mongo_manager
 
 
 configure_logging(settings.LOG_LEVEL)
+logger = get_logger("app.main")
 
 
 # ── Socket.io server ──────────────────────────────────────────────────────────
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins=settings.FRONTEND_ORIGINS,
+    cors_allowed_origins=settings.frontend_origins_list,
     logger=False,
     engineio_logger=False,
 )
@@ -116,7 +117,6 @@ async def handle_query(sid, data):
             limit=8,
         )
 
-        # Build context
         context_blocks = [
             {
                 "title": p["title"],
@@ -131,7 +131,6 @@ async def handle_query(sid, data):
             for item in related_concepts
         ]
 
-        # Generate and stream answer token by token
         if not wiki_pages and not related_concepts:
             answer = "I do not have enough ingested knowledge to answer that yet. Add a source first, then ask again."
         elif settings.GROQ_API_KEY or settings.GEMINI_API_KEY:
@@ -258,7 +257,7 @@ def create_fastapi_app() -> FastAPI:
     app.add_middleware(AuthenticationMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.FRONTEND_ORIGINS,
+        allow_origins=settings.frontend_origins_list,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -292,6 +291,5 @@ def create_fastapi_app() -> FastAPI:
 
 
 # ── Mount Socket.io onto FastAPI ──────────────────────────────────────────────
-# socketio.ASGIApp wraps both: Socket.io at /socket.io/ and FastAPI everywhere else
 fastapi_app = create_fastapi_app()
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)

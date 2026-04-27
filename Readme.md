@@ -16,7 +16,7 @@ CortexWiki is built around the opposite idea. You feed it YouTube videos and web
 
 ## What It Does
 
-**Ingest** — Paste a YouTube URL or web page. An 8-agent pipeline extracts facts, summarizes content, identifies concepts, maps relationships between them, checks for contradictions with existing knowledge, and stores everything in a versioned wiki. One URL becomes structured, queryable memory.
+**Ingest** — Paste a YouTube URL or web page. An 5-agent pipeline extracts facts, summarizes content, identifies concepts, maps relationships between them, checks for contradictions with existing knowledge, and stores everything in a versioned wiki. One URL becomes structured, queryable memory.
 
 **Chat** — Ask questions against your knowledge base. Answers stream word-by-word in real time, grounded in ingested sources. Every response includes a confidence score, grounding status, and clickable source attribution. Markdown, code blocks, and copy buttons included.
 

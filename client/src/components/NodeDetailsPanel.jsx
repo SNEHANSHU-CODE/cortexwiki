@@ -1,95 +1,113 @@
 import { memo } from "react";
+import "./components.css";
 
-function getNodeId(endpoint) {
-  return typeof endpoint === "string" ? endpoint : (endpoint?.id ?? "");
+function edgeNodeId(ep) {
+  return typeof ep === "string" ? ep : (ep?.id ?? "");
 }
 
-function EmptyPanel() {
+function EmptyState() {
   return (
-    <aside className="surface-panel graph-details-panel" aria-label="Node details">
-      <span className="eyebrow">Node details</span>
-      <h2>Select a node</h2>
-      <p>
-        Hover to inspect connected concepts, then click a node to lock focus
-        and review its relationships.
-      </p>
-    </aside>
+    <div className="ndp-panel">
+      <div className="ndp-header">
+        <span className="ndp-eyebrow">Node details</span>
+      </div>
+      <div className="ndp-panel-empty">
+        <span className="ndp-panel-empty__icon">🔍</span>
+        <h3>Select a node</h3>
+        <p>Click any node in the graph to inspect its relationships and importance score.</p>
+      </div>
+    </div>
   );
 }
 
 function NodeDetailsPanel({ node, relationships, connectedNodes, onSelectNode }) {
-  if (!node) return <EmptyPanel />;
+  if (!node) return <EmptyState />;
 
   return (
-    <aside
-      className="surface-panel graph-details-panel"
-      aria-label={`Details for node: ${node.id}`}
-    >
-      <span className="eyebrow">Node details</span>
-      <h2>{node.id}</h2>
-      <p>
-        {node.description || "No additional description available for this concept yet."}
-      </p>
+    <aside className="ndp-panel" aria-label={`Details for node: ${node.id}`}>
 
-      <div className="details-metrics">
-        <div className="metric-chip">
-          <span>Importance</span>
-          <strong>{Math.round((node.importance ?? 0) * 100)}%</strong>
-        </div>
-        <div className="metric-chip">
-          <span>Category</span>
-          <strong>{node.category || "concept"}</strong>
-        </div>
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="ndp-header">
+        <span className="ndp-eyebrow">Node details</span>
+        <h2 className="ndp-title">{node.id}</h2>
+        {node.description && (
+          <p className="ndp-desc">{node.description}</p>
+        )}
       </div>
 
-      {/* ── Relationships ─────────────────────────────────────────────── */}
-      <section className="details-section" aria-labelledby="rel-heading">
-        <h3 id="rel-heading">Relationships</h3>
-        {relationships.length === 0 ? (
-          <p className="muted-copy">No relationships available for this node.</p>
-        ) : (
-          <div className="details-list" role="list">
-            {relationships.map((rel) => {
-              const src = getNodeId(rel.source);
-              const tgt = getNodeId(rel.target);
-              // Stable key — avoids collision when label is undefined.
-              const key = `${src}→${tgt}:${rel.label ?? ""}`;
-              return (
-                <article key={key} className="details-item" role="listitem">
-                  <strong>{rel.label || "related"}</strong>
-                  <span aria-label={`${src} to ${tgt}`}>
-                    {src} → {tgt}
-                  </span>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <div className="ndp-body">
 
-      {/* ── Connected concepts ────────────────────────────────────────── */}
-      <section className="details-section" aria-labelledby="conn-heading">
-        <h3 id="conn-heading">Connected concepts</h3>
-        {connectedNodes.length === 0 ? (
-          <p className="muted-copy">No connected concepts yet.</p>
-        ) : (
-          <div className="details-list" role="list">
-            {connectedNodes.map((related) => (
-              <button
-                key={related.id}
-                type="button"
-                className="details-item details-button"
-                onClick={() => onSelectNode?.(related.id)}
-                role="listitem"
-                aria-label={`Focus node: ${related.id}`}
-              >
-                <strong>{related.id}</strong>
-                <span>{Math.round((related.importance ?? 0) * 100)}% importance</span>
-              </button>
-            ))}
+        {/* ── Metrics ────────────────────────────────────────────────── */}
+        <div className="ndp-metrics">
+          <div className="ndp-metric">
+            <span className="ndp-metric__label">Importance</span>
+            <span className="ndp-metric__value">
+              {Math.round((node.importance ?? 0) * 100)}%
+            </span>
           </div>
-        )}
-      </section>
+          <div className="ndp-metric">
+            <span className="ndp-metric__label">Category</span>
+            <span className="ndp-metric__value">{node.category || "concept"}</span>
+          </div>
+        </div>
+
+        {/* ── Relationships ───────────────────────────────────────────── */}
+        <section className="ndp-section" aria-labelledby="ndp-rel-heading">
+          <span className="ndp-section-label" id="ndp-rel-heading">
+            Relationships · {relationships.length}
+          </span>
+          {relationships.length === 0 ? (
+            <p className="ndp-empty">No relationships for this node yet.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }} role="list">
+              {relationships.map((rel) => {
+                const src = edgeNodeId(rel.source);
+                const tgt = edgeNodeId(rel.target);
+                const key = `${src}→${tgt}:${rel.label ?? ""}`;
+                return (
+                  <div key={key} className="ndp-rel" role="listitem">
+                    <span className="ndp-rel__label">{rel.label || "related"}</span>
+                    <span className="ndp-rel__nodes">
+                      {src}
+                      <span>→</span>
+                      {tgt}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* ── Connected concepts ──────────────────────────────────────── */}
+        <section className="ndp-section" aria-labelledby="ndp-conn-heading">
+          <span className="ndp-section-label" id="ndp-conn-heading">
+            Connected · {connectedNodes.length}
+          </span>
+          {connectedNodes.length === 0 ? (
+            <p className="ndp-empty">No connected concepts yet.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }} role="list">
+              {connectedNodes.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className="ndp-node-btn"
+                  onClick={() => onSelectNode?.(n.id)}
+                  role="listitem"
+                  aria-label={`Focus node: ${n.id}`}
+                >
+                  <span className="ndp-node-btn__name">{n.id}</span>
+                  <span className="ndp-node-btn__meta">
+                    {Math.round((n.importance ?? 0) * 100)}%
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+      </div>
     </aside>
   );
 }

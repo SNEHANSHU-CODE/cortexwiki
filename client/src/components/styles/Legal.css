@@ -1,0 +1,104 @@
+/* ── Legal pages — Privacy, Terms, Contact ────────────────────────────────
+   Shared styles. Import in each page: import "./styles/Legal.css"
+──────────────────────────────────────────────────────────────────────── */
+
+.legal-page {
+  background: #0a0f1e;
+  min-height: 100vh;
+  padding: 80px 2rem 120px;
+}
+
+.legal-inner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+.legal-eyebrow {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  color: #38bdf8;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.legal-header h1 {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  font-weight: 800;
+  color: #f8fafc;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  margin-bottom: 0.75rem;
+}
+
+.legal-meta {
+  font-size: 0.8rem;
+  color: #475569;
+  font-family: 'IBM Plex Mono', monospace;
+  margin-bottom: 1.25rem;
+}
+
+.legal-intro {
+  font-size: 1.05rem;
+  color: #94a3b8;
+  line-height: 1.7;
+  font-weight: 300;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  padding-bottom: 2.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.10);
+  margin-bottom: 0;
+}
+
+/* ── Sections ───────────────────────────────────────────────────────── */
+.legal-sections {
+  margin-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.legal-section {
+  padding: 2rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.legal-section:last-child {
+  border-bottom: none;
+}
+
+.legal-section h2 {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.legal-section p {
+  font-size: 0.925rem;
+  color: #94a3b8;
+  line-height: 1.75;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 300;
+  margin: 0;
+}
+
+/* ── Links ──────────────────────────────────────────────────────────── */
+.legal-link {
+  color: #38bdf8;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.legal-link:hover {
+  color: #7dd3fc;
+  text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  .legal-page { padding: 72px 1.25rem 80px; }
+}

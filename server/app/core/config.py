@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    FRONTEND_ORIGINS: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    # Stored as plain str, parsed into list by validator — avoids pydantic-settings
+    # attempting JSON decode on a comma-separated string (which crashes on Render)
+    FRONTEND_ORIGINS: str = "http://localhost:5173"
 
     # Auth
     SECRET_KEY: str = "change-me-in-production-with-at-least-32-characters"
@@ -50,15 +52,15 @@ class Settings(BaseSettings):
     NEO4J_USER: str | None = None
     NEO4J_PASSWORD: str | None = None
 
-    # Groq — primary LLM (text generation + streaming only)
+    # Groq — primary LLM
     GROQ_API_KEY: str | None = None
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
-    # Gemini — fallback LLM + sole embedding provider
+    # Gemini — fallback LLM + embeddings
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-1.5-flash"
-    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"
+    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
     # Query / ingest
     STREAM_CHUNK_DELAY_MS: int = 30
@@ -70,15 +72,6 @@ class Settings(BaseSettings):
     INTERNET_SEARCH_ENDPOINT: str = "https://html.duckduckgo.com/html/"
     USER_AGENT: str = "CortexWiki/1.0 (+https://localhost)"
     OUTBOUND_VERIFY_SSL: bool = False
-
-    @field_validator("FRONTEND_ORIGINS", mode="before")
-    @classmethod
-    def parse_origins(cls, value: str | list[str]) -> list[str]:
-        if isinstance(value, list):
-            return value
-        if not value:
-            return ["http://localhost:5173"]
-        return [item.strip() for item in value.split(",") if item.strip()]
 
     @field_validator("DEBUG", mode="before")
     @classmethod
@@ -105,6 +98,13 @@ class Settings(BaseSettings):
             if normalized in {"0", "false", "no", "off"}:
                 return False
         return bool(value)
+
+    @property
+    def frontend_origins_list(self) -> list[str]:
+        """Parse FRONTEND_ORIGINS string into a list — used by CORS and Socket.io."""
+        if not self.FRONTEND_ORIGINS:
+            return ["http://localhost:5173"]
+        return [o.strip().rstrip("/") for o in self.FRONTEND_ORIGINS.split(",") if o.strip()]
 
     @property
     def is_production(self) -> bool:
