@@ -287,6 +287,12 @@ def create_fastapi_app() -> FastAPI:
     app.include_router(query.router, prefix=settings.API_V1_PREFIX)
     app.include_router(graph.router, prefix=settings.API_V1_PREFIX)
 
+    # Keep server alive
+    @app.get("/api/ping")
+    @app.head("/api/ping")
+    def ping_handler():
+        return {"message": "pong"}
+
     return app
 
 

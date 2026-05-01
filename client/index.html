@@ -1,21 +1,179 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="CortexWiki is a premium knowledge-first AI workspace for grounded chat, graph exploration, and structured source ingestion." />
-    <meta name="keywords" content="AI workspace, knowledge graph, grounded chat, source ingestion, CortexWiki" />
-    <meta property="og:title" content="CortexWiki" />
-    <meta property="og:description" content="Grounded AI chat, source ingestion, and a visual knowledge graph in one premium workspace." />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="/favicon.svg" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#2563eb" />
-    <title>CortexWiki | Knowledge-First AI Workspace</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CortexWiki — Knowledge-native AI workspace</title>
+  <meta name="description"
+    content="AI that remembers what you taught it. Ingest sources, build a knowledge graph, ask grounded questions." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <style>
+    /* ── HTML-level loading screen ─────────────────────────────────────
+         Shown before React mounts — pure HTML/CSS, zero JS dependency.
+         React removes it by calling window.__hideSplash() from main.jsx.
+      ─────────────────────────────────────────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #0a0f1e;
+      color: #e2e8f0;
+      font-family: 'DM Sans', system-ui, sans-serif;
+    }
+
+    body.splash-active {
+      overflow: hidden;
+    }
+
+    #cw-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #0a0f1e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+
+    #cw-splash.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    /* Orbs */
+    .splash-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.1;
+      pointer-events: none;
+    }
+
+    .splash-orb-a {
+      width: 500px;
+      height: 500px;
+      background: #38bdf8;
+      top: -120px;
+      right: -80px;
+    }
+
+    .splash-orb-b {
+      width: 320px;
+      height: 320px;
+      background: #818cf8;
+      bottom: -60px;
+      left: 5%;
+    }
+
+    /* Brand mark */
+    .splash-mark {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #38bdf8, #5eead4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #0a0f1e;
+      letter-spacing: -0.05em;
+      position: relative;
+      z-index: 1;
+      animation: splash-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes splash-pulse {
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4);
+      }
+
+      50% {
+        box-shadow: 0 0 0 16px rgba(56, 189, 248, 0);
+      }
+    }
+
+    /* Brand name */
+    .splash-name {
+      font-family: 'Syne', system-ui, sans-serif;
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.03em;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Tagline */
+    .splash-tagline {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      color: #475569;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 1;
+      margin-top: -1.25rem;
+    }
+
+    /* Progress bar */
+    .splash-bar {
+      width: 160px;
+      height: 2px;
+      background: rgba(148, 163, 184, 0.12);
+      border-radius: 1px;
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+    }
+
+    .splash-bar-fill {
+      height: 100%;
+      border-radius: 1px;
+      background: linear-gradient(90deg, #38bdf8, #5eead4);
+      animation: splash-bar 1.4s ease-in-out infinite;
+    }
+
+    @keyframes splash-bar {
+      0% {
+        transform: translateX(-100%);
+      }
+
+      100% {
+        transform: translateX(260px);
+      }
+    }
+  </style>
+</head>
+
+<body class="splash-active">
+  <!-- HTML splash — visible before any JS runs -->
+  <div id="cw-splash">
+    <div class="splash-orb splash-orb-a"></div>
+    <div class="splash-orb splash-orb-b"></div>
+    <div class="splash-mark">CW</div>
+    <span class="splash-name">CortexWiki</span>
+    <span class="splash-tagline">Knowledge-native AI workspace</span>
+    <div class="splash-bar">
+      <div class="splash-bar-fill"></div>
+    </div>
+  </div>
+
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
 </html>

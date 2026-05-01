@@ -9,11 +9,23 @@ import { initializeHttpClient } from "./services/http";
 
 initializeHttpClient(store);
 
-createRoot(document.getElementById("root")).render(
+// Hide the HTML splash once React is ready to paint.
+function hideSplash() {
+  document.body.classList.remove("splash-active");
+  document.body.style.overflow = "";
+  const el = document.getElementById("cw-splash");
+  if (!el) return;
+  el.classList.add("is-hidden");
+  setTimeout(() => el.remove(), 450);
+}
+
+const root = createRoot(document.getElementById("root"));
+
+root.render(
   <StrictMode>
     <Provider store={store}>
       <BrowserRouter>
-        <App />
+        <App onReady={hideSplash} />
       </BrowserRouter>
     </Provider>
   </StrictMode>,

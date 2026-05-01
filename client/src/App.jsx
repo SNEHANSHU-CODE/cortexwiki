@@ -1,18 +1,23 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { clearSession, finishHydration, setSession, setStatus } from "./redux/slices/authSlice";
-import { clearMessages } from "./redux/slices/chatSlice";
-import { clearGraphState } from "./redux/slices/graphSlice";
+
+import { clearMessages }       from "./redux/slices/chatSlice";
+import { clearGraphState }     from "./redux/slices/graphSlice";
 import { clearIngestFeedback } from "./redux/slices/ingestSlice";
-import AppSkeleton from "./components/AppSkeleton";
-import ProtectedRoute from "./components/ProtectedRoute";
-import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
-import { getSessionFromRefresh, logoutRequest } from "./utils/api";
+import { clearSession }        from "./redux/slices/authSlice";
+import { logoutRequest }       from "./utils/api";
+
+import { useAuthInitialization } from "./hooks/useAuthInitialization";
+
+import Navbar       from "./components/Navbar";
+import Footer       from "./components/Footer";
+import ProtectedRoute  from "./components/ProtectedRoute";
+import PageSpinner     from "./components/PageSpinner";
+
 import "./App.css";
 
-// ── Lazy pages ────────────────────────────────────────────────────────────
+// ── Lazy pages ─────────────────────────────────────────────────────────────
 const LandingPage    = lazy(() => import("./pages/LandingPage"));
 const LoginPage      = lazy(() => import("./pages/LoginPage"));
 const RegisterPage   = lazy(() => import("./pages/RegisterPage"));
@@ -23,8 +28,7 @@ const PrivacyPolicy  = lazy(() => import("./components/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./components/TermsOfService"));
 const ContactPage    = lazy(() => import("./components/ContactPage"));
 
-// ── Constants ─────────────────────────────────────────────────────────────
-// Footer shown on marketing + legal pages only
+// ── Constants ──────────────────────────────────────────────────────────────
 const FOOTER_ROUTES = new Set(["/", "/login", "/register", "/privacy", "/terms", "/contact"]);
 
 const WORKSPACE_LINKS = [
@@ -40,10 +44,11 @@ const LANDING_LINKS = [
   { href: "#confidence", label: "Confidence" },
 ];
 
-// ── AppLayout ─────────────────────────────────────────────────────────────
-function AppLayout() {
-  const dispatch  = useDispatch();
-  const location  = useLocation();
+// ── AppRouter ──────────────────────────────────────────────────────────────
+// Matches the finance tracker pattern: router is a separate concern from auth.
+function AppRouter() {
+  const dispatch   = useDispatch();
+  const location   = useLocation();
   const { user, accessToken } = useSelector((s) => s.auth);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -54,27 +59,23 @@ function AppLayout() {
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
-    try {
-      await logoutRequest();
-    } catch {
-      // Clear local session even if the server call fails
-    } finally {
+    try { await logoutRequest(); } catch { /* clear anyway */ }
+    finally {
       dispatch(clearMessages());
       dispatch(clearGraphState());
       dispatch(clearIngestFeedback());
       dispatch(clearSession());
-      // ProtectedRoute redirects to /login after clearSession
     }
   };
 
-  // Derive navbar props from current route context
+  // Derive navbar props from route context — one Navbar for entire app
   const navProps = isLanding
     ? {
         transparent: true,
         links: LANDING_LINKS,
         actions: [
-          { to: "/login",    label: "Sign in",       kind: "secondary" },
-          { to: "/register", label: "Get started →",  kind: "primary" },
+          { to: "/login",    label: "Sign in",      kind: "secondary" },
+          { to: "/register", label: "Get started →", kind: "primary"   },
         ],
       }
     : isAuthPage
@@ -95,28 +96,35 @@ function AppLayout() {
       <Navbar {...navProps} />
 
       <main className="app-main" id="main-content">
-        <Suspense fallback={<AppSkeleton label="Loading CortexWiki…" />}>
-          <Routes>
-            {/* Public */}
-            <Route path="/"         element={<LandingPage />} />
-            <Route path="/login"    element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+        <Routes>
+          {/* Landing — premium loader while chunk fetches */}
+          <Route
+            path="/"
+            element={
+              <Suspense fallback={null}>
+                <LandingPage />
+              </Suspense>
+            }
+          />
 
-            {/* Legal */}
-            <Route path="/privacy"  element={<PrivacyPolicy />} />
-            <Route path="/terms"    element={<TermsOfService />} />
-            <Route path="/contact"  element={<ContactPage />} />
+          {/* Auth pages */}
+          <Route path="/login"    element={<Suspense fallback={<PageSpinner label="Loading…" />}><LoginPage /></Suspense>} />
+          <Route path="/register" element={<Suspense fallback={<PageSpinner label="Loading…" />}><RegisterPage /></Suspense>} />
 
-            {/* Protected workspace */}
-            <Route element={<ProtectedRoute />}>
-              <Route path="/chat"   element={<ChatPage />} />
-              <Route path="/ingest" element={<IngestPage />} />
-              <Route path="/graph"  element={<GraphPage />} />
-            </Route>
+          {/* Legal pages */}
+          <Route path="/privacy"  element={<Suspense fallback={<PageSpinner />}><PrivacyPolicy /></Suspense>} />
+          <Route path="/terms"    element={<Suspense fallback={<PageSpinner />}><TermsOfService /></Suspense>} />
+          <Route path="/contact"  element={<Suspense fallback={<PageSpinner />}><ContactPage /></Suspense>} />
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+          {/* Protected workspace */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/chat"   element={<Suspense fallback={<PageSpinner label="Loading chat…" />}><ChatPage /></Suspense>} />
+            <Route path="/ingest" element={<Suspense fallback={<PageSpinner label="Loading ingest…" />}><IngestPage /></Suspense>} />
+            <Route path="/graph"  element={<Suspense fallback={<PageSpinner label="Loading graph…" />}><GraphPage /></Suspense>} />
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
 
       {showFooter && <Footer />}
@@ -124,39 +132,24 @@ function AppLayout() {
   );
 }
 
-// ── App (bootstrap) ───────────────────────────────────────────────────────
-function App() {
-  const dispatch = useDispatch();
-  const { initialized, status } = useSelector((s) => s.auth);
+// ── App ────────────────────────────────────────────────────────────────────
+// Same pattern as finance tracker: auth init runs here, spinner until ready,
+// then render the router. onReady hides the HTML splash.
+function App({ onReady }) {
+  const { isInitialized } = useAuthInitialization();
 
+  // Hide the HTML splash as soon as auth state is resolved
   useEffect(() => {
-    let active = true;
-    const bootstrap = async () => {
-      dispatch(setStatus("loading"));
-      try {
-        const session = await getSessionFromRefresh();
-        if (!active) return;
-        dispatch(setSession({
-          accessToken: session.access_token,
-          user:        session.user,
-          expiresAt:   session.expires_at ?? null,
-        }));
-        dispatch(finishHydration());
-      } catch {
-        if (!active) return;
-        dispatch(clearSession());
-        dispatch(finishHydration());
-      }
-    };
-    void bootstrap();
-    return () => { active = false; };
-  }, [dispatch]);
+    if (isInitialized) onReady?.();
+  }, [isInitialized, onReady]);
 
-  if (!initialized && status === "loading") {
-    return <AppSkeleton label="Restoring your workspace…" />;
+  // While auth is initializing, keep the HTML splash visible —
+  // show nothing from React (splash is already in the DOM)
+  if (!isInitialized) {
+    return null;
   }
 
-  return <AppLayout />;
+  return <AppRouter />;
 }
 
 export default App;

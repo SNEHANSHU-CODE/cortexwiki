@@ -104,19 +104,19 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     const node = normalizedData.nodes.find((n) => n.id === selectedNodeId);
     if (!node) return;
     graphRef.current.centerAt(node.x ?? 0, node.y ?? 0, 500);
-    graphRef.current.zoom(2.2, 600);
+    graphRef.current.zoom(2.5, 700);
   }, [selectedNodeId, normalizedData.nodes]);
 
   // ── Forces — configured once on engine stop ──────────────────────────────
   const configureForces = useCallback(() => {
     const g = graphRef.current;
     if (!g) return;
-    g.d3Force("charge")?.strength?.(-200);
+    g.d3Force("charge")?.strength?.(-180);
     g.d3Force("link")?.distance?.((link) => {
       const src = typeof link.source === "object" ? link.source : normalizedData.nodes.find((n) => n.id === link.source);
       const tgt = typeof link.target === "object" ? link.target : normalizedData.nodes.find((n) => n.id === link.target);
       const imp = Math.max(src?.importance ?? 0.3, tgt?.importance ?? 0.3);
-      return 120 - imp * 30;
+      return 125 - imp * 32;
     });
   }, [normalizedData.nodes]);
 
