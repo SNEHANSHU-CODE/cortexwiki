@@ -24,8 +24,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    # Stored as plain str, parsed into list by validator — avoids pydantic-settings
-    # attempting JSON decode on a comma-separated string (which crashes on Render)
+    # Stored as plain str — avoids pydantic-settings JSON decode crash on Render
     FRONTEND_ORIGINS: str = "http://localhost:5173"
 
     # Auth
@@ -61,6 +60,12 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-1.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
+
+    # Supadata — YouTube transcript primary (bypasses datacenter IP blocks)
+    SUPADATA_API_KEY: str | None = None
+
+    # ScraperAPI — YouTube transcript fallback proxy
+    SCRAPERAPI_KEY: str | None = None
 
     # Query / ingest
     STREAM_CHUNK_DELAY_MS: int = 30
@@ -105,6 +110,13 @@ class Settings(BaseSettings):
         if not self.FRONTEND_ORIGINS:
             return ["http://localhost:5173"]
         return [o.strip().rstrip("/") for o in self.FRONTEND_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def scraperapi_proxy_url(self) -> str | None:
+        """ScraperAPI residential proxy URL for youtube-transcript-api fallback."""
+        if not self.SCRAPERAPI_KEY:
+            return None
+        return f"http://scraperapi:{self.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001"
 
     @property
     def is_production(self) -> bool:
