@@ -1,17 +1,18 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
+from app.db.mongo import get_mongo_manager
 from app.schemas.query import QueryData, QueryRequest, QuerySource
 from app.services.graph_service import get_graph_service
 from app.services.llm import get_llm_service
+from app.utils.errors import AppError
 from app.utils.text import clean_text
-from app.db.mongo import get_mongo_manager
 
 
 router = APIRouter(prefix="/query", tags=["query"])
 
 _NO_KNOWLEDGE_RESPONSE = QueryData(
-    answer="I do not have enough ingested knowledge to answer that yet. Add a source first, then ask again.",
+    answer="I do not have enough ingested knowledge to answer that yet. Add a source to this wiki first, then ask again.",
     strategy="knowledge_base",
     confidence=0.18,
     is_grounded=False,
@@ -19,21 +20,37 @@ _NO_KNOWLEDGE_RESPONSE = QueryData(
 )
 
 
+async def _validate_wiki(wiki_id: str, user_id: str) -> dict:
+    wiki = await get_mongo_manager().get_wiki(wiki_id, user_id)
+    if not wiki:
+        raise AppError(status_code=404, code="wiki_not_found", message="Wiki not found.")
+    return wiki
+
+
 @router.post("", response_model=QueryData)
 async def query(payload: QueryRequest, current_user: dict = Depends(get_current_user)):
+    # wiki_id is required — every query is scoped to a wiki
+    if not payload.wiki_id:
+        raise AppError(status_code=400, code="wiki_id_required", message="wiki_id is required.")
+
+    await _validate_wiki(payload.wiki_id, current_user["id"])
+
     mongo = get_mongo_manager()
     llm = get_llm_service()
     graph_service = get_graph_service()
 
     query_embedding = await llm.embed_text(payload.question)
+
     wiki_pages = await mongo.search_wiki_pages(
         user_id=current_user["id"],
+        wiki_id=payload.wiki_id,
         query=payload.question,
         query_embedding=query_embedding,
         limit=5,
     )
     related_concepts = await graph_service.get_related_concepts(
         user_id=current_user["id"],
+        wiki_id=payload.wiki_id,
         query=payload.question,
         limit=8,
     )
@@ -59,7 +76,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         for item in related_concepts
     ]
 
-    if getattr(llm, "api_key", None):
+    if settings_has_llm():
         answer = await llm.generate_text(
             system_instruction=(
                 "You are CortexWiki. Answer only from the provided knowledge base context. "
@@ -106,17 +123,19 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     )
 
 
+def settings_has_llm() -> bool:
+    from app.core.config import settings
+    return bool(settings.GROQ_API_KEY or settings.GEMINI_API_KEY)
+
+
 def _build_fallback_answer(*, wiki_pages: list[dict], graph_context: list[str]) -> str:
     parts: list[str] = []
-
     if wiki_pages:
         lead_page = wiki_pages[0]
         parts.append(lead_page.get("summary") or f"The strongest matching source is {lead_page['title']}.")
         if len(wiki_pages) > 1:
             related_titles = ", ".join(page["title"] for page in wiki_pages[1:3])
             parts.append(f"Related ingested sources include {related_titles}.")
-
     if graph_context:
         parts.append(f"Connected concepts in the graph include {'; '.join(graph_context[:3])}.")
-
     return " ".join(parts) or "I found matching knowledge, but not enough grounded detail to answer cleanly yet."

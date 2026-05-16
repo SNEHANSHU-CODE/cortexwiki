@@ -19,7 +19,7 @@ function RegisterPage() {
   const navigate = useNavigate();
   const { accessToken, error } = useSelector((s) => s.auth);
 
-  if (accessToken) return <Navigate to="/chat" replace />;
+  if (accessToken) return <Navigate to="/wiki" replace />;
 
   const handleChange = (e) => {
     dispatch(clearAuthError());
@@ -38,7 +38,7 @@ function RegisterPage() {
         user:        session.user,
         expiresAt:   session.expires_at ?? null,
       }));
-      navigate("/chat", { replace: true });
+      navigate("/wiki", { replace: true });
     } catch (apiError) {
       dispatch(setAuthError(
         apiError?.response?.data?.error?.message ||

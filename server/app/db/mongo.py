@@ -24,13 +24,13 @@ class MongoManager:
             "raw_data": {},
             "wiki_pages": {},
             "agent_logs": {},
+            "wikis": {},          # new
         }
 
     async def connect(self) -> None:
         if not settings.MONGO_URI:
             logger.warning("MONGO_URI not set, using in-memory Mongo fallback")
             return
-
         try:
             self.client = AsyncIOMotorClient(settings.MONGO_URI, serverSelectionTimeoutMS=5000)
             await self.client.admin.command("ping")
@@ -57,8 +57,9 @@ class MongoManager:
         await self.database.users.create_index([("username", ASCENDING)], unique=True)
         await self.database.refresh_tokens.create_index([("token_hash", ASCENDING)], unique=True)
         await self.database.refresh_tokens.create_index([("user_id", ASCENDING)])
-        await self.database.wiki_pages.create_index([("user_id", ASCENDING), ("slug", ASCENDING)])
-        await self.database.raw_data.create_index([("user_id", ASCENDING), ("created_at", ASCENDING)])
+        await self.database.wikis.create_index([("user_id", ASCENDING), ("created_at", ASCENDING)])
+        await self.database.wiki_pages.create_index([("user_id", ASCENDING), ("wiki_id", ASCENDING), ("slug", ASCENDING)])
+        await self.database.raw_data.create_index([("user_id", ASCENDING), ("wiki_id", ASCENDING), ("created_at", ASCENDING)])
         await self.database.agent_logs.create_index([("user_id", ASCENDING), ("created_at", ASCENDING)])
 
     def _copy(self, document: dict | None) -> dict | None:
@@ -72,6 +73,8 @@ class MongoManager:
             normalized["id"] = str(normalized.pop("_id"))
         return normalized
 
+    # ── Users ─────────────────────────────────────────────────────────────────
+
     async def create_user(self, payload: dict) -> dict:
         now = datetime.now(UTC)
         document = {
@@ -83,11 +86,9 @@ class MongoManager:
             "updated_at": now,
             "last_login_at": None,
         }
-
         if self.database is not None:
             result = await self.database.users.insert_one(document)
             return await self.get_user_by_id(str(result.inserted_id))
-
         if await self.get_user_by_email(document["email"]):
             raise ValueError("Email already exists")
         if await self.get_user_by_username(document["username"]):
@@ -115,7 +116,6 @@ class MongoManager:
     async def get_user_by_id(self, user_id: str) -> dict | None:
         if self.database is not None:
             from bson import ObjectId
-
             try:
                 return self._normalize(await self.database.users.find_one({"_id": ObjectId(user_id)}))
             except Exception:
@@ -126,15 +126,19 @@ class MongoManager:
         now = datetime.now(UTC)
         if self.database is not None:
             from bson import ObjectId
-
             try:
-                await self.database.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"last_login_at": now, "updated_at": now}})
+                await self.database.users.update_one(
+                    {"_id": ObjectId(user_id)},
+                    {"$set": {"last_login_at": now, "updated_at": now}},
+                )
             except Exception:
                 return
             return
         if user_id in self._memory["users"]:
             self._memory["users"][user_id]["last_login_at"] = now
             self._memory["users"][user_id]["updated_at"] = now
+
+    # ── Refresh Tokens ────────────────────────────────────────────────────────
 
     async def save_refresh_token(self, payload: dict) -> dict:
         document = {**payload, "created_at": datetime.now(UTC), "updated_at": datetime.now(UTC), "revoked": False}
@@ -175,6 +179,113 @@ class MongoManager:
                 token["revoked"] = True
                 token["updated_at"] = now
 
+    # ── Wikis ─────────────────────────────────────────────────────────────────
+
+    async def create_wiki(self, payload: dict) -> dict:
+        now = datetime.now(UTC)
+        document = {
+            "user_id": payload["user_id"],
+            "name": payload["name"].strip(),
+            "description": payload.get("description", "").strip(),
+            "master_note": "",          # compounds over time as sources are added
+            "source_count": 0,
+            "created_at": now,
+            "updated_at": now,
+            "last_ingested_at": None,
+        }
+        if self.database is not None:
+            result = await self.database.wikis.insert_one(document)
+            stored = await self.database.wikis.find_one({"_id": result.inserted_id})
+            return self._normalize(stored)
+        document["id"] = str(uuid.uuid4())
+        self._memory["wikis"][document["id"]] = document
+        return self._copy(document)
+
+    async def get_wiki(self, wiki_id: str, user_id: str) -> dict | None:
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                doc = await self.database.wikis.find_one({"_id": ObjectId(wiki_id), "user_id": user_id})
+            except Exception:
+                return None
+            return self._normalize(doc)
+        wiki = self._memory["wikis"].get(wiki_id)
+        if wiki and wiki["user_id"] == user_id:
+            return self._copy(wiki)
+        return None
+
+    async def list_wikis(self, user_id: str) -> list[dict]:
+        if self.database is not None:
+            cursor = self.database.wikis.find({"user_id": user_id}).sort("created_at", -1)
+            return [self._normalize(w) for w in await cursor.to_list(length=100)]
+        items = [self._copy(w) for w in self._memory["wikis"].values() if w["user_id"] == user_id]
+        items.sort(key=lambda x: x["created_at"], reverse=True)
+        return items
+
+    async def update_wiki(self, wiki_id: str, user_id: str, payload: dict) -> dict | None:
+        now = datetime.now(UTC)
+        update_fields = {k: v for k, v in payload.items() if k in {"name", "description"}}
+        update_fields["updated_at"] = now
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                await self.database.wikis.update_one(
+                    {"_id": ObjectId(wiki_id), "user_id": user_id},
+                    {"$set": update_fields},
+                )
+            except Exception:
+                return None
+            return await self.get_wiki(wiki_id, user_id)
+        wiki = self._memory["wikis"].get(wiki_id)
+        if wiki and wiki["user_id"] == user_id:
+            wiki.update(update_fields)
+            return self._copy(wiki)
+        return None
+
+    async def delete_wiki(self, wiki_id: str, user_id: str) -> bool:
+        """Delete wiki and all associated data."""
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                result = await self.database.wikis.delete_one({"_id": ObjectId(wiki_id), "user_id": user_id})
+                if result.deleted_count == 0:
+                    return False
+                # Cascade delete all wiki data
+                await self.database.wiki_pages.delete_many({"wiki_id": wiki_id, "user_id": user_id})
+                await self.database.raw_data.delete_many({"wiki_id": wiki_id, "user_id": user_id})
+            except Exception:
+                return False
+            return True
+        if wiki_id in self._memory["wikis"] and self._memory["wikis"][wiki_id]["user_id"] == user_id:
+            del self._memory["wikis"][wiki_id]
+            self._memory["wiki_pages"] = {k: v for k, v in self._memory["wiki_pages"].items() if v.get("wiki_id") != wiki_id}
+            self._memory["raw_data"] = {k: v for k, v in self._memory["raw_data"].items() if v.get("wiki_id") != wiki_id}
+            return True
+        return False
+
+    async def update_wiki_master_note(self, wiki_id: str, user_id: str, master_note: str) -> None:
+        """Update the compounded master note and increment source count."""
+        now = datetime.now(UTC)
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                await self.database.wikis.update_one(
+                    {"_id": ObjectId(wiki_id), "user_id": user_id},
+                    {"$set": {"master_note": master_note, "updated_at": now, "last_ingested_at": now},
+                     "$inc": {"source_count": 1}},
+                )
+            except Exception:
+                pass
+            return
+        wiki = self._memory["wikis"].get(wiki_id)
+        if wiki and wiki["user_id"] == user_id:
+            wiki["master_note"] = master_note
+            wiki["updated_at"] = now
+            wiki["last_ingested_at"] = now
+            wiki["source_count"] = wiki.get("source_count", 0) + 1
+
+    # ── Raw Data ──────────────────────────────────────────────────────────────
+
     async def store_raw_data(self, payload: dict) -> dict:
         document = {**payload, "created_at": datetime.now(UTC), "updated_at": datetime.now(UTC)}
         if self.database is not None:
@@ -185,9 +296,12 @@ class MongoManager:
         self._memory["raw_data"][document["id"]] = document
         return self._copy(document)
 
+    # ── Wiki Pages ────────────────────────────────────────────────────────────
+
     async def create_wiki_page(self, payload: dict) -> dict:
         slug = slugify(payload["title"])
-        existing_pages = await self.list_wiki_pages(payload["user_id"], limit=200)
+        wiki_id = payload.get("wiki_id")
+        existing_pages = await self.list_wiki_pages(payload["user_id"], wiki_id=wiki_id, limit=200)
         matching_versions = [page for page in existing_pages if page["slug"] == slug]
         version = max([page.get("version", 1) for page in matching_versions], default=0) + 1
 
@@ -206,39 +320,52 @@ class MongoManager:
         self._memory["wiki_pages"][document["id"]] = document
         return self._copy(document)
 
-    async def list_recent_ingestions(self, user_id: str, limit: int = 20) -> list[dict]:
+    async def list_wiki_pages(self, user_id: str, *, wiki_id: str | None = None, limit: int = 50) -> list[dict]:
+        query: dict = {"user_id": user_id}
+        if wiki_id:
+            query["wiki_id"] = wiki_id
         if self.database is not None:
-            cursor = self.database.raw_data.find({"user_id": user_id}).sort("created_at", -1).limit(limit)
+            cursor = self.database.wiki_pages.find(query).sort("created_at", -1).limit(limit)
             return [self._normalize(item) for item in await cursor.to_list(length=limit)]
-        items = [self._copy(item) for item in self._memory["raw_data"].values() if item["user_id"] == user_id]
+        items = [
+            self._copy(item) for item in self._memory["wiki_pages"].values()
+            if item["user_id"] == user_id and (not wiki_id or item.get("wiki_id") == wiki_id)
+        ]
         items.sort(key=lambda item: item["created_at"], reverse=True)
         return items[:limit]
 
-    async def list_wiki_pages(self, user_id: str, limit: int = 50) -> list[dict]:
+    async def list_recent_ingestions(self, user_id: str, *, wiki_id: str | None = None, limit: int = 20) -> list[dict]:
+        query: dict = {"user_id": user_id}
+        if wiki_id:
+            query["wiki_id"] = wiki_id
         if self.database is not None:
-            cursor = self.database.wiki_pages.find({"user_id": user_id}).sort("created_at", -1).limit(limit)
+            cursor = self.database.raw_data.find(query).sort("created_at", -1).limit(limit)
             return [self._normalize(item) for item in await cursor.to_list(length=limit)]
-        items = [self._copy(item) for item in self._memory["wiki_pages"].values() if item["user_id"] == user_id]
+        items = [
+            self._copy(item) for item in self._memory["raw_data"].values()
+            if item["user_id"] == user_id and (not wiki_id or item.get("wiki_id") == wiki_id)
+        ]
         items.sort(key=lambda item: item["created_at"], reverse=True)
         return items[:limit]
 
-    async def count_wiki_pages(self, user_id: str) -> int:
-        if self.database is not None:
-            return await self.database.wiki_pages.count_documents({"user_id": user_id})
-        return sum(1 for item in self._memory["wiki_pages"].values() if item["user_id"] == user_id)
-
-    async def search_wiki_pages(self, *, user_id: str, query: str, query_embedding: list[float], limit: int = 5) -> list[dict]:
-        pages = await self.list_wiki_pages(user_id=user_id, limit=200)
+    async def search_wiki_pages(
+        self,
+        *,
+        user_id: str,
+        query: str,
+        query_embedding: list[float],
+        wiki_id: str | None = None,
+        limit: int = 5,
+    ) -> list[dict]:
+        pages = await self.list_wiki_pages(user_id=user_id, wiki_id=wiki_id, limit=200)
         scored: list[dict] = []
         for page in pages:
-            searchable = " ".join(
-                [
-                    page.get("title", ""),
-                    page.get("summary", ""),
-                    page.get("content", ""),
-                    " ".join(page.get("concepts", [])),
-                ]
-            )
+            searchable = " ".join([
+                page.get("title", ""),
+                page.get("summary", ""),
+                page.get("content", ""),
+                " ".join(page.get("concepts", [])),
+            ])
             vector_score = cosine_similarity(query_embedding, page.get("embedding", []))
             lexical_score = keyword_score(query, searchable)
             score = (0.7 * vector_score) + (0.3 * lexical_score)
@@ -246,6 +373,19 @@ class MongoManager:
                 scored.append({**page, "score": round(score, 4)})
         scored.sort(key=lambda item: item["score"], reverse=True)
         return scored[:limit]
+
+    async def count_wiki_pages(self, user_id: str, wiki_id: str | None = None) -> int:
+        query: dict = {"user_id": user_id}
+        if wiki_id:
+            query["wiki_id"] = wiki_id
+        if self.database is not None:
+            return await self.database.wiki_pages.count_documents(query)
+        return sum(
+            1 for item in self._memory["wiki_pages"].values()
+            if item["user_id"] == user_id and (not wiki_id or item.get("wiki_id") == wiki_id)
+        )
+
+    # ── Agent Logs ────────────────────────────────────────────────────────────
 
     async def create_agent_log(self, payload: dict) -> dict:
         document = {**payload, "created_at": datetime.now(UTC)}

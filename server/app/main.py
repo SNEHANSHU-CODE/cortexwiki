@@ -8,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.api.routes import auth, graph, ingest, query
+from app.api.routes import auth, graph, ingest, query, wikis
 from app.core.config import settings
 from app.core.database import close_datastores, initialize_datastores
 from app.core.redis import close_redis, get_redis_store, initialize_redis
@@ -286,6 +286,7 @@ def create_fastapi_app() -> FastAPI:
     app.include_router(ingest.router, prefix=settings.API_V1_PREFIX)
     app.include_router(query.router, prefix=settings.API_V1_PREFIX)
     app.include_router(graph.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(wikis.router, prefix=settings.API_V1_PREFIX)
 
     # Keep server alive
     @app.get("/api/ping")

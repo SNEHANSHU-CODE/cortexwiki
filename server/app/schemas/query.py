@@ -7,6 +7,7 @@ class QueryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1, max_length=1000)
+    wiki_id: str
     debug: bool = False
     allow_internet: bool = False
 
@@ -36,4 +37,3 @@ class StreamEvent(BaseModel):
     type: str
     delta: str | None = None
     data: dict[str, Any] | None = None
-

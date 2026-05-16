@@ -4,64 +4,49 @@ import { buildErrorMessage } from "../../utils/sliceUtils";
 
 export const requestGraph = createAsyncThunk(
   "graph/requestGraph",
-  async (topic = "", { rejectWithValue }) => {
+  async ({ wikiId, topic = "" }, { rejectWithValue }) => {
     try {
-      const graph = await fetchKnowledgeGraph(topic);
+      const graph = await fetchKnowledgeGraph(wikiId, topic);
       return { topic, graph };
-    } catch (error) {
-      return rejectWithValue(buildErrorMessage(error, "Unable to load the knowledge graph."));
-    }
+    } catch (e) { return rejectWithValue(buildErrorMessage(e, "Unable to load the knowledge graph.")); }
   },
 );
 
 const initialState = {
-  nodes: [],
-  edges: [],
-  topic: "",
-  selectedNodeId: "",
-  status: "idle",   // idle | loading | succeeded | failed
-  error: null,
+  nodes: [], edges: [], topic: "",
+  selectedNodeId: "", status: "idle", error: null,
 };
 
 const graphSlice = createSlice({
   name: "graph",
   initialState,
   reducers: {
-    selectGraphNode(state, action) {
-      state.selectedNodeId = action.payload;
-    },
-    clearGraphError(state) {
-      state.error = null;
-    },
-    clearGraphState() {
-      return initialState;
-    },
+    selectGraphNode(state, action) { state.selectedNodeId = action.payload; },
+    clearGraphError(state)         { state.error = null; },
+    clearGraphState()              { return initialState; },
   },
   extraReducers: (builder) => {
     builder
-      .addCase(requestGraph.pending, (state, action) => {
-        state.status = "loading";
-        state.error  = null;
-        state.topic  = action.meta.arg ?? "";
+      .addCase(requestGraph.pending, (s, a) => {
+        s.status = "loading"; s.error = null;
+        s.topic  = a.meta.arg?.topic ?? "";
       })
-      .addCase(requestGraph.fulfilled, (state, action) => {
-        const { graph, topic } = action.payload;
-        const topicNode       = graph.nodes.find((n) => n.id.toLowerCase() === topic.trim().toLowerCase());
-        const existingNode    = graph.nodes.find((n) => n.id === state.selectedNodeId);
-
-        state.nodes          = graph.nodes;
-        state.edges          = graph.edges;
-        state.topic          = topic;
-        state.status         = "succeeded";
-        state.selectedNodeId = topicNode?.id ?? existingNode?.id ?? graph.nodes[0]?.id ?? "";
+      .addCase(requestGraph.fulfilled, (s, a) => {
+        const { graph, topic } = a.payload;
+        const topicNode  = graph.nodes.find((n) => n.id.toLowerCase() === topic.trim().toLowerCase());
+        const existingNode = graph.nodes.find((n) => n.id === s.selectedNodeId);
+        s.nodes          = graph.nodes;
+        s.edges          = graph.edges;
+        s.topic          = topic;
+        s.status         = "succeeded";
+        s.selectedNodeId = topicNode?.id ?? existingNode?.id ?? graph.nodes[0]?.id ?? "";
       })
-      .addCase(requestGraph.rejected, (state, action) => {
-        state.status = "failed";
-        state.error  = action.payload || "Unable to load the knowledge graph.";
+      .addCase(requestGraph.rejected, (s, a) => {
+        s.status = "failed";
+        s.error  = a.payload || "Unable to load the knowledge graph.";
       });
   },
 });
 
-export const { clearGraphError, clearGraphState, selectGraphNode } = graphSlice.actions;
-
+export const { selectGraphNode, clearGraphError, clearGraphState } = graphSlice.actions;
 export default graphSlice.reducer;

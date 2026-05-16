@@ -20,9 +20,9 @@ function LoginPage() {
   const location  = useLocation();
   const { accessToken, error } = useSelector((s) => s.auth);
 
-  if (accessToken) return <Navigate to="/chat" replace />;
+  if (accessToken) return <Navigate to="/wiki" replace />;
 
-  const destination = location.state?.from?.pathname || "/chat";
+  const destination = location.state?.from?.pathname || "/wiki";
 
   const handleChange = (e) => {
     dispatch(clearAuthError());

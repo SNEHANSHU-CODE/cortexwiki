@@ -14,14 +14,14 @@ class GraphManager:
     def __init__(self) -> None:
         self.driver = None
         self.mode = "memory"
-        self._nodes: dict[str, dict[str, dict]] = defaultdict(dict)
+        # In-memory: keyed by (user_id, wiki_id)
+        self._nodes: dict[tuple, dict[str, dict]] = defaultdict(dict)
         self._edges: list[dict] = []
 
     async def connect(self) -> None:
         if not (settings.NEO4J_URI and settings.NEO4J_USER and settings.NEO4J_PASSWORD):
             logger.warning("Neo4j credentials not configured, using in-memory graph store")
             return
-
         try:
             self.driver = AsyncGraphDatabase.driver(
                 settings.NEO4J_URI,
@@ -40,136 +40,152 @@ class GraphManager:
             await self.driver.close()
         self.driver = None
 
-    async def upsert_page_graph(self, *, user_id: str, page_id: str, nodes: list[dict], relationships: list[dict]) -> None:
+    # ── Upsert ────────────────────────────────────────────────────────────────
+
+    async def upsert_page_graph(
+        self,
+        *,
+        user_id: str,
+        wiki_id: str,
+        page_id: str,
+        nodes: list[dict],
+        relationships: list[dict],
+    ) -> None:
         if self.driver is not None:
             concept_query = """
             UNWIND $nodes AS node
-            MERGE (c:Concept {user_id: $user_id, name: node.id})
+            MERGE (c:Concept {user_id: $user_id, wiki_id: $wiki_id, name: node.id})
             SET c.updated_at = datetime(),
-                c.page_id = $page_id,
-                c.type = node.type,
+                c.page_id    = $page_id,
+                c.type        = node.type,
                 c.description = node.description,
-                c.importance = node.importance,
-                c.category = node.category
+                c.importance  = node.importance,
+                c.category    = node.category
             """
             edge_query = """
-            UNWIND $relationships AS relationship
-            MERGE (source:Concept {user_id: $user_id, name: relationship.source})
-            MERGE (target:Concept {user_id: $user_id, name: relationship.target})
-            MERGE (source)-[rel:RELATED_TO {user_id: $user_id, label: relationship.type}]->(target)
-            SET rel.page_id = $page_id,
-                rel.evidence = relationship.evidence,
-                rel.updated_at = datetime()
+            UNWIND $relationships AS rel
+            MERGE (s:Concept {user_id: $user_id, wiki_id: $wiki_id, name: rel.source})
+            MERGE (t:Concept {user_id: $user_id, wiki_id: $wiki_id, name: rel.target})
+            MERGE (s)-[r:RELATED_TO {user_id: $user_id, wiki_id: $wiki_id, label: rel.type}]->(t)
+            SET r.page_id    = $page_id,
+                r.evidence   = rel.evidence,
+                r.updated_at = datetime()
             """
             async with self.driver.session() as session:
-                await session.run(concept_query, user_id=user_id, page_id=page_id, nodes=nodes)
-                await session.run(edge_query, user_id=user_id, page_id=page_id, relationships=relationships)
+                await session.run(concept_query, user_id=user_id, wiki_id=wiki_id, page_id=page_id, nodes=nodes)
+                await session.run(edge_query, user_id=user_id, wiki_id=wiki_id, page_id=page_id, relationships=relationships)
             return
 
+        key = (user_id, wiki_id)
         for node in nodes:
-            self._nodes[user_id][node["id"]] = {
-                **node,
-                "page_id": page_id,
-                "updated_at": datetime.now(UTC),
-            }
-        for relationship in relationships:
-            self._edges.append({**relationship, "user_id": user_id, "page_id": page_id, "created_at": datetime.now(UTC)})
+            self._nodes[key][node["id"]] = {**node, "page_id": page_id, "updated_at": datetime.now(UTC)}
+        for rel in relationships:
+            self._edges.append({**rel, "user_id": user_id, "wiki_id": wiki_id, "page_id": page_id, "created_at": datetime.now(UTC)})
 
-    async def get_related_concepts(self, *, user_id: str, query_terms: list[str], limit: int = 10) -> list[dict]:
-        normalized_terms = [term.lower() for term in query_terms if term]
-        if not normalized_terms:
+    # ── Query ─────────────────────────────────────────────────────────────────
+
+    async def get_related_concepts(
+        self,
+        *,
+        user_id: str,
+        wiki_id: str,
+        query_terms: list[str],
+        limit: int = 10,
+    ) -> list[dict]:
+        normalized = [t.lower() for t in query_terms if t]
+        if not normalized:
             return []
 
         if self.driver is not None:
-            query = """
-            MATCH (source:Concept {user_id: $user_id})-[rel:RELATED_TO]->(target:Concept {user_id: $user_id})
-            WHERE any(term IN $terms WHERE toLower(source.name) CONTAINS term OR toLower(target.name) CONTAINS term)
-            RETURN source.name AS source, rel.label AS relationship, target.name AS target, rel.evidence AS evidence
+            cypher = """
+            MATCH (s:Concept {user_id: $user_id, wiki_id: $wiki_id})-[r:RELATED_TO]->(t:Concept {user_id: $user_id, wiki_id: $wiki_id})
+            WHERE any(term IN $terms WHERE toLower(s.name) CONTAINS term OR toLower(t.name) CONTAINS term)
+            RETURN s.name AS source, r.label AS relationship, t.name AS target, r.evidence AS evidence
             LIMIT $limit
             """
             async with self.driver.session() as session:
-                result = await session.run(query, user_id=user_id, terms=normalized_terms, limit=limit)
+                result = await session.run(cypher, user_id=user_id, wiki_id=wiki_id, terms=normalized, limit=limit)
                 return await result.data()
 
+        key = (user_id, wiki_id)
         matches = []
         for edge in self._edges:
-            if edge["user_id"] != user_id:
+            if edge["user_id"] != user_id or edge.get("wiki_id") != wiki_id:
                 continue
-            searchable = f'{edge["source"]} {edge["target"]}'.lower()
-            if any(term in searchable for term in normalized_terms):
-                matches.append(
-                    {
-                        "source": edge["source"],
-                        "relationship": edge["type"],
-                        "target": edge["target"],
-                        "evidence": edge.get("evidence", ""),
-                    }
-                )
+            searchable = f'{edge.get("source", "")} {edge.get("target", "")}'.lower()
+            if any(term in searchable for term in normalized):
+                matches.append({
+                    "source": edge.get("source", ""),
+                    "relationship": edge.get("type", "relates_to"),
+                    "target": edge.get("target", ""),
+                    "evidence": edge.get("evidence", ""),
+                })
         return matches[:limit]
 
-    async def get_topic_subgraph(self, *, user_id: str, topic: str, limit: int = 50) -> dict:
+    async def get_topic_subgraph(
+        self,
+        *,
+        user_id: str,
+        wiki_id: str,
+        topic: str,
+        limit: int = 50,
+    ) -> dict:
         normalized_topic = topic.strip().lower()
 
         if self.driver is not None:
-            query = """
-            MATCH (n:Concept)-[r]->(m:Concept)
-            WHERE n.user_id = $user_id
-              AND m.user_id = $user_id
-              AND (
-                $topic = ""
-                OR toLower(n.name) CONTAINS $topic
-                OR toLower(m.name) CONTAINS $topic
-              )
+            cypher = """
+            MATCH (n:Concept {user_id: $user_id, wiki_id: $wiki_id})-[r]->(m:Concept {user_id: $user_id, wiki_id: $wiki_id})
+            WHERE $topic = ""
+               OR toLower(n.name) CONTAINS $topic
+               OR toLower(m.name) CONTAINS $topic
             RETURN n, r, m
             LIMIT $limit
             """
             async with self.driver.session() as session:
-                result = await session.run(query, user_id=user_id, topic=normalized_topic, limit=limit)
+                result = await session.run(cypher, user_id=user_id, wiki_id=wiki_id, topic=normalized_topic, limit=limit)
                 records = await result.data()
             return self._transform_subgraph_records(records)
 
+        key = (user_id, wiki_id)
         nodes: dict[str, dict] = {}
         edges: list[dict] = []
         for edge in self._edges:
-            if edge["user_id"] != user_id:
+            if edge["user_id"] != user_id or edge.get("wiki_id") != wiki_id:
                 continue
-
-            source_matches = normalized_topic in edge["source"].lower()
-            target_matches = normalized_topic in edge["target"].lower()
-            if normalized_topic and not (source_matches or target_matches):
+            if normalized_topic and normalized_topic not in edge.get("source", "").lower() and normalized_topic not in edge.get("target", "").lower():
                 continue
-
-            source_node = self._nodes[user_id].get(edge["source"], {"id": edge["source"], "type": "concept", "description": "", "importance": 0.5, "category": "supporting"})
-            target_node = self._nodes[user_id].get(edge["target"], {"id": edge["target"], "type": "concept", "description": "", "importance": 0.5, "category": "supporting"})
-            nodes[source_node["id"]] = source_node
-            nodes[target_node["id"]] = target_node
-            edges.append(
-                {
-                    "source": edge["source"],
-                    "target": edge["target"],
-                    "label": edge["type"],
-                }
-            )
+            src = self._nodes[key].get(edge.get("source", ""), {"id": edge.get("source", ""), "type": "concept", "description": "", "importance": 0.5, "category": None})
+            tgt = self._nodes[key].get(edge.get("target", ""), {"id": edge.get("target", ""), "type": "concept", "description": "", "importance": 0.5, "category": None})
+            nodes[src["id"]] = src
+            nodes[tgt["id"]] = tgt
+            edges.append({"source": edge.get("source", ""), "target": edge.get("target", ""), "label": edge.get("type", "RELATED_TO")})
             if len(edges) >= limit:
                 break
 
         if not edges and not normalized_topic:
-            for user_node in list(self._nodes[user_id].values())[: min(limit, 12)]:
-                nodes[user_node["id"]] = user_node
+            for node in list(self._nodes[key].values())[:min(limit, 12)]:
+                nodes[node["id"]] = node
 
         return {
-            "nodes": [
-                {
-                    "id": node["id"],
-                    "type": node.get("type", "concept"),
-                    "description": node.get("description", ""),
-                    "importance": float(node.get("importance", 0.5)),
-                    "category": node.get("category"),
-                }
-                for node in nodes.values()
-            ],
+            "nodes": [{"id": n["id"], "type": n.get("type", "concept"), "description": n.get("description", ""), "importance": float(n.get("importance", 0.5)), "category": n.get("category")} for n in nodes.values()],
             "edges": edges,
         }
+
+    async def delete_wiki_graph(self, *, user_id: str, wiki_id: str) -> None:
+        """Delete all nodes and edges belonging to a wiki."""
+        if self.driver is not None:
+            cypher = """
+            MATCH (c:Concept {user_id: $user_id, wiki_id: $wiki_id})
+            DETACH DELETE c
+            """
+            async with self.driver.session() as session:
+                await session.run(cypher, user_id=user_id, wiki_id=wiki_id)
+            return
+        key = (user_id, wiki_id)
+        self._nodes.pop(key, None)
+        self._edges = [e for e in self._edges if not (e["user_id"] == user_id and e.get("wiki_id") == wiki_id)]
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _transform_subgraph_records(self, records: list[dict]) -> dict:
         nodes: dict[str, dict] = {}
@@ -178,32 +194,15 @@ class GraphManager:
             source = record["n"]
             target = record["m"]
             relationship = record["r"]
-
             source_id = source.get("name") or source.get("id", "unknown")
             target_id = target.get("name") or target.get("id", "unknown")
-
-            nodes[source_id] = {
-                "id": source_id,
-                "type": source.get("type", "concept"),
-                "description": source.get("description", ""),
-                "importance": float(source.get("importance", 0.5)),
-                "category": source.get("category"),
-            }
-            nodes[target_id] = {
-                "id": target_id,
-                "type": target.get("type", "concept"),
-                "description": target.get("description", ""),
-                "importance": float(target.get("importance", 0.5)),
-                "category": target.get("category"),
-            }
-            edges.append(
-                {
-                    "source": source_id,
-                    "target": target_id,
-                    "label": relationship[1] if isinstance(relationship, tuple) else relationship.get("label", "RELATED_TO"),
-                }
-            )
-
+            nodes[source_id] = {"id": source_id, "type": source.get("type", "concept"), "description": source.get("description", ""), "importance": float(source.get("importance", 0.5)), "category": source.get("category")}
+            nodes[target_id] = {"id": target_id, "type": target.get("type", "concept"), "description": target.get("description", ""), "importance": float(target.get("importance", 0.5)), "category": target.get("category")}
+            edges.append({
+                "source": source_id,
+                "target": target_id,
+                "label": relationship[1] if isinstance(relationship, tuple) else relationship.get("label", "RELATED_TO"),
+            })
         return {"nodes": list(nodes.values()), "edges": edges}
 
 

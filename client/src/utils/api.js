@@ -1,5 +1,6 @@
 import httpClient, { refreshSession } from "../services/http";
 
+// ── Auth ──────────────────────────────────────────────────────────────────
 export async function loginRequest(payload) {
   const { data } = await httpClient.post("/api/auth/login", payload);
   return data;
@@ -16,34 +17,70 @@ export async function logoutRequest() {
 }
 
 export async function getSessionFromRefresh() {
-  const data = await refreshSession();
+  return refreshSession();
+}
+
+// ── Wikis ─────────────────────────────────────────────────────────────────
+export async function fetchWikis() {
+  const { data } = await httpClient.get("/api/wikis");
   return data;
 }
 
-export async function ingestYouTube(url) {
-  const { data } = await httpClient.post("/api/ingest/youtube", { url });
+export async function fetchWikiDetail(wikiId) {
+  const { data } = await httpClient.get(`/api/wikis/${wikiId}`);
   return data;
 }
 
-export async function ingestWeb(url) {
-  const { data } = await httpClient.post("/api/ingest/web", { url });
+export async function fetchCreateWiki(payload) {
+  const { data } = await httpClient.post("/api/wikis", payload);
   return data;
 }
 
-export async function fetchIngestionHistory() {
-  const { data } = await httpClient.get("/api/ingest/history");
+export async function fetchUpdateWiki(wikiId, payload) {
+  const { data } = await httpClient.patch(`/api/wikis/${wikiId}`, payload);
   return data;
 }
 
+export async function fetchDeleteWiki(wikiId) {
+  // DELETE /api/wikis/:id returns 204 No Content — no .data to destructure
+  await httpClient.delete(`/api/wikis/${wikiId}`);
+}
+
+// ── Ingest ────────────────────────────────────────────────────────────────
+export async function ingestYouTube(url, wikiId) {
+  const { data } = await httpClient.post("/api/ingest/youtube", {
+    url,
+    wiki_id: wikiId,
+  });
+  return data;
+}
+
+export async function ingestWeb(url, wikiId) {
+  const { data } = await httpClient.post("/api/ingest/web", {
+    url,
+    wiki_id: wikiId,
+  });
+  return data;
+}
+
+export async function fetchIngestionHistory(wikiId) {
+  const { data } = await httpClient.get("/api/ingest/history", {
+    params: wikiId ? { wiki_id: wikiId } : undefined,
+  });
+  return data;
+}
+
+// ── Query ─────────────────────────────────────────────────────────────────
 export async function queryKnowledge(payload, config = {}) {
   const { data } = await httpClient.post("/api/query", payload, config);
   return data;
 }
 
-export async function fetchKnowledgeGraph(topic = "", config = {}) {
+// ── Graph ─────────────────────────────────────────────────────────────────
+export async function fetchKnowledgeGraph(wikiId, topic = "", config = {}) {
   const { data } = await httpClient.get("/api/graph", {
     ...config,
-    params: { topic },
+    params: { wiki_id: wikiId, topic },
   });
   return data;
 }

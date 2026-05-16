@@ -5,7 +5,8 @@ LLM provider strategy:
   - generate_text : Groq (primary) → Gemini (fallback) → static fallback
   - stream_text   : Groq (primary) → Gemini (fallback) → word-chunked fallback
   - embed_text    : Gemini only (Groq has no embedding API) → hash fallback
-  - summarize     : uses generate_text (inherits provider strategy)
+  - summarize     : uses generate_text
+  - merge_notes   : compounds existing master note with new source summary
 """
 
 import hashlib
@@ -21,10 +22,8 @@ from app.utils.text import chunk_words, clean_text, split_sentences
 
 logger = get_logger("services.llm")
 
-# Groq API is OpenAI-compatible — same request/response shape
 _GROQ_CHAT_URL = f"{settings.GROQ_BASE_URL}/chat/completions"
 
-# Gemini REST endpoints
 _GEMINI_GENERATE_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models"
     f"/{settings.GEMINI_MODEL}:generateContent"
@@ -33,26 +32,18 @@ _GEMINI_STREAM_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models"
     f"/{settings.GEMINI_MODEL}:streamGenerateContent"
 )
-
 _GEMINI_EMBED_MODEL = (
     settings.GEMINI_EMBEDDING_MODEL
     if settings.GEMINI_EMBEDDING_MODEL.startswith("models/")
     else f"models/{settings.GEMINI_EMBEDDING_MODEL}"
 )
 _GEMINI_EMBED_URL = (
-    "https://generativelanguage.googleapis.com/v1beta"
+    f"https://generativelanguage.googleapis.com/v1beta"
     f"/{_GEMINI_EMBED_MODEL}:embedContent"
 )
 
 
 class LLMService:
-    """
-    Unified LLM service.
-
-    Provider priority:
-      Text  → Groq first, Gemini on failure, static fallback if both absent/fail
-      Embed → Gemini only, hash fallback if absent/fail
-    """
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -64,7 +55,6 @@ class LLMService:
         temperature: float = 0.3,
         max_output_tokens: int = 1024,
     ) -> str:
-        # 1. Try Groq
         if settings.GROQ_API_KEY:
             result = await self._groq_generate(
                 prompt=prompt,
@@ -74,8 +64,6 @@ class LLMService:
             )
             if result:
                 return result
-
-        # 2. Try Gemini
         if settings.GEMINI_API_KEY:
             result = await self._gemini_generate(
                 prompt=prompt,
@@ -85,8 +73,6 @@ class LLMService:
             )
             if result:
                 return result
-
-        # 3. Static fallback
         return self._fallback_generate(prompt)
 
     async def stream_text(
@@ -97,7 +83,6 @@ class LLMService:
         temperature: float = 0.3,
         max_output_tokens: int = 1024,
     ):
-        # 1. Try Groq streaming
         if settings.GROQ_API_KEY:
             groq_ok = False
             async for chunk in self._groq_stream(
@@ -110,8 +95,6 @@ class LLMService:
                 yield chunk
             if groq_ok:
                 return
-
-        # 2. Try Gemini streaming
         if settings.GEMINI_API_KEY:
             gemini_ok = False
             async for chunk in self._gemini_stream(
@@ -124,21 +107,16 @@ class LLMService:
                 yield chunk
             if gemini_ok:
                 return
-
-        # 3. Word-chunked static fallback
         for chunk in chunk_words(self._fallback_generate(prompt)):
             yield chunk
 
     async def embed_text(self, text: str) -> list[float]:
-        """Gemini is the sole embedding provider — Groq has no embedding API."""
         if not text:
             return []
-
         if settings.GEMINI_API_KEY:
             result = await self._gemini_embed(text)
             if result:
                 return result
-
         return self._fallback_embedding(text)
 
     async def summarize(self, text: str) -> str:
@@ -152,6 +130,33 @@ class LLMService:
         return clean_text(
             await self.generate_text(prompt=prompt, temperature=0.2, max_output_tokens=300)
         )
+
+    async def merge_notes(self, *, existing_note: str, new_summary: str, new_title: str) -> str:
+        """
+        Compound an existing master note with a new source summary.
+        If no existing note yet, the new summary becomes the first note.
+        The result is a single unified note — not a list of separate summaries.
+        """
+        if not existing_note.strip():
+            return clean_text(new_summary)
+
+        prompt = (
+            "You are maintaining a unified knowledge note for a wiki.\n\n"
+            f"EXISTING NOTE:\n{existing_note}\n\n"
+            f"NEW SOURCE TITLE: {new_title}\n"
+            f"NEW SOURCE SUMMARY:\n{new_summary}\n\n"
+            "Task: Merge the new source knowledge into the existing note. "
+            "Do NOT list sources separately. "
+            "Write a single cohesive note that compounds both sets of knowledge together. "
+            "Preserve important details from both. "
+            "Remove redundancy. Keep it concise and grounded."
+        )
+        merged = await self.generate_text(
+            prompt=prompt,
+            temperature=0.2,
+            max_output_tokens=600,
+        )
+        return clean_text(merged) or existing_note
 
     # ── Groq ──────────────────────────────────────────────────────────────────
 
@@ -172,9 +177,7 @@ class LLMService:
             "stream": False,
         }
         try:
-            async with httpx.AsyncClient(
-                timeout=40.0, verify=settings.OUTBOUND_VERIFY_SSL
-            ) as client:
+            async with httpx.AsyncClient(timeout=40.0, verify=settings.OUTBOUND_VERIFY_SSL) as client:
                 response = await client.post(
                     _GROQ_CHAT_URL,
                     json=payload,
@@ -206,9 +209,7 @@ class LLMService:
             "stream": True,
         }
         try:
-            async with httpx.AsyncClient(
-                timeout=None, verify=settings.OUTBOUND_VERIFY_SSL
-            ) as client:
+            async with httpx.AsyncClient(timeout=None, verify=settings.OUTBOUND_VERIFY_SSL) as client:
                 async with client.stream(
                     "POST",
                     _GROQ_CHAT_URL,
@@ -245,15 +246,10 @@ class LLMService:
     ) -> str:
         payload = {
             "contents": [{"parts": self._build_gemini_parts(prompt, system_instruction)}],
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_output_tokens,
-            },
+            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_output_tokens},
         }
         try:
-            async with httpx.AsyncClient(
-                timeout=40.0, verify=settings.OUTBOUND_VERIFY_SSL
-            ) as client:
+            async with httpx.AsyncClient(timeout=40.0, verify=settings.OUTBOUND_VERIFY_SSL) as client:
                 response = await client.post(
                     _GEMINI_GENERATE_URL,
                     json=payload,
@@ -277,16 +273,11 @@ class LLMService:
     ):
         payload = {
             "contents": [{"parts": self._build_gemini_parts(prompt, system_instruction)}],
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_output_tokens,
-            },
+            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_output_tokens},
         }
         previous_text = ""
         try:
-            async with httpx.AsyncClient(
-                timeout=None, verify=settings.OUTBOUND_VERIFY_SSL
-            ) as client:
+            async with httpx.AsyncClient(timeout=None, verify=settings.OUTBOUND_VERIFY_SSL) as client:
                 async with client.stream(
                     "POST",
                     _GEMINI_STREAM_URL,
@@ -306,11 +297,7 @@ class LLMService:
                             continue
                         if not chunk_text:
                             continue
-                        delta = (
-                            chunk_text[len(previous_text):]
-                            if chunk_text.startswith(previous_text)
-                            else chunk_text
-                        )
+                        delta = chunk_text[len(previous_text):] if chunk_text.startswith(previous_text) else chunk_text
                         previous_text = chunk_text
                         if delta:
                             yield delta
@@ -324,9 +311,7 @@ class LLMService:
             "content": {"parts": [{"text": text[:4000]}]},
         }
         try:
-            async with httpx.AsyncClient(
-                timeout=30.0, verify=settings.OUTBOUND_VERIFY_SSL
-            ) as client:
+            async with httpx.AsyncClient(timeout=30.0, verify=settings.OUTBOUND_VERIFY_SSL) as client:
                 response = await client.post(
                     _GEMINI_EMBED_URL,
                     json=payload,
@@ -342,9 +327,7 @@ class LLMService:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _build_openai_messages(
-        prompt: str, system_instruction: str | None
-    ) -> list[dict]:
+    def _build_openai_messages(prompt: str, system_instruction: str | None) -> list[dict]:
         messages = []
         if system_instruction:
             messages.append({"role": "system", "content": system_instruction})
@@ -352,9 +335,7 @@ class LLMService:
         return messages
 
     @staticmethod
-    def _build_gemini_parts(
-        prompt: str, system_instruction: str | None
-    ) -> list[dict]:
+    def _build_gemini_parts(prompt: str, system_instruction: str | None) -> list[dict]:
         parts = []
         if system_instruction:
             parts.append({"text": system_instruction})

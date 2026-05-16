@@ -1,5 +1,4 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import MessageBubble from "../components/MessageBubble";
 import { createChatStreamSession } from "../services/chatStream";
@@ -18,7 +17,7 @@ import "./styles/Workspace.css";
 
 const QUICK_PROMPTS = [
   "Summarize the main concepts in my latest source.",
-  "Which ideas in the graph are the most central?",
+  "Which ideas are the most central?",
   "What concepts still need more evidence?",
 ];
 
@@ -29,19 +28,23 @@ function extractErrorMessage(err) {
 }
 
 function ConnPill({ state }) {
-  const labels = {
-    connected:    "Socket live",
-    reconnecting: "Reconnecting…",
-    fallback:     "HTTP fallback",
-  };
+  const labels = { connected: "Live", reconnecting: "Reconnecting…", fallback: "HTTP" };
   return (
-    <span className={`ws-conn-pill ws-conn-pill--${state}`} aria-label={`Connection: ${state}`}>
+    <span
+      className={`ws-conn-pill ws-conn-pill--${state}`}
+      aria-label={`Connection: ${state}`}
+      title={state === "connected" ? "Socket live" : state === "reconnecting" ? "Reconnecting…" : "HTTP fallback"}
+    >
       {labels[state] ?? state}
     </span>
   );
 }
 
-function ChatPage() {
+/**
+ * ChatPage — accepts wikiId prop when embedded in WikiDashboard.
+ * No page header, no outer padding — fills its parent container.
+ */
+function ChatPage({ wikiId }) {
   const [input, setInput] = useState("");
   const [debug, setDebug] = useState(false);
   const dispatch          = useDispatch();
@@ -60,9 +63,9 @@ function ChatPage() {
     sessionRef.current = createChatStreamSession({
       token: accessToken,
       onConnectionChange: (s) => dispatch(setConnectionState(s)),
-      onStart: ({ requestId }) =>
+      onStart:    ({ requestId }) =>
         dispatch(startAssistantMessage({ id: requestId, createdAt: new Date().toISOString() })),
-      onToken: ({ requestId, chunk }) =>
+      onToken:    ({ requestId, chunk }) =>
         dispatch(appendAssistantChunk({ id: requestId, chunk })),
       onComplete: ({ requestId, content, metadata }) =>
         dispatch(finishAssistantMessage({ id: requestId, content, metadata })),
@@ -70,7 +73,10 @@ function ChatPage() {
         const msg = extractErrorMessage(err);
         const rid = lastPromptRef.current?.requestId;
         dispatch(setChatError(msg));
-        if (rid) dispatch(failAssistantMessage({ id: rid, error: msg, content: "I ran into an issue generating that answer." }));
+        if (rid) dispatch(failAssistantMessage({
+          id: rid, error: msg,
+          content: "I ran into an issue generating that answer.",
+        }));
       },
     });
     return () => { sessionRef.current?.disconnect(); abortRef.current?.abort(); };
@@ -95,7 +101,7 @@ function ChatPage() {
   // ── Submit ────────────────────────────────────────────────────────────────
   const submitPrompt = useCallback(async (question) => {
     const trimmed = question.trim();
-    if (!trimmed || pendingMessageId) return;
+    if (!trimmed || pendingMessageId || !wikiId) return;
 
     const requestId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
@@ -111,16 +117,19 @@ function ChatPage() {
     try {
       await sessionRef.current?.send({
         requestId,
-        payload: { question: trimmed, debug },
+        payload: { question: trimmed, wiki_id: wikiId, debug },
         signal:  abortRef.current.signal,
       });
     } catch (err) {
       if (abortRef.current?.signal.aborted) return;
       const msg = extractErrorMessage(err);
       dispatch(setChatError(msg));
-      dispatch(failAssistantMessage({ id: requestId, error: msg, content: "I ran into an issue generating that answer." }));
+      dispatch(failAssistantMessage({
+        id: requestId, error: msg,
+        content: "I ran into an issue generating that answer.",
+      }));
     }
-  }, [debug, dispatch, pendingMessageId]);
+  }, [debug, dispatch, pendingMessageId, wikiId]);
 
   const handleSubmit = (e) => { e.preventDefault(); void submitPrompt(input); };
   const handleRetry  = () => { if (lastPromptRef.current?.question) void submitPrompt(lastPromptRef.current.question); };
@@ -129,144 +138,139 @@ function ChatPage() {
   const isStreaming = status === "streaming";
 
   return (
-    <section className="workspace-page" style={{ padding: "0 1.5rem 2rem", maxWidth: 1280, margin: "0 auto" }}>
+    <div className="chat-embed">
 
-      {/* ── Page header ────────────────────────────────────────────────── */}
-      <header className="ws-page-header">
-        <div className="ws-page-header__copy">
-          <span className="ws-eyebrow">Grounded chat</span>
-          <h1>Ask your knowledge base.</h1>
-          <p>Streaming answers grounded in ingested sources — markdown, code blocks, copy actions, and graceful error recovery.</p>
+      {/* ── Top meta bar ─────────────────────────────────────────────── */}
+      <div className="chat-embed__meta">
+        <div className="chat-embed__meta-left">
+          <span className="ws-eyebrow">Conversation</span>
+          <span style={{ color: "#475569", fontSize: "0.75rem" }}>
+            {messages.length} message{messages.length !== 1 ? "s" : ""}
+          </span>
         </div>
-        <div className="ws-page-header__actions">
-          <Link to="/ingest" className="ws-btn ws-btn--ghost">Add source</Link>
-          <Link to="/graph"  className="ws-btn ws-btn--primary">Open graph →</Link>
-        </div>
-      </header>
-
-      {/* ── Body grid ──────────────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0,1fr)", gap: "1rem", alignItems: "start" }}>
-
-        {/* ── Sidebar ──────────────────────────────────────────────────── */}
-        <aside style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <div className="ws-metric">
-            <span className="ws-metric__label">Connection</span>
-            <ConnPill state={connectionState} />
-          </div>
-          <div className="ws-metric">
-            <span className="ws-metric__label">Messages</span>
-            <span className="ws-metric__value">{messages.length}</span>
-          </div>
-
+        <div className="chat-embed__meta-right">
+          <ConnPill state={connectionState} />
           <button
             type="button"
             className="ws-btn ws-btn--ghost"
-            style={{ width: "100%", justifyContent: "center" }}
+            style={{ fontSize: "0.72rem", padding: "0.2rem 0.6rem" }}
             onClick={() => dispatch(clearMessages())}
             disabled={messages.length === 0}
           >
-            Clear chat
+            Clear
           </button>
-
-          <label className="ws-checkbox">
+          <label className="ws-checkbox" style={{ fontSize: "0.72rem" }}>
             <input
               type="checkbox"
               checked={debug}
               onChange={(e) => setDebug(e.target.checked)}
             />
-            Include debug context
+            Debug
           </label>
-
-          <div style={{ marginTop: "0.5rem" }}>
-            <span className="ws-eyebrow" style={{ marginBottom: "0.625rem", display: "block" }}>Quick prompts</span>
-            <div className="ws-quick-prompts">
-              {QUICK_PROMPTS.map((p) => (
-                <button key={p} type="button" className="ws-quick-prompt" onClick={() => handleQuick(p)}>
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        {/* ── Chat panel ───────────────────────────────────────────────── */}
-        <div className="ws-panel" style={{ display: "grid", gridTemplateRows: "auto minmax(0,1fr) auto auto", minHeight: "76vh" }}>
-
-          <div className="ws-panel__header">
-            <div>
-              <span className="ws-eyebrow" style={{ marginBottom: "0.25rem" }}>Conversation</span>
-              <h2 className="ws-panel__title">Grounded answers</h2>
-            </div>
-            <ConnPill state={connectionState} />
-          </div>
-
-          {/* Stream */}
-          <div
-            className="ws-chat-stream"
-            style={{ padding: "1.25rem 1.5rem" }}
-            role="log"
-            aria-live="polite"
-            aria-atomic="false"
-          >
-            {messages.length === 0 && (
-              <div className="ws-empty">
-                <span className="ws-empty__icon">💬</span>
-                <h3>Start with a grounded question</h3>
-                <p>Ask about a source you ingested, request a summary, or probe the relationships in your graph.</p>
-              </div>
-            )}
-            {messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                onRetry={msg.status === "error" ? handleRetry : undefined}
-              />
-            ))}
-            <div ref={scrollAnchorRef} aria-hidden="true" />
-          </div>
-
-          {/* Error banner */}
-          {error && (
-            <div className="ws-banner ws-banner--error" style={{ margin: "0 1.5rem" }} role="alert">
-              <span>{error}</span>
-              <button type="button" className="ws-btn ws-btn--ghost" style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }} onClick={handleRetry}>Retry</button>
-            </div>
-          )}
-
-          {/* Composer */}
-          <div style={{ padding: "0 1.5rem 1.5rem" }}>
-            <form onSubmit={handleSubmit}>
-              <label className="sr-only" htmlFor="chatInput">Ask CortexWiki</label>
-              <div className="ws-composer">
-                <textarea
-                  ref={textareaRef}
-                  id="chatInput"
-                  className="ws-composer__textarea"
-                  placeholder="Ask a grounded question about your knowledge base…"
-                  value={input}
-                  rows={1}
-                  onChange={(e) => { dispatch(clearChatError()); setInput(e.target.value); }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitPrompt(input); }
-                  }}
-                />
-                <div className="ws-composer__footer">
-                  <span className="ws-composer__hint">↵ send · ⇧↵ new line</span>
-                  <button
-                    type="submit"
-                    className="ws-btn ws-btn--primary"
-                    disabled={!input.trim() || isStreaming}
-                    aria-busy={isStreaming}
-                  >
-                    {isStreaming ? "Streaming…" : "Send →"}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
         </div>
       </div>
-    </section>
+
+      {/* ── Quick prompts ─────────────────────────────────────────────── */}
+      {messages.length === 0 && (
+        <div className="chat-embed__quickbar">
+          {QUICK_PROMPTS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className="chat-embed__quick-btn"
+              onClick={() => handleQuick(p)}
+              disabled={!wikiId}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Message stream ────────────────────────────────────────────── */}
+      <div
+        className="chat-embed__stream"
+        role="log"
+        aria-live="polite"
+        aria-atomic="false"
+      >
+        {messages.length === 0 && (
+          <div className="ws-empty" style={{ minHeight: 200 }}>
+            <span className="ws-empty__icon">💬</span>
+            <h3>{wikiId ? "Ask a grounded question" : "Select a wiki to begin"}</h3>
+            <p>
+              {wikiId
+                ? "Every answer is grounded in this wiki's knowledge base."
+                : "Pick a wiki from the left panel first."}
+            </p>
+          </div>
+        )}
+        {messages.map((msg) => (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            onRetry={msg.status === "error" ? handleRetry : undefined}
+          />
+        ))}
+        <div ref={scrollAnchorRef} aria-hidden="true" />
+      </div>
+
+      {/* ── Error banner ──────────────────────────────────────────────── */}
+      {error && (
+        <div className="ws-banner ws-banner--error" style={{ margin: "0 1rem" }} role="alert">
+          <span>{error}</span>
+          <button
+            type="button"
+            className="ws-btn ws-btn--ghost"
+            style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+            onClick={handleRetry}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* ── Composer ──────────────────────────────────────────────────── */}
+      <div className="chat-embed__composer">
+        <form onSubmit={handleSubmit}>
+          <label className="sr-only" htmlFor="chatInput">Ask CortexWiki</label>
+          <div className="ws-composer">
+            <textarea
+              ref={textareaRef}
+              id="chatInput"
+              className="ws-composer__textarea"
+              placeholder={
+                wikiId
+                  ? "Ask a grounded question about this wiki…"
+                  : "Select a wiki to start chatting…"
+              }
+              value={input}
+              rows={1}
+              disabled={!wikiId}
+              onChange={(e) => { dispatch(clearChatError()); setInput(e.target.value); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void submitPrompt(input);
+                }
+              }}
+            />
+            <div className="ws-composer__footer">
+              <span className="ws-composer__hint">↵ send · ⇧↵ new line</span>
+              <button
+                type="submit"
+                className="ws-btn ws-btn--primary"
+                disabled={!wikiId || !input.trim() || isStreaming}
+                aria-busy={isStreaming}
+              >
+                {isStreaming ? "Streaming…" : "Send →"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+    </div>
   );
 }
 
