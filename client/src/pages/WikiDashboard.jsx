@@ -14,7 +14,6 @@ import {
 import ChatPage  from "./ChatPage";
 import GraphPage from "./GraphPage";
 import { NoteDrawer } from "./IngestPage";
-import "./styles/Workspace.css";
 import "./styles/WikiDashboard.css";
 
 /* ── Create wiki modal ───────────────────────────────────────────────────── */

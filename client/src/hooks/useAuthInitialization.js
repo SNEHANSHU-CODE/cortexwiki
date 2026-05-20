@@ -28,9 +28,10 @@ export function useAuthInitialization() {
         if (!active) return;
         dispatch(
           setSession({
+            user: session.user,
+            refreshToken: session.refresh_token,
             accessToken: session.access_token,
-            user:        session.user,
-            expiresAt:   session.expires_at ?? null,
+            accessTokenExpiresAt: session.expires_at,
           }),
         );
         dispatch(finishHydration());

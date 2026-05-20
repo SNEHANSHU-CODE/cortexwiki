@@ -116,6 +116,8 @@ class AuthService:
                 await self.mongo.revoke_refresh_token(hash_refresh_token(refresh_token))
 
     def set_refresh_cookie(self, response: Response, refresh_token: str, expires_at: datetime) -> None:
+        logger.debug("Setting refresh cookie: expires_at=%s, secure=%s, samesite=%s, domain=%s", 
+                     expires_at, settings.COOKIE_SECURE, settings.COOKIE_SAMESITE, settings.COOKIE_DOMAIN)
         response.set_cookie(
             key=settings.REFRESH_COOKIE_NAME,
             value=refresh_token,
@@ -128,9 +130,34 @@ class AuthService:
             domain=settings.COOKIE_DOMAIN,
         )
 
+    def set_access_cookie(self, response: Response, access_token: str, expires_at: datetime) -> None:
+        logger.debug("Setting access cookie: expires_at=%s, secure=%s, samesite=%s, domain=%s", 
+                     expires_at, settings.COOKIE_SECURE, settings.COOKIE_SAMESITE, settings.COOKIE_DOMAIN)
+        response.set_cookie(
+            key=settings.ACCESS_COOKIE_NAME,
+            value=access_token,
+            httponly=True,
+            secure=settings.COOKIE_SECURE,
+            samesite=settings.COOKIE_SAMESITE,
+            expires=expires_at,
+            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            path="/",
+            domain=settings.COOKIE_DOMAIN,
+        )
+
     def clear_refresh_cookie(self, response: Response) -> None:
         response.delete_cookie(
             key=settings.REFRESH_COOKIE_NAME,
+            httponly=True,
+            secure=settings.COOKIE_SECURE,
+            samesite=settings.COOKIE_SAMESITE,
+            path="/",
+            domain=settings.COOKIE_DOMAIN,
+        )
+
+    def clear_access_cookie(self, response: Response) -> None:
+        response.delete_cookie(
+            key=settings.ACCESS_COOKIE_NAME,
             httponly=True,
             secure=settings.COOKIE_SECURE,
             samesite=settings.COOKIE_SAMESITE,

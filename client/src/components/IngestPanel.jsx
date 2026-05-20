@@ -6,7 +6,7 @@ import {
   resetSubmitStatus,
   submitIngestion,
 } from "../redux/slices/ingestSlice";
-import "../pages/styles/Workspace.css";
+import "./styles/IngestPanel.css";
 
 /* ── Skeleton ─────────────────────────────────────────────────────────── */
 function HistorySkeleton() {

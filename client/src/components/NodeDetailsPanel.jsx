@@ -1,5 +1,5 @@
 import { memo } from "react";
-import "./components.css";
+import "./styles/NodeDetailsPanel.css";
 
 function edgeNodeId(ep) {
   return typeof ep === "string" ? ep : (ep?.id ?? "");

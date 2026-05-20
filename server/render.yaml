@@ -33,6 +33,18 @@ services:
       # Auth
       - key: SECRET_KEY
         fromGroup: cortexwiki-secrets
+      - key: COOKIE_SECURE
+        value: true
+      - key: COOKIE_SAMESITE
+        value: lax
+      # Transcript providers
+      - key: SUPADATA_API_KEY
+        fromGroup: cortexwiki-secrets
+      - key: SCRAPERAPI_KEY
+        fromGroup: cortexwiki-secrets
+      # CORS — set to your deployed frontend URL, e.g. https://cortexwiki.onrender.com
+      - key: FRONTEND_ORIGINS
+        value: https://cortexwiki.onrender.com
       # Datastores
       - key: MONGO_URI
         fromGroup: cortexwiki-secrets

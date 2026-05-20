@@ -13,6 +13,7 @@ class IngestionService:
         self,
         *,
         user_id: str,
+        wiki_id: str,
         title: str,
         source_type: str,
         source_url: str,
@@ -30,6 +31,7 @@ class IngestionService:
         raw_record = await self.mongo.store_raw_data(
             {
                 "user_id": user_id,
+                "wiki_id": wiki_id,
                 "title": title,
                 "source_type": source_type,
                 "source_url": source_url,
@@ -42,6 +44,7 @@ class IngestionService:
         wiki_page = await self.mongo.create_wiki_page(
             {
                 "user_id": user_id,
+                "wiki_id": wiki_id,
                 "title": title,
                 "summary": summary,
                 "content": raw_content,
@@ -56,6 +59,7 @@ class IngestionService:
 
         await self.graph_service.sync_page_graph(
             user_id=user_id,
+            wiki_id=wiki_id,
             page_id=wiki_page["id"],
             nodes=concept_nodes,
             edges=relationships,
@@ -64,6 +68,7 @@ class IngestionService:
         await self.mongo.create_agent_log(
             {
                 "user_id": user_id,
+                "wiki_id": wiki_id,
                 "event_type": "ingest",
                 "event_name": "source_ingested",
                 "details": {

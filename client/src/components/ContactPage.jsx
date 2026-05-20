@@ -1,4 +1,4 @@
-import "./styles/Legal.css";
+import "./styles/ContactPage.css";
 function ContactPage() {
   return (
     <main className="legal-page">
@@ -39,7 +39,7 @@ function ContactPage() {
             <p>
               Snehanshu Sekhar Jena — software engineer, India.{" "}
               <a
-                href="https://linkedin.com/in/snehanshu-sekhar-jena"
+                href="https://www.linkedin.com/in/snehanshu-sekhar-jena-5365841a1/"
                 target="_blank"
                 rel="noreferrer noopener"
                 className="legal-link"

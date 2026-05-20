@@ -1,4 +1,4 @@
-import "./styles/Legal.css";
+import "./styles/PrivacyPolicy.css";
 const LAST_UPDATED = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   .toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 

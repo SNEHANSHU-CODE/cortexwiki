@@ -17,9 +17,9 @@ function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { accessToken, error } = useSelector((s) => s.auth);
+  const { refreshToken, error } = useSelector((s) => s.auth);
 
-  if (accessToken) return <Navigate to="/wiki" replace />;
+  if (refreshToken) return <Navigate to="/wiki" replace />;
 
   const handleChange = (e) => {
     dispatch(clearAuthError());
@@ -34,9 +34,10 @@ function RegisterPage() {
     try {
       const session = await registerRequest(form);
       dispatch(setSession({
-        accessToken: session.access_token,
-        user:        session.user,
-        expiresAt:   session.expires_at ?? null,
+        user:                   session.user,
+        refreshToken:           session.refresh_token,
+        accessToken:            session.access_token,
+        accessTokenExpiresAt:   session.expires_at ?? null,
       }));
       navigate("/wiki", { replace: true });
     } catch (apiError) {

@@ -13,7 +13,7 @@ import {
   setConnectionState,
   startAssistantMessage,
 } from "../redux/slices/chatSlice";
-import "./styles/Workspace.css";
+import "./styles/Chat.css";
 
 const QUICK_PROMPTS = [
   "Summarize the main concepts in my latest source.",
@@ -48,7 +48,7 @@ function ChatPage({ wikiId }) {
   const [input, setInput] = useState("");
   const [debug, setDebug] = useState(false);
   const dispatch          = useDispatch();
-  const { accessToken }   = useSelector((s) => s.auth);
+  const { refreshToken }  = useSelector((s) => s.auth);
   const { messages, pendingMessageId, status, error, connectionState } =
     useSelector((s) => s.chat);
 
@@ -61,7 +61,6 @@ function ChatPage({ wikiId }) {
   // ── Session ──────────────────────────────────────────────────────────────
   useEffect(() => {
     sessionRef.current = createChatStreamSession({
-      token: accessToken,
       onConnectionChange: (s) => dispatch(setConnectionState(s)),
       onStart:    ({ requestId }) =>
         dispatch(startAssistantMessage({ id: requestId, createdAt: new Date().toISOString() })),
@@ -80,7 +79,7 @@ function ChatPage({ wikiId }) {
       },
     });
     return () => { sessionRef.current?.disconnect(); abortRef.current?.abort(); };
-  }, [accessToken, dispatch]);
+  }, [refreshToken, dispatch]);
 
   // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => {

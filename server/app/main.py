@@ -75,7 +75,7 @@ async def disconnect(sid):
 @sio.on("query:start")
 async def handle_query(sid, data):
     """
-    Receives: { requestId, question, debug, allow_internet }
+    Receives: { requestId, wiki_id, question, debug, allow_internet }
     Emits:    query:started → query:token (N times) → query:complete | query:error
     """
     session = await sio.get_session(sid)
@@ -85,8 +85,13 @@ async def handle_query(sid, data):
         return
 
     request_id = data.get("requestId", "")
+    wiki_id = data.get("wiki_id", "").strip()
     question = data.get("question", "").strip()
     debug = data.get("debug", False)
+
+    if not wiki_id:
+        await sio.emit("query:error", {"message": "wiki_id is required."}, to=sid)
+        return
 
     if not question:
         await sio.emit("query:error", {"message": "Question is required."}, to=sid)
@@ -107,12 +112,14 @@ async def handle_query(sid, data):
         query_embedding = await llm.embed_text(question)
         wiki_pages = await mongo.search_wiki_pages(
             user_id=user["id"],
+            wiki_id=wiki_id,
             query=question,
             query_embedding=query_embedding,
             limit=settings.QUERY_RESULT_LIMIT,
         )
         related_concepts = await graph_service.get_related_concepts(
             user_id=user["id"],
+            wiki_id=wiki_id,
             query=question,
             limit=8,
         )
@@ -189,21 +196,38 @@ async def handle_query(sid, data):
     except Exception as exc:
         await sio.emit(
             "query:error",
-            {"requestId": request_id, "message": str(exc) or "Internal server error."},
+            {"requestId": request_id, "message": "Unable to generate an answer. Please try again."},
             to=sid,
         )
+        logger.exception("Socket query error for user %s", user["id"])
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
-    """Validates Bearer token and attaches user to request.state."""
+    """Validates Bearer token or access token cookie and attaches user to request.state."""
+
+    # Endpoints that don't require authentication
+    PUBLIC_PATHS = {
+        "/api/auth/login",
+        "/api/auth/register",
+        "/api/auth/refresh",
+        "/api/auth/logout",
+        "/health",
+        "/api/ping",
+    }
 
     async def dispatch(self, request: Request, call_next) -> Response:
         request.state.user = None
         request.state.access_token_jti = None
         request.state.auth_error = None
 
+        # Skip auth for public routes (exact match)
+        path = request.url.path
+        if path in self.PUBLIC_PATHS:
+            return await call_next(request)
+
+        # Try Bearer token first (for API/WebSocket)
         authorization = request.headers.get("Authorization")
         if authorization and authorization.startswith("Bearer "):
             token = authorization.removeprefix("Bearer ").strip()
@@ -214,6 +238,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
                 token_record = await get_redis_store().get_access_token(jti)
                 if not token_record or token_record.get("user_id") != user_id:
+                    logger.warning("Bearer token validation failed: jti=%s, user_id=%s, token_record=%s", jti, user_id, token_record)
                     raise AppError(
                         status_code=401,
                         code="access_token_invalid",
@@ -222,17 +247,57 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
                 user = await get_mongo_manager().get_user_by_id(user_id)
                 if not user:
+                    logger.warning("User not found for Bearer token: user_id=%s", user_id)
                     raise AppError(
                         status_code=401,
                         code="user_not_found",
                         message="Authenticated user no longer exists.",
                     )
 
+                logger.debug("Bearer token authenticated: user_id=%s", user_id)
                 request.state.user = user
                 request.state.access_token_jti = jti
 
             except AppError as exc:
+                logger.warning("Bearer token error: %s", exc.message)
                 request.state.auth_error = exc
+            return await call_next(request)
+
+        # Try access token cookie (for browser requests)
+        access_token = request.cookies.get(settings.ACCESS_COOKIE_NAME)
+        if access_token:
+            try:
+                payload = decode_access_token(access_token)
+                jti = payload["jti"]
+                user_id = payload["sub"]
+
+                token_record = await get_redis_store().get_access_token(jti)
+                if not token_record or token_record.get("user_id") != user_id:
+                    logger.warning("Cookie token validation failed: jti=%s, user_id=%s, token_record=%s, redis_mode=%s", jti, user_id, token_record, get_redis_store().mode)
+                    raise AppError(
+                        status_code=401,
+                        code="access_token_invalid",
+                        message="Access token expired or revoked.",
+                    )
+
+                user = await get_mongo_manager().get_user_by_id(user_id)
+                if not user:
+                    logger.warning("User not found for cookie token: user_id=%s", user_id)
+                    raise AppError(
+                        status_code=401,
+                        code="user_not_found",
+                        message="Authenticated user no longer exists.",
+                    )
+
+                logger.debug("Cookie token authenticated: user_id=%s", user_id)
+                request.state.user = user
+                request.state.access_token_jti = jti
+
+            except AppError as exc:
+                logger.warning("Cookie token error: %s", exc.message)
+                request.state.auth_error = exc
+        else:
+            logger.debug("No cookie token found for path: %s, available cookies: %s", path, list(request.cookies.keys()))
 
         return await call_next(request)
 

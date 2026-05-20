@@ -31,11 +31,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-in-production-with-at-least-32-characters"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     REFRESH_COOKIE_NAME: str = "cortexwiki_refresh_token"
+    ACCESS_COOKIE_NAME: str = "cortexwiki_access_token"
     COOKIE_SECURE: bool = False
-    COOKIE_SAMESITE: Literal["strict", "lax", "none"] = "strict"
+    COOKIE_SAMESITE: Literal["strict", "lax", "none"] = "lax"
     COOKIE_DOMAIN: str | None = None
 
     # MongoDB

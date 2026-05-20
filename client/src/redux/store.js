@@ -16,7 +16,7 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
-        ignoredPaths: ["auth.expiresAt"],
+        ignoredPaths: ["auth.accessTokenExpiresAt"],
       },
     }),
 });

@@ -9,7 +9,7 @@ const FEATURES = [
   { icon: "🧠", text: "5-agent query pipeline — planner, retrieval, hallucination guard, and more" },
   { icon: "🔗", text: "Knowledge graph built from your ingested sources — Neo4j + MongoDB" },
   { icon: "📡", text: "Streaming answers via Socket.io with HTTP fallback" },
-  { icon: "🛡️", text: "JWT auth — 15min access tokens, 7-day HttpOnly refresh cookies" },
+  { icon: "🛡️", text: "JWT auth — 15min access tokens, 30-day refresh tokens" },
 ];
 
 function LoginPage() {
@@ -18,9 +18,9 @@ function LoginPage() {
   const dispatch  = useDispatch();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const { accessToken, error } = useSelector((s) => s.auth);
+  const { refreshToken, error } = useSelector((s) => s.auth);
 
-  if (accessToken) return <Navigate to="/wiki" replace />;
+  if (refreshToken) return <Navigate to="/wiki" replace />;
 
   const destination = location.state?.from?.pathname || "/wiki";
 
@@ -37,9 +37,10 @@ function LoginPage() {
     try {
       const session = await loginRequest(form);
       dispatch(setSession({
-        accessToken: session.access_token,
-        user:        session.user,
-        expiresAt:   session.expires_at ?? null,
+        user:                   session.user,
+        refreshToken:           session.refresh_token,
+        accessToken:            session.access_token,
+        accessTokenExpiresAt:   session.expires_at ?? null,
       }));
       navigate(destination, { replace: true });
     } catch (apiError) {

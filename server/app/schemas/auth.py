@@ -18,6 +18,7 @@ class AuthTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_at: datetime
+    refresh_token: str
     user: UserResponse
 
 

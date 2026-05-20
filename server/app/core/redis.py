@@ -54,10 +54,10 @@ class RedisTokenStore:
         token: str,
     ) -> None:
         ttl = max(int((expires_at - datetime.now(UTC)).total_seconds()), 1)
+        # Only store metadata, not the raw token — reduces security exposure
         payload = {
             "user_id": user_id,
             "expires_at": expires_at.isoformat(),
-            "token": token,
         }
 
         if self.client is not None:
@@ -68,25 +68,32 @@ class RedisTokenStore:
                 pipe.sadd(user_key, jti)
                 pipe.expire(user_key, ttl)
                 await pipe.execute()
+            logger.info("Stored access token in Redis: jti=%s, user_id=%s, ttl=%s", jti, user_id, ttl)
             return
 
         async with self._lock:
             self._memory_tokens[jti] = (payload, expires_at)
             self._memory_user_index.setdefault(user_id, set()).add(jti)
+        logger.info("Stored access token in memory: jti=%s, user_id=%s", jti, user_id)
 
     async def get_access_token(self, jti: str) -> dict | None:
         if self.client is not None:
             value = await self.client.get(self._token_key(jti))
-            return json.loads(value) if value else None
+            result = json.loads(value) if value else None
+            logger.debug("Redis get_access_token: jti=%s, found=%s", jti, result is not None)
+            return result
 
         async with self._lock:
             record = self._memory_tokens.get(jti)
             if not record:
+                logger.debug("Memory get_access_token: jti=%s, found=False", jti)
                 return None
             payload, expires_at = record
             if expires_at <= datetime.now(UTC):
                 self._memory_tokens.pop(jti, None)
+                logger.debug("Memory get_access_token: jti=%s, expired=True", jti)
                 return None
+            logger.debug("Memory get_access_token: jti=%s, found=True", jti)
             return payload
 
     async def revoke_access_token(self, jti: str) -> None:

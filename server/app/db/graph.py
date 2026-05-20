@@ -110,6 +110,7 @@ class GraphManager:
         key = (user_id, wiki_id)
         matches = []
         for edge in self._edges:
+            # Enforce both user_id AND wiki_id for complete scoping
             if edge["user_id"] != user_id or edge.get("wiki_id") != wiki_id:
                 continue
             searchable = f'{edge.get("source", "")} {edge.get("target", "")}'.lower()

@@ -1,0 +1,418 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Graph.css — all styles for GraphPage (self-contained)
+───────────────────────────────────────────────────────────────────────── */
+
+/* ── Tokens ───────────────────────────────────────────────────────────── */
+.graph-embed {
+  --ws-ink:       #0a0f1e;
+  --ws-surface:   #111827;
+  --ws-surface-2: #1a2236;
+  --ws-border:    rgba(148, 163, 184, 0.10);
+  --ws-border-2:  rgba(148, 163, 184, 0.16);
+  --ws-accent:    #38bdf8;
+  --ws-accent-2:  #5eead4;
+  --ws-red:       #ef4444;
+  --ws-text:      #e2e8f0;
+  --ws-text-dim:  #94a3b8;
+  --ws-text-mute: #475569;
+}
+
+/* ── Graph embed shell ────────────────────────────────────────────────── */
+.graph-embed {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--ws-text);
+}
+
+/* ── Top bar: stats + search ──────────────────────────────────────────── */
+.graph-embed__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.625rem 1.25rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  flex-shrink: 0;
+  background: #0d1424;
+  flex-wrap: wrap;
+}
+
+.graph-embed__stats {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.graph-embed__stat {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.graph-embed__stat-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.graph-embed__stat-value {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.graph-embed__stat-sep {
+  color: #1e293b;
+  font-size: 0.75rem;
+}
+
+.graph-embed__search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Body: canvas + details sidebar ──────────────────────────────────── */
+.graph-embed__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.graph-embed__canvas {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.graph-embed__canvas .graph-viewer {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Node details sidebar ─────────────────────────────────────────────── */
+.graph-embed__details {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: #111827;
+  border-left: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+/* ── Panel chrome (used inside node details) ──────────────────────────── */
+.ws-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--ws-border);
+}
+
+.ws-panel__body {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Eyebrow label ────────────────────────────────────────────────────── */
+.ws-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--ws-accent);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ws-eyebrow::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--ws-accent);
+  flex-shrink: 0;
+}
+
+/* ── Node details metrics grid ────────────────────────────────────────── */
+.ws-details-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem;
+}
+
+.ws-details-metric {
+  padding: 0.875rem 1rem;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+}
+
+.ws-details-metric__label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--ws-text-mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ws-details-metric__value {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ws-text);
+}
+
+/* ── Relationship items ───────────────────────────────────────────────── */
+.ws-rel-item {
+  padding: 0.75rem 1rem;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ws-rel-item strong {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ws-accent);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.ws-rel-item span {
+  font-size: 0.78rem;
+  color: var(--ws-text-dim);
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+/* ── Connected node buttons ───────────────────────────────────────────── */
+.ws-details-node-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.ws-details-node-btn:hover {
+  background: rgba(56, 189, 248, 0.06);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+.ws-details-node-btn strong {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ws-text);
+}
+
+.ws-details-node-btn span {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--ws-text-mute);
+}
+
+/* ── Skeleton ─────────────────────────────────────────────────────────── */
+.ws-graph-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  flex: 1;
+}
+
+.ws-graph-skeleton__canvas {
+  flex: 1;
+  min-height: 420px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.06);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.ws-skeleton-line {
+  height: 0.875rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.ws-skeleton-line--short { width: 35%; }
+.ws-skeleton-line--wide  { width: 85%; }
+.ws-skeleton-line--med   { width: 65%; }
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.ws-btn--primary {
+  background: var(--ws-accent);
+  color: var(--ws-ink);
+  font-weight: 700;
+}
+
+.ws-btn--primary:hover {
+  background: #7dd3fc;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.28);
+}
+
+.ws-btn--primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.ws-btn--ghost {
+  background: transparent;
+  color: var(--ws-text-dim);
+  border: 1px solid var(--ws-border-2);
+}
+
+.ws-btn--ghost:hover {
+  color: var(--ws-text);
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.ws-btn--ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Form field (search input) ────────────────────────────────────────── */
+.ws-field__input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--ws-border-2);
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--ws-text);
+  font-size: 0.9rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+
+.ws-field__input::placeholder { color: #334155; }
+
+.ws-field__input:focus {
+  border-color: var(--ws-accent);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+/* ── Error banner ─────────────────────────────────────────────────────── */
+.ws-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.ws-banner--error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+.ws-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 280px;
+  padding: 3rem 2rem;
+}
+
+.ws-empty__icon {
+  font-size: 2rem;
+  opacity: 0.4;
+}
+
+.ws-empty h3 {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  margin: 0;
+}
+
+.ws-empty p {
+  font-size: 0.875rem;
+  color: var(--ws-text-dim);
+  max-width: 340px;
+  line-height: 1.65;
+  margin: 0;
+  font-weight: 300;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .graph-embed__body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .graph-embed__details {
+    border-left: none;
+    border-top: 1px solid rgba(148, 163, 184, 0.08);
+    max-height: 280px;
+  }
+}
+
+@media (max-width: 768px) {
+  .ws-details-metrics { grid-template-columns: 1fr; }
+}

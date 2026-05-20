@@ -1,4 +1,4 @@
-import "./styles/Legal.css";
+import "./styles/TermsOfService.css";
 const EFFECTIVE_DATE = new Date(new Date().getFullYear(), 0, 1)
   .toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 

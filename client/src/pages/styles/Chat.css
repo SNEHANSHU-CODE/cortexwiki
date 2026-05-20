@@ -1,0 +1,345 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Chat.css — all styles for ChatPage (self-contained)
+───────────────────────────────────────────────────────────────────────── */
+
+/* ── Tokens ───────────────────────────────────────────────────────────── */
+.chat-embed {
+  --ws-ink:       #0a0f1e;
+  --ws-surface:   #111827;
+  --ws-surface-2: #1a2236;
+  --ws-surface-3: #1e293b;
+  --ws-border:    rgba(148, 163, 184, 0.10);
+  --ws-border-2:  rgba(148, 163, 184, 0.16);
+  --ws-accent:    #38bdf8;
+  --ws-accent-2:  #5eead4;
+  --ws-amber:     #f59e0b;
+  --ws-red:       #ef4444;
+  --ws-text:      #e2e8f0;
+  --ws-text-dim:  #94a3b8;
+  --ws-text-mute: #475569;
+}
+
+/* ── Chat embed shell ─────────────────────────────────────────────────── */
+.chat-embed {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--ws-text);
+}
+
+/* ── Meta bar ─────────────────────────────────────────────────────────── */
+.chat-embed__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.625rem 1.25rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  flex-shrink: 0;
+  background: #0d1424;
+}
+
+.chat-embed__meta-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chat-embed__meta-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Quick prompts bar ────────────────────────────────────────────────── */
+.chat-embed__quickbar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+  flex-shrink: 0;
+  background: #0a0f1e;
+}
+
+.chat-embed__quick-btn {
+  background: rgba(148, 163, 184, 0.05);
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  border-radius: 100px;
+  padding: 0.3rem 0.875rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.75rem;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.chat-embed__quick-btn:hover {
+  background: rgba(56, 189, 248, 0.06);
+  border-color: rgba(56, 189, 248, 0.2);
+  color: #94a3b8;
+}
+
+.chat-embed__quick-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── Message stream ───────────────────────────────────────────────────── */
+.chat-embed__stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
+
+/* ── Composer area ────────────────────────────────────────────────────── */
+.chat-embed__composer {
+  flex-shrink: 0;
+  padding: 0.875rem 1.25rem 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+  background: #0d1424;
+}
+
+.ws-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 1rem;
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+  border-radius: 14px;
+  transition: border-color 0.15s;
+}
+
+.ws-composer:focus-within {
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.06);
+}
+
+.ws-composer__textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--ws-text);
+  font-size: 0.925rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  line-height: 1.6;
+  overflow-y: hidden;
+  min-height: 24px;
+}
+
+.ws-composer__textarea::placeholder { color: #334155; }
+
+.ws-composer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ws-composer__hint {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--ws-text-mute);
+  letter-spacing: 0.04em;
+}
+
+/* ── Eyebrow label ────────────────────────────────────────────────────── */
+.ws-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--ws-accent);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ws-eyebrow::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--ws-accent);
+  flex-shrink: 0;
+}
+
+/* ── Connection pill ──────────────────────────────────────────────────── */
+.ws-conn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 100px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--ws-border-2);
+  color: var(--ws-text-mute);
+  background: var(--ws-surface);
+}
+
+.ws-conn-pill::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.ws-conn-pill--connected    { color: var(--ws-accent-2); border-color: rgba(94,234,212,0.2); background: rgba(94,234,212,0.06); }
+.ws-conn-pill--reconnecting { color: var(--ws-amber);    border-color: rgba(245,158,11,0.2);  background: rgba(245,158,11,0.06); }
+.ws-conn-pill--fallback     { color: var(--ws-text-dim); }
+
+/* ── Checkbox ─────────────────────────────────────────────────────────── */
+.ws-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-size: 0.825rem;
+  color: var(--ws-text-dim);
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.ws-checkbox input[type="checkbox"] {
+  width: 16px; height: 16px;
+  accent-color: var(--ws-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.ws-btn--primary {
+  background: var(--ws-accent);
+  color: var(--ws-ink);
+  font-weight: 700;
+}
+
+.ws-btn--primary:hover {
+  background: #7dd3fc;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.28);
+}
+
+.ws-btn--primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.ws-btn--ghost {
+  background: transparent;
+  color: var(--ws-text-dim);
+  border: 1px solid var(--ws-border-2);
+}
+
+.ws-btn--ghost:hover {
+  color: var(--ws-text);
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.ws-btn--ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Error / status banner ────────────────────────────────────────────── */
+.ws-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.ws-banner--error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+.ws-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 280px;
+  padding: 3rem 2rem;
+}
+
+.ws-empty__icon {
+  font-size: 2rem;
+  opacity: 0.4;
+}
+
+.ws-empty h3 {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  margin: 0;
+}
+
+.ws-empty p {
+  font-size: 0.875rem;
+  color: var(--ws-text-dim);
+  max-width: 340px;
+  line-height: 1.65;
+  margin: 0;
+  font-weight: 300;
+}
+
+/* ── Accessibility ────────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .chat-embed__quickbar { display: none; }
+}

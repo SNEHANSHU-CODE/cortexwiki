@@ -1,0 +1,388 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Ingest.css — all styles for IngestPage + IngestPanel (self-contained)
+───────────────────────────────────────────────────────────────────────── */
+
+/* ── Tokens ───────────────────────────────────────────────────────────── */
+.workspace-page,
+.ws-panel {
+  --ws-ink:       #0a0f1e;
+  --ws-surface:   #111827;
+  --ws-surface-2: #1a2236;
+  --ws-surface-3: #1e293b;
+  --ws-border:    rgba(148, 163, 184, 0.10);
+  --ws-border-2:  rgba(148, 163, 184, 0.16);
+  --ws-accent:    #38bdf8;
+  --ws-accent-2:  #5eead4;
+  --ws-red:       #ef4444;
+  --ws-green:     #22c55e;
+  --ws-text:      #e2e8f0;
+  --ws-text-dim:  #94a3b8;
+  --ws-text-mute: #475569;
+}
+
+/* ── Page wrapper ─────────────────────────────────────────────────────── */
+.workspace-page {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--ws-text);
+  background: var(--ws-ink);
+}
+
+/* ── Eyebrow label ────────────────────────────────────────────────────── */
+.ws-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--ws-accent);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ws-eyebrow::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--ws-accent);
+  flex-shrink: 0;
+}
+
+/* ── Panel ────────────────────────────────────────────────────────────── */
+.ws-panel {
+  background: var(--ws-surface);
+  border: 1px solid var(--ws-border);
+  border-radius: 16px;
+  overflow: hidden;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--ws-text);
+}
+
+.ws-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--ws-border);
+}
+
+.ws-panel__title {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  margin: 0;
+}
+
+.ws-panel__body {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Segmented control ────────────────────────────────────────────────── */
+.ws-segments {
+  display: flex;
+  gap: 2px;
+  background: var(--ws-border);
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.ws-segment {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ws-text-dim);
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.ws-segment--active {
+  background: var(--ws-accent);
+  color: var(--ws-ink);
+  font-weight: 700;
+}
+
+/* ── Form fields ──────────────────────────────────────────────────────── */
+.ws-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ws-field__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ws-text-dim);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.ws-field__input,
+.ws-field__textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--ws-border-2);
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--ws-text);
+  font-size: 0.9rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+  resize: none;
+}
+
+.ws-field__input::placeholder,
+.ws-field__textarea::placeholder {
+  color: #334155;
+}
+
+.ws-field__input:focus,
+.ws-field__textarea:focus {
+  border-color: var(--ws-accent);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.ws-field__hint {
+  font-size: 0.75rem;
+  color: var(--ws-text-mute);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  margin: 0;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.ws-btn--primary {
+  background: var(--ws-accent);
+  color: var(--ws-ink);
+  font-weight: 700;
+}
+
+.ws-btn--primary:hover {
+  background: #7dd3fc;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.28);
+}
+
+.ws-btn--primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.ws-btn--ghost {
+  background: transparent;
+  color: var(--ws-text-dim);
+  border: 1px solid var(--ws-border-2);
+}
+
+.ws-btn--ghost:hover {
+  color: var(--ws-text);
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.ws-btn--ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Banners ──────────────────────────────────────────────────────────── */
+.ws-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.ws-banner--error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.ws-banner--success {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+/* ── Badges ───────────────────────────────────────────────────────────── */
+.ws-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 100px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--ws-accent);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.ws-badge--youtube { background: rgba(239,68,68,0.1); color: #f87171; border-color: rgba(239,68,68,0.2); }
+.ws-badge--web     { background: rgba(94,234,212,0.1); color: var(--ws-accent-2); border-color: rgba(94,234,212,0.2); }
+
+/* ── Tags ─────────────────────────────────────────────────────────────── */
+.ws-tag {
+  display: inline-flex;
+  padding: 0.2rem 0.65rem;
+  border-radius: 100px;
+  font-size: 0.775rem;
+  color: var(--ws-text-dim);
+  background: var(--ws-surface-2);
+  border: 1px solid var(--ws-border);
+}
+
+/* ── Ingest result callout ────────────────────────────────────────────── */
+.ws-result {
+  background: rgba(56, 189, 248, 0.04);
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  border-radius: 14px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.ws-result__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ws-result__title {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ws-text);
+}
+
+.ws-result__summary {
+  font-size: 0.875rem;
+  color: var(--ws-text-dim);
+  line-height: 1.65;
+  margin: 0;
+  font-weight: 300;
+}
+
+.ws-result__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+/* ── History list + cards ─────────────────────────────────────────────── */
+.ws-history-list { display: flex; flex-direction: column; gap: 0; }
+
+.ws-history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--ws-border);
+  transition: background 0.15s;
+}
+
+.ws-history-card:last-child { border-bottom: none; }
+.ws-history-card:hover      { background: var(--ws-surface-2); }
+
+.ws-history-card__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ws-history-card__time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--ws-text-mute);
+  letter-spacing: 0.04em;
+}
+
+.ws-history-card h3 {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.ws-history-card p {
+  font-size: 0.825rem;
+  color: var(--ws-text-dim);
+  margin: 0;
+  line-height: 1.6;
+  font-weight: 300;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ws-history-card__link {
+  font-size: 0.775rem;
+  color: var(--ws-accent);
+  text-decoration: none;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.02em;
+  transition: color 0.15s;
+  align-self: flex-start;
+}
+
+.ws-history-card__link:hover { color: #7dd3fc; }
+
+.ws-history-card--skeleton .ws-skeleton-line { border-radius: 6px; }
+
+/* ── Skeleton lines ───────────────────────────────────────────────────── */
+.ws-skeleton-line {
+  height: 0.875rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.ws-skeleton-line--short { width: 35%; }
+.ws-skeleton-line--wide  { width: 85%; }
+.ws-skeleton-line--med   { width: 65%; }
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}

@@ -14,6 +14,7 @@ def _auth_token_response(session: dict) -> AuthTokenResponse:
     return AuthTokenResponse(
         access_token=session["access_token"],
         expires_at=session["access_token_expires_at"],
+        refresh_token=session["refresh_token"],
         user=UserResponse(**session["user"]),
     )
 
@@ -29,6 +30,7 @@ async def register(request: Request, payload: RegisterRequest, response: Respons
         user_agent=request.headers.get("User-Agent", ""),
         ip_address=request.client.host if request.client else "",
     )
+    auth_service.set_access_cookie(response, session["access_token"], session["access_token_expires_at"])
     auth_service.set_refresh_cookie(response, session["refresh_token"], session["refresh_token_expires_at"])
     return _auth_token_response(session)
 
@@ -42,6 +44,7 @@ async def login(request: Request, payload: LoginRequest, response: Response):
         user_agent=request.headers.get("User-Agent", ""),
         ip_address=request.client.host if request.client else "",
     )
+    auth_service.set_access_cookie(response, session["access_token"], session["access_token_expires_at"])
     auth_service.set_refresh_cookie(response, session["refresh_token"], session["refresh_token_expires_at"])
     return _auth_token_response(session)
 
@@ -58,6 +61,7 @@ async def refresh(request: Request, response: Response):
         user_agent=request.headers.get("User-Agent", ""),
         ip_address=request.client.host if request.client else "",
     )
+    auth_service.set_access_cookie(response, session["access_token"], session["access_token_expires_at"])
     auth_service.set_refresh_cookie(response, session["refresh_token"], session["refresh_token_expires_at"])
     return _auth_token_response(session)
 
@@ -72,6 +76,7 @@ async def logout(request: Request, response: Response):
         access_token_jti=getattr(request.state, "access_token_jti", None),
         refresh_token=refresh_token,
     )
+    auth_service.clear_access_cookie(response)
     auth_service.clear_refresh_cookie(response)
     return LogoutResponse()
 

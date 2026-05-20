@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import "./styles/Components.css";
+import "./styles/MarkdownContent.css";
 
 function CopyCodeButton({ value }) {
   const [copied, setCopied] = useState(false);

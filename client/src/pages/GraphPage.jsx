@@ -2,7 +2,7 @@ import { startTransition, useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import GraphViewer from "../components/GraphViewer";
 import { clearGraphError, requestGraph, selectGraphNode } from "../redux/slices/graphSlice";
-import "./styles/Workspace.css";
+import "./styles/Graph.css";
 
 function edgeNodeId(ep) {
   return typeof ep === "string" ? ep : ep?.id ?? "";

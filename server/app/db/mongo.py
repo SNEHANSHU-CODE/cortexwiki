@@ -179,6 +179,20 @@ class MongoManager:
                 token["revoked"] = True
                 token["updated_at"] = now
 
+    async def cleanup_expired_refresh_tokens(self) -> None:
+        """Delete refresh tokens that have expired (30 days have passed)."""
+        now = datetime.now(UTC)
+        if self.database is not None:
+            await self.database.refresh_tokens.delete_many({"expires_at": {"$lt": now}})
+            return
+        # Clean up in-memory tokens
+        expired_ids = [
+            token_id for token_id, token in self._memory["refresh_tokens"].items()
+            if token["expires_at"] < now
+        ]
+        for token_id in expired_ids:
+            del self._memory["refresh_tokens"][token_id]
+
     # ── Wikis ─────────────────────────────────────────────────────────────────
 
     async def create_wiki(self, payload: dict) -> dict:

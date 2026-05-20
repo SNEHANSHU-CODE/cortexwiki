@@ -25,14 +25,17 @@ export function initializeHttpClient(store) {
 
   boundStore = store;
 
+  // Request interceptor: add Bearer token from Redux state to Authorization header
   httpClient.interceptors.request.use((config) => {
-    const token = boundStore.getState().auth.accessToken;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const state = boundStore?.getState?.();
+    const accessToken = state?.auth?.accessToken;
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
     }
     return config;
   });
 
+  // Response interceptor: handle 401 by refreshing token automatically
   httpClient.interceptors.response.use(
     (response) => response,
     async (error) => {
@@ -50,13 +53,13 @@ export function initializeHttpClient(store) {
         const session = await refreshSession();
         boundStore.dispatch(
           setSession({
-            accessToken: session.access_token,
             user: session.user,
-            expiresAt: session.expires_at,
+            refreshToken: session.refresh_token,
+            accessTokenExpiresAt: session.expires_at,
+            accessToken: session.access_token,
           }),
         );
-        originalRequest.headers = originalRequest.headers ?? {};
-        originalRequest.headers.Authorization = `Bearer ${session.access_token}`;
+        // Retry original request — access token will be added by the request interceptor
         return await httpClient(originalRequest);
       } catch (refreshError) {
         boundStore.dispatch(clearSession());
@@ -69,9 +72,19 @@ export function initializeHttpClient(store) {
 
 export async function refreshSession() {
   if (!refreshPromise) {
-    refreshPromise = refreshClient
-      .post("/api/auth/refresh")
-      .then((response) => response.data)
+    refreshPromise = (async () => {
+      const state = boundStore?.getState?.();
+      const refreshToken = state?.auth?.refreshToken;
+      
+      if (!refreshToken) {
+        throw new Error("No refresh token available");
+      }
+
+      const response = await refreshClient.post("/api/auth/refresh", {
+        refresh_token: refreshToken,
+      });
+      return response.data;
+    })()
       .finally(() => {
         refreshPromise = null;
       });

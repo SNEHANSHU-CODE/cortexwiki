@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import MarkdownContent from "./MarkdownContent";
-import "./styles/Components.css";
+import "./styles/MessageBubble.css";
 
 // ── Copy button ────────────────────────────────────────────────────────────
 

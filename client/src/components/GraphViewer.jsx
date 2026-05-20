@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
-import "./styles/Components.css";
+import "./styles/GraphViewer.css";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

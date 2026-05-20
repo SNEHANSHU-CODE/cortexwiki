@@ -4,13 +4,13 @@ import AppSkeleton from "./AppSkeleton";
 
 function ProtectedRoute() {
   const location = useLocation();
-  const { initialized, status, accessToken } = useSelector((s) => s.auth);
+  const { initialized, status, refreshToken } = useSelector((s) => s.auth);
 
   if (!initialized || status === "loading") {
     return <AppSkeleton compact label="Checking your session…" />;
   }
 
-  if (!accessToken) {
+  if (!refreshToken) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 

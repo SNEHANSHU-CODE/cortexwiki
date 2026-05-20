@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useSelector } from "react-redux";
 import IngestPanel from "../components/IngestPanel";
-import "./styles/Workspace.css";
+import "./styles/Ingest.css";
 
 export function NoteDrawer({ item, onClose }) {
   const overlayRef = useRef(null);
@@ -46,7 +46,7 @@ export function NoteDrawer({ item, onClose }) {
     >
       <div
         style={{
-          width: "min(760px, 100vw)",
+          width: "100vw",
           height: "100vh",
           background: "#111827",
           borderLeft: "1px solid rgba(148,163,184,0.12)",

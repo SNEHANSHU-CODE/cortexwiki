@@ -1,0 +1,89 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   GraphViewer.css
+   Styles for GraphViewer.jsx only.
+   Depends on the shared design tokens defined in ./styles/Components.css
+   Import alongside the component:
+     import "./GraphViewer.css";
+───────────────────────────────────────────────────────────────────────── */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GRAPH VIEWER — container
+   Used by: <div className="graph-viewer"> in GraphViewer.jsx
+══════════════════════════════════════════════════════════════════════════ */
+
+.graph-viewer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border-radius: 0 0 14px 14px;
+  overflow: hidden;
+  cursor: grab;
+
+  /* Subtle dark background so the transparent canvas blends cleanly */
+  background: var(--c-ink, #0a0f1e);
+}
+
+.graph-viewer:active {
+  cursor: grabbing;
+}
+
+/* ── Canvas element rendered by react-force-graph-2d ─────────────────── */
+/* The library injects a <canvas> directly inside the container.          */
+.graph-viewer canvas {
+  display: block;       /* removes the inline baseline gap */
+  border-radius: inherit;
+}
+
+/* ── Accessibility / focus ring when the container receives keyboard focus */
+.graph-viewer:focus-visible {
+  outline: 2px solid var(--c-accent, #38bdf8);
+  outline-offset: 2px;
+}
+
+/* ── Loading / empty state placeholder ──────────────────────────────────
+   Shown while size.width / size.height are still 0 (before the
+   ResizeObserver fires its first callback).                               */
+.graph-viewer:empty::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 60% 40% at 50% 50%,
+      rgba(56, 189, 248, 0.04) 0%,
+      transparent 70%
+    );
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* ── Subtle grid overlay — purely decorative, non-interactive ───────────
+   Creates the "data space" feel without touching canvas rendering.       */
+.graph-viewer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+/* ── Vignette — frames the graph softly, keeps edges readable ───────────*/
+.graph-viewer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 100% 100% at 50% 50%,
+    transparent 55%,
+    rgba(10, 15, 30, 0.55) 100%
+  );
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 1;
+}

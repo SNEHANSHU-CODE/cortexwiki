@@ -6,6 +6,7 @@ All operations are now scoped to (user_id, wiki_id).
 """
 
 import re
+import unicodedata
 
 from app.utils.logging import get_logger
 
@@ -46,6 +47,9 @@ class GraphService:
         limit: int = 8,
     ) -> list[dict]:
         terms = re.findall(r"[a-zA-Z]{3,}", query.lower())
+        # Normalize unicode characters for consistent matching (e.g., café → cafe)
+        terms = [unicodedata.normalize('NFKD', t).encode('ascii', 'ignore').decode('ascii') for t in terms]
+        terms = [t for t in terms if t]  # Remove empty strings from normalization
         return await self._graph.get_related_concepts(
             user_id=user_id,
             wiki_id=wiki_id,
@@ -81,6 +85,8 @@ class GraphService:
         Extract concept nodes and relationships from ingested content.
         Simple capitalized-phrase extraction — sufficient for portfolio use.
         """
+        import hashlib
+        
         raw_concepts = re.findall(
             r'\b[A-Z][a-zA-Z]{2,}(?:\s[A-Z][a-zA-Z]{2,})*\b',
             content[:3000],
@@ -100,7 +106,9 @@ class GraphService:
                     "category": "supporting",
                 })
 
-        title_id = title.lower()[:40]
+        # Use hash suffix to prevent ID collisions with similar titles
+        title_hash = hashlib.md5(title.encode()).hexdigest()[:4]
+        title_id = f"{title.lower()[:35]}-{title_hash}"
         if not any(n["id"] == title_id for n in nodes):
             nodes.insert(0, {
                 "id": title_id,

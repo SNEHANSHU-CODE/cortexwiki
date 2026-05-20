@@ -1,6 +1,6 @@
-/* ── Legal pages — Privacy, Terms, Contact ────────────────────────────────
-   Shared styles. Import in each page: import "./styles/Legal.css"
-──────────────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────
+   ContactPage.css — self-contained styles for ContactPage
+───────────────────────────────────────────────────────────────────────── */
 
 .legal-page {
   background: #0a0f1e;
@@ -13,7 +13,7 @@
   margin: 0 auto;
 }
 
-/* ── Header ─────────────────────────────────────────────────────────── */
+/* ── Header ───────────────────────────────────────────────────────────── */
 .legal-eyebrow {
   display: inline-block;
   font-family: 'IBM Plex Mono', monospace;
@@ -34,13 +34,6 @@
   margin-bottom: 0.75rem;
 }
 
-.legal-meta {
-  font-size: 0.8rem;
-  color: #475569;
-  font-family: 'IBM Plex Mono', monospace;
-  margin-bottom: 1.25rem;
-}
-
 .legal-intro {
   font-size: 1.05rem;
   color: #94a3b8;
@@ -52,7 +45,7 @@
   margin-bottom: 0;
 }
 
-/* ── Sections ───────────────────────────────────────────────────────── */
+/* ── Sections ─────────────────────────────────────────────────────────── */
 .legal-sections {
   margin-top: 2.5rem;
   display: flex;
@@ -87,7 +80,7 @@
   margin: 0;
 }
 
-/* ── Links ──────────────────────────────────────────────────────────── */
+/* ── Links ────────────────────────────────────────────────────────────── */
 .legal-link {
   color: #38bdf8;
   text-decoration: none;
@@ -99,6 +92,7 @@
   text-decoration: underline;
 }
 
+/* ── Responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
   .legal-page { padding: 72px 1.25rem 80px; }
 }
