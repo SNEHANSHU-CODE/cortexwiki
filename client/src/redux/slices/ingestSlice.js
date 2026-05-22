@@ -32,6 +32,14 @@ const ingestSlice = createSlice({
   reducers: {
     clearIngestFeedback(state) { state.error = null; state.successMessage = null; },
     resetSubmitStatus(state)   { state.submitStatus = "idle"; },
+    clearIngestionState(state) {
+      state.items = [];
+      state.historyStatus = "idle";
+      state.submitStatus = "idle";
+      state.error = null;
+      state.successMessage = null;
+      state.latestResult = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -54,5 +62,5 @@ const ingestSlice = createSlice({
   },
 });
 
-export const { clearIngestFeedback, resetSubmitStatus } = ingestSlice.actions;
+export const { clearIngestFeedback, resetSubmitStatus, clearIngestionState } = ingestSlice.actions;
 export default ingestSlice.reducer;

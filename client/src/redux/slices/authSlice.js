@@ -19,7 +19,7 @@ const authSlice = createSlice({
     },
     setSession(state, action) {
       state.user                = action.payload.user;
-      state.refreshToken        = action.payload.refreshToken;
+      state.refreshToken        = action.payload.refreshToken ?? null;
       state.accessToken         = action.payload.accessToken ?? null;
       state.accessTokenExpiresAt = action.payload.accessTokenExpiresAt ?? null;
       state.status              = "authenticated";
@@ -49,7 +49,7 @@ const authSlice = createSlice({
       if (!state.initialized) {
         state.initialized = true;
         if (state.status === "loading") {
-          state.status = state.refreshToken ? "authenticated" : "anonymous";
+          state.status = "anonymous";
         }
       }
     },

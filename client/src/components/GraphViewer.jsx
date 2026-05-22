@@ -31,6 +31,7 @@ const NODE_COLORS = {
 function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
   const containerRef  = useRef(null);
   const graphRef      = useRef(null);
+  const hasAutoFitRef = useRef(false);
   // positionCache is a ref — never triggers re-renders
   const positionCache = useRef(new Map());
 
@@ -106,6 +107,25 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     graphRef.current.centerAt(node.x ?? 0, node.y ?? 0, 500);
     graphRef.current.zoom(2.5, 700);
   }, [selectedNodeId, normalizedData.nodes]);
+
+  // ── Center on graph load (initial data) ────────────────────────────────────
+  useEffect(() => {
+    hasAutoFitRef.current = false;
+  }, [graphData.nodes, graphData.edges]);
+
+  useEffect(() => {
+    if (!graphRef.current || normalizedData.nodes.length === 0) return;
+    if (selectedNodeId) return;
+    if (size.width <= 0 || size.height <= 0) return;
+    if (hasAutoFitRef.current) return;
+
+    hasAutoFitRef.current = true;
+    requestAnimationFrame(() => {
+      if (!graphRef.current) return;
+      // Fit to the visible viewport of the component on first paint.
+      graphRef.current.zoomToFit(500, 64);
+    });
+  }, [normalizedData.nodes.length, selectedNodeId, size.width, size.height]);
 
   // ── Forces — configured once on engine stop ──────────────────────────────
   const configureForces = useCallback(() => {

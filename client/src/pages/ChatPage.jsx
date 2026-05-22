@@ -48,7 +48,7 @@ function ChatPage({ wikiId }) {
   const [input, setInput] = useState("");
   const [debug, setDebug] = useState(false);
   const dispatch          = useDispatch();
-  const { refreshToken }  = useSelector((s) => s.auth);
+  const { accessToken }  = useSelector((s) => s.auth);
   const { messages, pendingMessageId, status, error, connectionState } =
     useSelector((s) => s.chat);
 
@@ -61,6 +61,7 @@ function ChatPage({ wikiId }) {
   // ── Session ──────────────────────────────────────────────────────────────
   useEffect(() => {
     sessionRef.current = createChatStreamSession({
+      token: accessToken,
       onConnectionChange: (s) => dispatch(setConnectionState(s)),
       onStart:    ({ requestId }) =>
         dispatch(startAssistantMessage({ id: requestId, createdAt: new Date().toISOString() })),
@@ -79,7 +80,7 @@ function ChatPage({ wikiId }) {
       },
     });
     return () => { sessionRef.current?.disconnect(); abortRef.current?.abort(); };
-  }, [refreshToken, dispatch]);
+  }, [accessToken, dispatch]);
 
   // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => {

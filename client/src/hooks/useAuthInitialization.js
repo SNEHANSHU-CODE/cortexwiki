@@ -23,6 +23,7 @@ export function useAuthInitialization() {
 
     const bootstrap = async () => {
       dispatch(setStatus("loading"));
+
       try {
         const session = await getSessionFromRefresh();
         if (!active) return;
@@ -34,10 +35,12 @@ export function useAuthInitialization() {
             accessTokenExpiresAt: session.expires_at,
           }),
         );
-        dispatch(finishHydration());
-      } catch {
+      } catch (error) {
         if (!active) return;
+        console.error("Auth initialization failed:", error);
         dispatch(clearSession());
+      } finally {
+        if (!active) return;
         dispatch(finishHydration());
       }
     };

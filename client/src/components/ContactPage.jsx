@@ -7,7 +7,7 @@ function ContactPage() {
           <span className="legal-eyebrow">Contact</span>
           <h1>Get in touch</h1>
           <p className="legal-intro">
-            Questions, feedback, or bug reports — reach out directly.
+            Questions, feedback, or bug reports - reach out directly.
             CortexWiki is an independent project and every message is read personally.
           </p>
         </div>
@@ -29,7 +29,7 @@ function ContactPage() {
           <section className="legal-section">
             <h2>Response time</h2>
             <p>
-              We aim to respond within 2–3 business days. For urgent security issues,
+              We aim to respond within 2-3 business days. For urgent security issues,
               please include "Security" in the subject line.
             </p>
           </section>
@@ -37,14 +37,14 @@ function ContactPage() {
           <section className="legal-section">
             <h2>Built by</h2>
             <p>
-              Snehanshu Sekhar Jena — software engineer, India.{" "}
+              Snehanshu Sekhar Jena - software engineer, India.{" "}
               <a
                 href="https://www.linkedin.com/in/snehanshu-sekhar-jena-5365841a1/"
                 target="_blank"
                 rel="noreferrer noopener"
                 className="legal-link"
               >
-                LinkedIn ↗
+                LinkedIn
               </a>
             </p>
           </section>

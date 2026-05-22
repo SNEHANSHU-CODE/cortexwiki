@@ -144,8 +144,9 @@
 
 /* ── Wiki card ────────────────────────────────────────────────────────── */
 .cw-wiki-card {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 0;
   border-left: 2px solid transparent;
   border-bottom: 1px solid rgba(148, 163, 184, 0.07);
@@ -165,10 +166,11 @@
   width: 100%;
   text-align: left;
   cursor: pointer;
-  padding: 0.875rem 1rem 0.5rem;
+  padding: 0.875rem 0.75rem 0.6rem 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  min-width: 0;
 }
 
 .cw-wiki-card__topline {
@@ -204,6 +206,25 @@
   -webkit-box-orient: vertical;
 }
 
+.cw-wiki-card__preview {
+  margin: 0.2rem 0 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: #94a3b8;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  max-height: 4.1em;
+  overflow: hidden;
+}
+
+.cw-wiki-card__preview li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cw-wiki-card__meta {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.6rem;
@@ -213,9 +234,12 @@
 
 .cw-wiki-card__actions {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 0.375rem;
-  padding: 0 1rem 0.75rem;
-  justify-content: flex-end;
+  padding: 0.875rem 1rem 0.75rem 0.25rem;
+  justify-content: flex-start;
+  align-self: stretch;
 }
 
 .cw-wiki-card__trash {
@@ -291,10 +315,48 @@
 
 .cw-note-content {
   flex: 1;
-  padding: 2rem;
-  max-width: 800px;
+  padding: 1rem 1.2rem 1.5rem;
+  max-width: 1200px;
   width: 100%;
   margin: 0 auto;
+}
+
+.cw-note-paper {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.88));
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 14px 42px rgba(2, 6, 23, 0.35);
+  padding: 1.1rem 1.2rem;
+}
+
+.cw-note-paper p {
+  margin: 0 0 0.9rem;
+  color: #dbeafe;
+  line-height: 1.8;
+  letter-spacing: 0.01em;
+}
+
+.cw-note-paper p:last-child {
+  margin-bottom: 0;
+}
+
+.cw-note-paper h1,
+.cw-note-paper h2,
+.cw-note-paper h3,
+.cw-note-paper h4 {
+  margin-top: 0.35rem;
+  margin-bottom: 0.7rem;
+}
+
+.cw-note-paper ul,
+.cw-note-paper ol {
+  margin: 0.35rem 0 0.85rem;
+  padding-left: 1.25rem;
+}
+
+.cw-note-paper ol li,
+.cw-note-paper ul li {
+  margin: 0.25rem 0;
 }
 
 .cw-note-loading {

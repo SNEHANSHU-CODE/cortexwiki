@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import GraphViewer from "../components/GraphViewer";
 import { clearGraphError, requestGraph, selectGraphNode } from "../redux/slices/graphSlice";
@@ -121,6 +121,7 @@ function NodeDetails({ node, relationships, connectedNodes, onSelectNode }) {
  * No page header, no outer padding — fills its parent container.
  */
 function GraphPage({ wikiId }) {
+  const rootRef = useRef(null);
   const dispatch = useDispatch();
   const { nodes, edges, topic, selectedNodeId, status, error } =
     useSelector((s) => s.graph);
@@ -131,6 +132,16 @@ function GraphPage({ wikiId }) {
     if (!wikiId) return;
     void dispatch(requestGraph({ wikiId, topic: "" }));
   }, [dispatch, wikiId]);
+
+  // Ensure the graph view starts aligned to the parent viewport top on mount.
+  useEffect(() => {
+    const node = rootRef.current;
+    if (!node) return;
+    const scrollParent = node.closest(".cw-dashboard__right");
+    if (scrollParent) {
+      scrollParent.scrollTop = 0;
+    }
+  }, []);
 
   // Derived data
   const selectedNode = useMemo(
@@ -171,7 +182,7 @@ function GraphPage({ wikiId }) {
   const isLoading = status === "loading";
 
   return (
-    <div className="graph-embed">
+    <div className="graph-embed" ref={rootRef}>
 
       {/* ── Top bar: stats + search ───────────────────────────────────── */}
       <div className="graph-embed__topbar">

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useSelector } from "react-redux";
 import IngestPanel from "../components/IngestPanel";
+import MarkdownContent from "../components/MarkdownContent";
 import "./styles/Ingest.css";
 
 export function NoteDrawer({ item, onClose }) {
@@ -25,6 +26,12 @@ export function NoteDrawer({ item, onClose }) {
   };
 
   const badgeType = item.source_type || "wiki";
+  const normalizedContent = (item.content || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\s+(\d+\.\s+)/g, "\n$1")
+    .replace(/\s+([*-]\s+)/g, "\n$1")
+    .replace(/\s+(Overview|Key Components|Benefits|Setting Up[^:]*|Define a Note)\s*/gi, "\n\n$1\n")
+    .trim();
 
   return (
     <div
@@ -108,15 +115,16 @@ export function NoteDrawer({ item, onClose }) {
               width: 36,
               height: 36,
               borderRadius: 8,
-              border: "1px solid rgba(148,163,184,0.16)",
-              background: "transparent",
-              color: "#64748b",
-              fontSize: "1.1rem",
+              border: "1px solid rgba(226,232,240,0.38)",
+              background: "rgba(15,23,42,0.92)",
+              color: "#f8fafc",
+              fontSize: "1rem",
+              fontWeight: 700,
               cursor: "pointer",
               flexShrink: 0,
             }}
           >
-            X
+            ×
           </button>
         </div>
 
@@ -166,15 +174,14 @@ export function NoteDrawer({ item, onClose }) {
               </span>
               <div
                 style={{
-                  fontFamily: "'DM Sans', system-ui, sans-serif",
-                  fontSize: "0.9rem",
-                  color: "#94a3b8",
-                  lineHeight: 1.8,
-                  whiteSpace: "pre-wrap",
-                  fontWeight: 300,
+                  background: "linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.88))",
+                  border: "1px solid rgba(148, 163, 184, 0.14)",
+                  borderRadius: "14px",
+                  boxShadow: "0 14px 42px rgba(2, 6, 23, 0.35)",
+                  padding: "1.1rem 1.2rem",
                 }}
               >
-                {item.content}
+                <MarkdownContent content={normalizedContent} />
               </div>
             </section>
           )}

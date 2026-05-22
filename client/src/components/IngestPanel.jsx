@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
+  clearIngestionState,
   clearIngestFeedback,
   loadIngestionHistory,
   resetSubmitStatus,
   submitIngestion,
 } from "../redux/slices/ingestSlice";
+import { IngestFallbackModal } from "./IngestFallback";
 import "./styles/IngestPanel.css";
 
 /* ── Skeleton ─────────────────────────────────────────────────────────── */
@@ -100,8 +102,11 @@ function HistoryTabs({ items, activeId, onSelect }) {
 /* ── IngestPanel ──────────────────────────────────────────────────────── */
 function IngestPanel({ wikiId, onIngestSuccess }) {
   const [sourceType, setSourceType] = useState("youtube");
-  const [url, setUrl]               = useState("");
+  const [pendingSources, setPendingSources] = useState([]); // Array of {id, type, url, status, error}
+  const [currentUrl, setCurrentUrl] = useState("");
   const [activeTabId, setActiveTabId] = useState(null);
+  const [fallbackSource, setFallbackSource] = useState(null);
+  const [fallbackOpen, setFallbackOpen] = useState(false);
   const prevWikiIdRef = useRef(null);
   const dispatch = useDispatch();
   const { items, historyStatus, submitStatus, error, successMessage } =
@@ -109,6 +114,15 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
 
   // Load history when wikiId changes (not on every render)
   useEffect(() => {
+    if (!wikiId) {
+      prevWikiIdRef.current = null;
+      setActiveTabId(null);
+      setPendingSources([]);
+      setCurrentUrl("");
+      dispatch(clearIngestionState());
+      return;
+    }
+
     if (!wikiId) return;
     if (prevWikiIdRef.current !== wikiId) {
       prevWikiIdRef.current = wikiId;
@@ -116,6 +130,9 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
       dispatch(resetSubmitStatus());
       dispatch(clearIngestFeedback());
       void dispatch(loadIngestionHistory(wikiId));
+      // Clear pending sources when wiki changes
+      setPendingSources([]);
+      setCurrentUrl("");
     }
   }, [wikiId, dispatch]);
 
@@ -130,7 +147,6 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
   useEffect(() => {
     dispatch(resetSubmitStatus());
     dispatch(clearIngestFeedback());
-    setUrl("");
   }, [sourceType, dispatch]);
 
   // Auto-dismiss success banner after 4s
@@ -140,29 +156,83 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
     return () => clearTimeout(t);
   }, [successMessage, dispatch]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!wikiId || !url.trim() || submitStatus === "loading") return;
+  const handleAddSource = () => {
+    if (!currentUrl.trim()) return;
+    const id = `${sourceType}-${Date.now()}`;
+    setPendingSources([
+      ...pendingSources,
+      { id, type: sourceType, url: currentUrl.trim(), status: "pending", error: null }
+    ]);
+    setCurrentUrl("");
+  };
+
+  const handleRemoveSource = (id) => {
+    setPendingSources(pendingSources.filter((s) => s.id !== id));
+  };
+
+  const handleIngestAll = async () => {
+    if (!wikiId || pendingSources.length === 0 || submitStatus === "loading") return;
+    
     dispatch(clearIngestFeedback());
-    const action = await dispatch(submitIngestion({ sourceType, url: url.trim(), wikiId }));
-    if (submitIngestion.fulfilled.match(action)) {
-      setUrl("");
-      if (action.payload?.id) setActiveTabId(action.payload.id);
-      onIngestSuccess?.(action.payload);
+    
+    // Process all sources sequentially
+    let successCount = 0;
+    const updatedSources = [...pendingSources];
+    
+    for (let i = 0; i < updatedSources.length; i++) {
+      const source = updatedSources[i];
+      source.status = "ingesting";
+      setPendingSources([...updatedSources]);
+      
+      const action = await dispatch(submitIngestion({
+        sourceType: source.type,
+        url: source.url,
+        wikiId
+      }));
+      
+      if (submitIngestion.fulfilled.match(action)) {
+        source.status = "success";
+        successCount++;
+        if (action.payload?.id) {
+          setActiveTabId(action.payload.id);
+        }
+      } else {
+        source.status = "failed";
+        source.error = "Automatic ingest failed. Try fallback method.";
+      }
+      
+      setPendingSources([...updatedSources]);
+    }
+    
+    // Clear successful sources, keep failed ones
+    setPendingSources(updatedSources.filter((s) => s.status === "failed"));
+    
+    if (successCount > 0) {
+      onIngestSuccess?.({ count: successCount });
     }
   };
 
+  const handleFallbackSubmit = async (fallbackData) => {
+    // TODO: Implement fallback ingest endpoint on server
+    console.log("Fallback ingest:", fallbackData);
+    setFallbackOpen(false);
+    // After successful submission, mark the source as removed from pending
+    setPendingSources(pendingSources.filter((s) => s.id !== fallbackSource?.id));
+  };
+
   const isSubmitting = submitStatus === "loading";
-  const isDisabled   = !wikiId;
+  const isDisabled = !wikiId;
+  const hasFailedSources = pendingSources.some((s) => s.status === "failed");
 
   return (
-    <div className="ws-panel" style={{ overflow: "hidden", flexShrink: 0 }}>
+    <>
+      <div className="ws-panel" style={{ overflow: "hidden", flexShrink: 0 }}>
 
-      {/* ── Form section ──────────────────────────────────────────────── */}
+        {/* ── Form section ──────────────────────────────────────────────── */}
       <div className="ws-panel__header">
         <div>
           <span className="ws-eyebrow" style={{ marginBottom: "0.25rem" }}>Source setup</span>
-          <h2 className="ws-panel__title">Add a source</h2>
+          <h2 className="ws-panel__title">Add sources</h2>
         </div>
       </div>
 
@@ -184,14 +254,10 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
           ))}
         </div>
 
-        {/* URL form */}
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <div className="ws-field">
-            <label className="ws-field__label" htmlFor="ingestUrl">
-              {sourceType === "youtube" ? "YouTube video URL" : "Web page URL"}
-            </label>
+        {/* URL input + Add button */}
+        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+          <div className="ws-field" style={{ flex: 1, marginBottom: 0 }}>
             <input
-              id="ingestUrl"
               className="ws-field__input"
               type="url"
               inputMode="url"
@@ -200,65 +266,164 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                   ? "https://youtube.com/watch?v=…"
                   : "https://example.com/article"
               }
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              required
+              value={currentUrl}
+              onChange={(e) => setCurrentUrl(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && handleAddSource()}
               disabled={isDisabled}
             />
-            {!isDisabled && (
-              <p className="ws-field__hint">
-                {sourceType === "youtube"
-                  ? "Transcripts are extracted, summarized, and compounded into the wiki's master note."
-                  : "The page is cleaned, summarized, and merged into the master note."}
-              </p>
-            )}
           </div>
-
-          {/* No wiki selected hint */}
-          {isDisabled && (
-            <p style={{
-              fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: "0.68rem",
-              color: "#475569",
-              letterSpacing: "0.04em",
-              margin: 0,
-            }}>
-              Select or create a wiki first.
-            </p>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="ws-banner ws-banner--error" role="alert">
-              <span>{error}</span>
-              <button
-                type="button"
-                className="ws-btn ws-btn--ghost"
-                style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                onClick={() => dispatch(clearIngestFeedback())}
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* Success */}
-          {successMessage && (
-            <div className="ws-banner ws-banner--success" role="status">
-              <span>✓ {successMessage}</span>
-            </div>
-          )}
-
           <button
-            type="submit"
+            type="button"
+            className="ws-btn ws-btn--ghost"
+            style={{ fontSize: "0.8rem", padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}
+            onClick={handleAddSource}
+            disabled={isDisabled || !currentUrl.trim()}
+            aria-label="Add URL"
+          >
+            + Add
+          </button>
+        </div>
+
+        {!isDisabled && (
+          <p className="ws-field__hint">
+            {sourceType === "youtube"
+              ? "Add multiple YouTube links, then click 'Ingest all' to process them together."
+              : "Add multiple web pages, then click 'Ingest all' to process them together."}
+          </p>
+        )}
+
+        {/* Pending sources list */}
+        {pendingSources.length > 0 && (
+          <div style={{
+            marginBottom: "0.75rem",
+            padding: "0.75rem",
+            background: "rgba(56, 189, 248, 0.05)",
+            border: "1px solid rgba(56, 189, 248, 0.10)",
+            borderRadius: "0.375rem",
+            maxHeight: 200,
+            overflowY: "auto",
+          }}>
+            {pendingSources.map((source) => (
+              <div
+                key={source.id}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "0.5rem",
+                  padding: "0.5rem",
+                  marginBottom: source === pendingSources[pendingSources.length - 1] ? 0 : "0.5rem",
+                  borderBottom: source === pendingSources[pendingSources.length - 1] ? "none" : "1px solid rgba(148,163,184,0.07)",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span className={`ws-badge ws-badge--${source.type}`} style={{ fontSize: "0.58rem", padding: "0.1rem 0.4rem" }}>
+                    {source.type}
+                  </span>
+                  <p style={{
+                    fontSize: "0.75rem",
+                    color: "#94a3b8",
+                    margin: "0.25rem 0 0",
+                    wordBreak: "break-all",
+                    lineHeight: 1.3,
+                  }}>
+                    {source.url}
+                  </p>
+                  {source.status === "ingesting" && (
+                    <p style={{ fontSize: "0.7rem", color: "#38bdf8", margin: "0.25rem 0 0", fontStyle: "italic" }}>
+                      Processing…
+                    </p>
+                  )}
+                  {source.status === "failed" && source.error && (
+                    <p style={{ fontSize: "0.7rem", color: "#ef4444", margin: "0.25rem 0 0", fontStyle: "italic" }}>
+                      {source.error}
+                    </p>
+                  )}
+                  {source.status === "success" && (
+                    <p style={{ fontSize: "0.7rem", color: "#10b981", margin: "0.25rem 0 0", fontStyle: "italic" }}>
+                      ✓ Ingested
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: "0.25rem", flexShrink: 0, alignItems: "center" }}>
+                  {source.status === "failed" && (
+                    <button
+                      type="button"
+                      className="ws-btn ws-btn--ghost"
+                      style={{ fontSize: "0.65rem", padding: "0.2rem 0.4rem" }}
+                      onClick={() => {
+                        setFallbackSource(source);
+                        setFallbackOpen(true);
+                      }}
+                      aria-label="Use fallback"
+                    >
+                      💾
+                    </button>
+                  )}
+                  {source.status === "pending" && (
+                    <button
+                      type="button"
+                      className="ws-btn ws-btn--ghost"
+                      style={{ fontSize: "0.65rem", padding: "0.2rem 0.4rem" }}
+                      onClick={() => handleRemoveSource(source.id)}
+                      aria-label="Remove URL"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Error banner */}
+        {error && (
+          <div className="ws-banner ws-banner--error" role="alert">
+            <span>{error}</span>
+            <button
+              type="button"
+              className="ws-btn ws-btn--ghost"
+              style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+              onClick={() => dispatch(clearIngestFeedback())}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Success banner */}
+        {successMessage && (
+          <div className="ws-banner ws-banner--success" role="status">
+            <span>✓ {successMessage}</span>
+          </div>
+        )}
+
+        {/* Ingest all button */}
+        {pendingSources.length > 0 && (
+          <button
+            type="button"
             className="ws-btn ws-btn--primary"
             style={{ width: "100%", justifyContent: "center", padding: "0.7rem" }}
-            disabled={isDisabled || !url.trim() || isSubmitting}
+            disabled={isDisabled || isSubmitting || pendingSources.every((s) => s.status !== "pending")}
             aria-busy={isSubmitting}
+            onClick={handleIngestAll}
           >
-            {isSubmitting ? "Building knowledge…" : "Ingest source →"}
+            {isSubmitting ? "Processing…" : `Ingest all (${pendingSources.filter((s) => s.status === "pending").length})`}
           </button>
-        </form>
+        )}
+
+        {/* No wiki selected hint */}
+        {isDisabled && (
+          <p style={{
+            fontFamily: "'IBM Plex Mono', monospace",
+            fontSize: "0.68rem",
+            color: "#475569",
+            letterSpacing: "0.04em",
+            margin: 0,
+          }}>
+            Select or create a wiki first.
+          </p>
+        )}
       </div>
 
       {/* ── History section ───────────────────────────────────────────── */}
@@ -318,7 +483,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
         }}>
           <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0 }}>No sources yet</p>
           <p style={{ fontSize: "0.78rem", color: "#334155", margin: 0 }}>
-            Ingest your first page or video above.
+            Add sources above and click "Ingest all" to begin.
           </p>
         </div>
       ) : (
@@ -330,7 +495,18 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
           />
         </div>
       )}
-    </div>
+      </div>
+
+      {/* Fallback modal */}
+      <IngestFallbackModal
+        open={fallbackOpen}
+        source={fallbackSource}
+        wikiId={wikiId}
+        onSubmit={handleFallbackSubmit}
+        onClose={() => setFallbackOpen(false)}
+        isSubmitting={submitStatus === "loading"}
+      />
+    </>
   );
 }
 

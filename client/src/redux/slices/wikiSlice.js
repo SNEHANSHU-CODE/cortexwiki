@@ -91,8 +91,8 @@ const wikiSlice = createSlice({
       .addCase(deleteWiki.fulfilled, (s, a) => {
         s.wikis = s.wikis.filter((w) => w.id !== a.payload);
         if (s.activeWikiId === a.payload) {
-          s.activeWikiId = s.wikis[0]?.id ?? null;
-          s.activeWiki   = s.wikis[0] ?? null;
+          s.activeWikiId = null;
+          s.activeWiki   = null;
           s.rightView    = "note";
         }
       })

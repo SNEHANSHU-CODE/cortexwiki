@@ -17,9 +17,9 @@ function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { refreshToken, error } = useSelector((s) => s.auth);
+  const { user, status, error } = useSelector((s) => s.auth);
 
-  if (refreshToken) return <Navigate to="/wiki" replace />;
+  if (status === "authenticated" && user) return <Navigate to="/wiki" replace />;
 
   const handleChange = (e) => {
     dispatch(clearAuthError());

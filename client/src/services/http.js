@@ -1,7 +1,29 @@
 import axios from "axios";
 import { clearSession, finishHydration, setSession } from "../redux/slices/authSlice";
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || "";
+function resolveBaseUrl() {
+  const configured = import.meta.env.VITE_API_BASE_URL || "";
+  if (!configured || typeof window === "undefined") return configured;
+
+  try {
+    const url = new URL(configured);
+    const host = window.location.hostname;
+    const isLocalHost = host === "localhost" || host === "127.0.0.1";
+    const isApiLocalHost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+
+    // Keep browser and API on same local hostname family to avoid cookie same-site mismatches.
+    if (isLocalHost && isApiLocalHost && url.hostname !== host) {
+      url.hostname = host;
+      return url.toString().replace(/\/$/, "");
+    }
+  } catch {
+    // keep configured value
+  }
+
+  return configured;
+}
+
+const baseURL = resolveBaseUrl();
 
 const httpClient = axios.create({
   baseURL,
@@ -73,16 +95,7 @@ export function initializeHttpClient(store) {
 export async function refreshSession() {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const state = boundStore?.getState?.();
-      const refreshToken = state?.auth?.refreshToken;
-      
-      if (!refreshToken) {
-        throw new Error("No refresh token available");
-      }
-
-      const response = await refreshClient.post("/api/auth/refresh", {
-        refresh_token: refreshToken,
-      });
+      const response = await refreshClient.post("/api/auth/refresh");
       return response.data;
     })()
       .finally(() => {
