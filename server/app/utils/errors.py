@@ -61,7 +61,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled exception", exc_info=exc)
+    # Use exc_info=True to include traceback without passing exception object as param
+    logger.exception("Unhandled exception", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=error_payload(

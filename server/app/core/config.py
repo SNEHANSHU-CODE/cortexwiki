@@ -67,17 +67,28 @@ class Settings(BaseSettings):
 
     # ScraperAPI — YouTube transcript fallback proxy
     SCRAPERAPI_KEY: str | None = None
+    SCRAPERAPI_PROXY_URL: str = "http://proxy.scraperapi.com:8001"
 
     # Query / ingest
     STREAM_CHUNK_DELAY_MS: int = 30
     QUERY_RESULT_LIMIT: int = 5
     INTERNET_SEARCH_RESULT_LIMIT: int = 3
     INGEST_MAX_CHARACTERS: int = 40000
+    MASTER_NOTE_MAX_LENGTH: int = 50000  # Max chars for compounded master note
+    MAX_SOURCES_PER_WIKI: int = 1000  # Max sources allowed per wiki
+    # BUG FIX #22: Make embedding cache TTL configurable
+    EMBEDDING_CACHE_TTL_SECONDS: int = 86400  # 24 hours default
 
     # Outbound HTTP
     INTERNET_SEARCH_ENDPOINT: str = "https://html.duckduckgo.com/html/"
     USER_AGENT: str = "CortexWiki/1.0 (+https://localhost)"
     OUTBOUND_VERIFY_SSL: bool = False
+    HTTP_REQUEST_TIMEOUT: int = 20
+    HTTP_STREAM_TIMEOUT: int = 30
+
+    # LLM timeouts
+    LLM_REQUEST_TIMEOUT: int = 40
+    LLM_STREAM_TIMEOUT: int = 120
 
     @field_validator("DEBUG", mode="before")
     @classmethod

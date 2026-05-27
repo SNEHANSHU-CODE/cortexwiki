@@ -73,6 +73,23 @@ class MongoManager:
             normalized["id"] = str(normalized.pop("_id"))
         return normalized
 
+    def _sanitize_id(self, value: str) -> str | None:
+        """Basic sanitizer for user-provided identifier strings (wiki_id, ids).
+
+        Returns the stripped string or None if invalid. Disallow null bytes and
+        leading '$' which can be used in Mongo query operators.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return None
+        val = value.strip()
+        if not val:
+            return None
+        if "\x00" in val or val.startswith("$"):
+            return None
+        return val
+
     # ── Users ─────────────────────────────────────────────────────────────────
 
     async def create_user(self, payload: dict) -> dict:
@@ -197,12 +214,16 @@ class MongoManager:
 
     async def create_wiki(self, payload: dict) -> dict:
         now = datetime.now(UTC)
+        name = payload["name"].strip()
+        if not name:
+            raise ValueError("Wiki name is required.")
         document = {
             "user_id": payload["user_id"],
-            "name": payload["name"].strip(),
+            "name": name,
             "description": payload.get("description", "").strip(),
             "master_note": "",          # compounds over time as sources are added
             "source_count": 0,
+            "version": 1,
             "created_at": now,
             "updated_at": now,
             "last_ingested_at": None,
@@ -239,13 +260,20 @@ class MongoManager:
     async def update_wiki(self, wiki_id: str, user_id: str, payload: dict) -> dict | None:
         now = datetime.now(UTC)
         update_fields = {k: v for k, v in payload.items() if k in {"name", "description"}}
+        if "name" in update_fields:
+            update_fields["name"] = update_fields["name"].strip()
+            if not update_fields["name"]:
+                raise ValueError("Wiki name cannot be empty.")
+        if "description" in update_fields:
+            update_fields["description"] = update_fields["description"].strip()
         update_fields["updated_at"] = now
         if self.database is not None:
             from bson import ObjectId
             try:
+                # Atomically apply update and increment optimistic `version` counter
                 await self.database.wikis.update_one(
                     {"_id": ObjectId(wiki_id), "user_id": user_id},
-                    {"$set": update_fields},
+                    {"$set": update_fields, "$inc": {"version": 1}},
                 )
             except Exception:
                 return None
@@ -267,6 +295,12 @@ class MongoManager:
                 # Cascade delete all wiki data
                 await self.database.wiki_pages.delete_many({"wiki_id": wiki_id, "user_id": user_id})
                 await self.database.raw_data.delete_many({"wiki_id": wiki_id, "user_id": user_id})
+                # Also remove agent logs and any other wiki-scoped artifacts
+                try:
+                    await self.database.agent_logs.delete_many({"wiki_id": wiki_id, "user_id": user_id})
+                except Exception:
+                    # Non-fatal: continue even if agent_logs removal fails
+                    logger.debug("Failed to remove agent_logs for wiki_id=%s", wiki_id)
             except Exception:
                 return False
             return True
@@ -274,29 +308,70 @@ class MongoManager:
             del self._memory["wikis"][wiki_id]
             self._memory["wiki_pages"] = {k: v for k, v in self._memory["wiki_pages"].items() if v.get("wiki_id") != wiki_id}
             self._memory["raw_data"] = {k: v for k, v in self._memory["raw_data"].items() if v.get("wiki_id") != wiki_id}
+            # Remove in-memory agent_logs for this wiki
+            self._memory["agent_logs"] = {k: v for k, v in self._memory["agent_logs"].items() if v.get("wiki_id") != wiki_id}
             return True
         return False
 
     async def update_wiki_master_note(self, wiki_id: str, user_id: str, master_note: str) -> None:
-        """Update the compounded master note and increment source count."""
+        """Update the compounded master note and increment source count.
+        
+        BUG FIX #6: Truncate master_note if it exceeds max length.
+        """
+        from app.core.config import settings
+        
+        # Truncate master note if it exceeds max length
+        truncated_note = master_note[:settings.MASTER_NOTE_MAX_LENGTH]
+        if len(master_note) > settings.MASTER_NOTE_MAX_LENGTH:
+            truncated_note = truncated_note.rsplit(" ", 1)[0] + "..."  # Clean truncation at word boundary
+        
         now = datetime.now(UTC)
         if self.database is not None:
             from bson import ObjectId
             try:
+                # Use atomic update to modify master_note and bump source_count + version
                 await self.database.wikis.update_one(
                     {"_id": ObjectId(wiki_id), "user_id": user_id},
-                    {"$set": {"master_note": master_note, "updated_at": now, "last_ingested_at": now},
-                     "$inc": {"source_count": 1}},
+                    {"$set": {"master_note": truncated_note, "updated_at": now, "last_ingested_at": now},
+                     "$inc": {"source_count": 1, "version": 1}},
                 )
             except Exception:
                 pass
             return
         wiki = self._memory["wikis"].get(wiki_id)
         if wiki and wiki["user_id"] == user_id:
-            wiki["master_note"] = master_note
+            wiki["master_note"] = truncated_note
             wiki["updated_at"] = now
             wiki["last_ingested_at"] = now
             wiki["source_count"] = wiki.get("source_count", 0) + 1
+
+    async def rollback_wiki_page(self, wiki_page_id: str) -> bool:
+        """Delete a wiki page and decrement source count. Used for rollback on graph sync failure."""
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                # Get the page to find its wiki_id
+                page = await self.database.wiki_pages.find_one({"_id": ObjectId(wiki_page_id)})
+                if not page:
+                    return False
+                # Delete the page
+                await self.database.wiki_pages.delete_one({"_id": ObjectId(wiki_page_id)})
+                # Decrement source count
+                await self.database.wikis.update_one(
+                    {"_id": ObjectId(page["wiki_id"])},
+                    {"$inc": {"source_count": -1}},
+                )
+                return True
+            except Exception:
+                return False
+        # Memory mode rollback
+        if wiki_page_id in self._memory["wiki_pages"]:
+            page = self._memory["wiki_pages"].pop(wiki_page_id)
+            if page["wiki_id"] in self._memory["wikis"]:
+                wiki = self._memory["wikis"][page["wiki_id"]]
+                wiki["source_count"] = max(0, wiki.get("source_count", 0) - 1)
+            return True
+        return False
 
     # ── Raw Data ──────────────────────────────────────────────────────────────
 
@@ -311,6 +386,19 @@ class MongoManager:
         return self._copy(document)
 
     # ── Wiki Pages ────────────────────────────────────────────────────────────
+
+    async def check_source_url_exists(self, wiki_id: str, user_id: str, source_url: str) -> dict | None:
+        """Check if a source URL already exists in this wiki. Return the existing page if found."""
+        wiki_id = self._sanitize_id(wiki_id)
+        query = {"wiki_id": wiki_id, "user_id": user_id, "source_url": source_url}
+        if self.database is not None:
+            return self._normalize(await self.database.wiki_pages.find_one(query))
+        for page in self._memory["wiki_pages"].values():
+            if (page.get("wiki_id") == wiki_id and 
+                page.get("user_id") == user_id and 
+                page.get("source_url") == source_url):
+                return self._copy(page)
+        return None
 
     async def create_wiki_page(self, payload: dict) -> dict:
         slug = slugify(payload["title"])
@@ -336,6 +424,7 @@ class MongoManager:
 
     async def list_wiki_pages(self, user_id: str, *, wiki_id: str | None = None, limit: int = 50) -> list[dict]:
         query: dict = {"user_id": user_id}
+        wiki_id = self._sanitize_id(wiki_id)
         if wiki_id:
             query["wiki_id"] = wiki_id
         if self.database is not None:
@@ -350,6 +439,7 @@ class MongoManager:
 
     async def list_recent_ingestions(self, user_id: str, *, wiki_id: str | None = None, limit: int = 20) -> list[dict]:
         query: dict = {"user_id": user_id}
+        wiki_id = self._sanitize_id(wiki_id)
         if wiki_id:
             query["wiki_id"] = wiki_id
         if self.database is not None:
@@ -371,6 +461,7 @@ class MongoManager:
         wiki_id: str | None = None,
         limit: int = 5,
     ) -> list[dict]:
+        wiki_id = self._sanitize_id(wiki_id)
         pages = await self.list_wiki_pages(user_id=user_id, wiki_id=wiki_id, limit=200)
         scored: list[dict] = []
         for page in pages:

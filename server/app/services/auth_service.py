@@ -80,7 +80,7 @@ class AuthService:
         if not record:
             raise AppError(status_code=401, code="refresh_token_invalid", message="Refresh token is invalid.")
 
-        # Fix: MongoDB returns naive datetimes — make UTC-aware before comparing
+        # Make sure the refresh token record is timezone-aware before comparison
         if _ensure_utc(record["expires_at"]) <= datetime.now(UTC):
             await self.mongo.revoke_refresh_token(token_hash)
             raise AppError(status_code=401, code="refresh_token_expired", message="Refresh token expired.")
@@ -90,14 +90,55 @@ class AuthService:
             await self.mongo.revoke_refresh_token(token_hash)
             raise AppError(status_code=401, code="user_not_found", message="Authenticated user no longer exists.")
 
-        await self.mongo.revoke_refresh_token(token_hash)
+        access_token, jti, access_expires_at = create_access_token(user_id=user["id"], email=user["email"])
+        refresh_token_new, refresh_expires_at = create_refresh_token()
+
+        try:
+            await self.redis.store_access_token(
+                jti=jti,
+                user_id=user["id"],
+                expires_at=access_expires_at,
+                token=access_token,
+            )
+            await self.mongo.save_refresh_token({
+                "user_id": user["id"],
+                "token_hash": hash_refresh_token(refresh_token_new),
+                "expires_at": refresh_expires_at,
+                "user_agent": user_agent,
+                "ip_address": ip_address,
+            })
+        except Exception as exc:
+            logger.exception("Failed to refresh session for user %s", user["id"])
+            try:
+                await self.redis.revoke_access_token(jti)
+            except Exception:
+                logger.warning("Failed to clean up new access token after refresh failure for user %s", user["id"])
+            raise AppError(status_code=500, code="session_refresh_failed", message="Unable to refresh session. Please try again.") from exc
+
+        # Revoke the old refresh token after the new session is safely stored
+        try:
+            await self.mongo.revoke_refresh_token(token_hash)
+        except Exception:
+            logger.warning("Failed to revoke old refresh token for user %s", user["id"])
+
         await self.mongo.create_agent_log({
             "user_id": user["id"],
             "event_type": "auth",
             "event_name": "refresh",
             "details": {"ip_address": ip_address, "user_agent": user_agent},
         })
-        return await self._issue_session(user=user, user_agent=user_agent, ip_address=ip_address)
+        return {
+            "user": {
+                "id": user["id"],
+                "email": user["email"],
+                "username": user["username"],
+                "full_name": user.get("full_name", ""),
+            },
+            "access_token": access_token,
+            "access_token_expires_at": access_expires_at,
+            "refresh_token": refresh_token_new,
+            "refresh_token_expires_at": refresh_expires_at,
+        }
 
     async def logout_user(self, *, user_id: str | None, access_token_jti: str | None, refresh_token: str | None) -> None:
         if user_id:

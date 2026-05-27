@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class WikiCreateRequest(BaseModel):
@@ -9,12 +9,40 @@ class WikiCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=500)
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def strip_name(cls, value):
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def strip_description(cls, value):
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
 
 class WikiUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=500)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def strip_name(cls, value):
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def strip_description(cls, value):
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
 
 class WikiResponse(BaseModel):

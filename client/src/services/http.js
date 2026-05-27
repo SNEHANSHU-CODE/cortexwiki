@@ -72,6 +72,12 @@ export function initializeHttpClient(store) {
 
       try {
         originalRequest._retry = true;
+        // BUG FIX #13: Limit retries to max 2 to prevent infinite loops
+        const retryCount = (originalRequest._retryCount || 0) + 1;
+        if (retryCount > 2) {
+          throw error;  // Give up after 2 retries
+        }
+        originalRequest._retryCount = retryCount;
         const session = await refreshSession();
         boundStore.dispatch(
           setSession({

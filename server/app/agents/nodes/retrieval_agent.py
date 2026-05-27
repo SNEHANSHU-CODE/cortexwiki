@@ -23,16 +23,22 @@ class RetrievalAgent:
 
     async def run(self, state: dict) -> dict:
         question = state["question"]
+        wiki_id = state.get("wiki_id")
+        if not wiki_id or not isinstance(wiki_id, str):
+            raise ValueError("RetrievalAgent requires wiki_id in state")
+
         embedding = await self._llm.embed_text(question)
 
         wiki_pages = await self._mongo.search_wiki_pages(
             user_id=state["user_id"],
+            wiki_id=wiki_id,
             query=question,
             query_embedding=embedding,
             limit=settings.QUERY_RESULT_LIMIT,
         )
         related_concepts = await self._graph_service.get_related_concepts(
             user_id=state["user_id"],
+            wiki_id=wiki_id,
             query=question,
             limit=8,
         )

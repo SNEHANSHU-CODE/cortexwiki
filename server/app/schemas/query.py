@@ -7,7 +7,9 @@ class QueryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1, max_length=1000)
-    wiki_id: str
+    # Wiki IDs must be short, alphanumeric with optional '-' or '_' characters.
+    # Restrict length to avoid abuse and injection.
+    wiki_id: str = Field(..., pattern=r"^[a-zA-Z0-9_-]{1,64}$", max_length=64)
     debug: bool = False
     allow_internet: bool = False
 

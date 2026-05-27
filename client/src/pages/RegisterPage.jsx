@@ -119,8 +119,7 @@ function RegisterPage() {
                 value={form.full_name}
                 onChange={handleChange}
                 autoComplete="name"
-                placeholder="Jane Smith"
-              />
+                placeholder="Jane Smith"                disabled={submitting}              />
             </div>
 
             <div className="auth-field">
@@ -135,8 +134,7 @@ function RegisterPage() {
                 value={form.username}
                 onChange={handleChange}
                 autoComplete="username"
-                placeholder="janesmith"
-                minLength={3}
+                placeholder="janesmith"                disabled={submitting}                minLength={3}
                 required
               />
             </div>
@@ -152,6 +150,7 @@ function RegisterPage() {
                 onChange={handleChange}
                 autoComplete="email"
                 placeholder="you@example.com"
+                disabled={submitting}
                 required
               />
             </div>
@@ -169,6 +168,7 @@ function RegisterPage() {
                 onChange={handleChange}
                 autoComplete="new-password"
                 placeholder="••••••••"
+                disabled={submitting}
                 minLength={8}
                 required
               />

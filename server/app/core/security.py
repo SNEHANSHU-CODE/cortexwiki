@@ -18,19 +18,23 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed_password: str) -> bool:
+    # Do not expose internal errors for malformed hashes — return False instead.
     try:
+        if ":" not in hashed_password:
+            return False
         salt_b64, digest_b64 = hashed_password.split(":", maxsplit=1)
         salt = base64.b64decode(salt_b64)
         expected_digest = base64.b64decode(digest_b64)
-    except Exception as exc:
-        raise AppError(
-            status_code=500,
-            code="password_hash_invalid",
-            message="Stored password hash is invalid.",
-        ) from exc
+    except Exception:
+        # Return False for any parsing/decoding issue to avoid information disclosure
+        return False
 
     candidate_digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 390_000)
-    return hmac.compare_digest(candidate_digest, expected_digest)
+    try:
+        return hmac.compare_digest(candidate_digest, expected_digest)
+    except Exception:
+        # In the unlikely event of a compare error, fail closed
+        return False
 
 
 def create_access_token(*, user_id: str, email: str) -> tuple[str, str, datetime]:

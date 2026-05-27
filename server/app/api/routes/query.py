@@ -27,11 +27,25 @@ async def _validate_wiki(wiki_id: str, user_id: str) -> dict:
     return wiki
 
 
+def settings_has_llm() -> bool:
+    from app.core.config import settings
+    return bool(settings.GROQ_API_KEY or settings.GEMINI_API_KEY)
+
+
 @router.post("", response_model=QueryData)
 async def query(payload: QueryRequest, current_user: dict = Depends(get_current_user)):
     # wiki_id is required — every query is scoped to a wiki
     if not payload.wiki_id:
         raise AppError(status_code=400, code="wiki_id_required", message="wiki_id is required.")
+
+    # BUG FIX #27: Validate wiki_id format
+    from bson import ObjectId
+    if not ObjectId.is_valid(payload.wiki_id):
+        raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+
+    # BUG FIX #28: Validate debug flag only enabled outside production
+    if payload.debug and settings.is_production:
+        raise AppError(status_code=400, code="debug_disabled", message="Debug mode not available in production.")
 
     await _validate_wiki(payload.wiki_id, current_user["id"])
 
@@ -102,7 +116,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         )
         for page in wiki_pages
     ]
-    confidence = round(min(0.96, 0.4 + (0.1 * len(wiki_pages)) + (0.03 * len(related_concepts))), 2)
+    confidence = round(min(0.96, max(0.18, 0.4 + (0.1 * len(wiki_pages)) + (0.03 * len(related_concepts)))), 2)
     debug = (
         {
             "wiki_results": [page["title"] for page in wiki_pages],
@@ -121,11 +135,6 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         sources=sources,
         debug=debug,
     )
-
-
-def settings_has_llm() -> bool:
-    from app.core.config import settings
-    return bool(settings.GROQ_API_KEY or settings.GEMINI_API_KEY)
 
 
 def _build_fallback_answer(*, wiki_pages: list[dict], graph_context: list[str]) -> str:

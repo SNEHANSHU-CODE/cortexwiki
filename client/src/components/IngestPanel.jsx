@@ -379,11 +379,17 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
         {/* Error banner */}
         {error && (
           <div className="ws-banner ws-banner--error" role="alert">
-            <span>{error}</span>
+            <div style={{ fontSize: "0.85rem" }}>
+              <p style={{ margin: 0, fontWeight: 500 }}>Error during ingestion</p>
+              {/* BUG FIX #24: Show detailed error information */}
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", opacity: 0.9 }}>
+                {error}
+              </p>
+            </div>
             <button
               type="button"
               className="ws-btn ws-btn--ghost"
-              style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+              style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", marginLeft: "auto", flexShrink: 0 }}
               onClick={() => dispatch(clearIngestFeedback())}
             >
               ✕

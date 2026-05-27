@@ -121,6 +121,7 @@ function ChatPage({ wikiId }) {
         signal:  abortRef.current.signal,
       });
     } catch (err) {
+      // BUG FIX #24: Improved error handling with proper logging
       if (abortRef.current?.signal.aborted) return;
       const msg = extractErrorMessage(err);
       dispatch(setChatError(msg));
@@ -128,10 +129,11 @@ function ChatPage({ wikiId }) {
         id: requestId, error: msg,
         content: "I ran into an issue generating that answer.",
       }));
+      console.error("Chat error:", err);  // Log full error for debugging
     }
   }, [debug, dispatch, pendingMessageId, wikiId]);
 
-  const handleSubmit = (e) => { e.preventDefault(); void submitPrompt(input); };
+  const handleSubmit = (e) => { e.preventDefault(); submitPrompt(input).catch(err => console.error("Chat submit failed:", err)); };
   const handleRetry  = () => { if (lastPromptRef.current?.question) void submitPrompt(lastPromptRef.current.question); };
   const handleQuick  = (p) => { startTransition(() => setInput(p)); textareaRef.current?.focus(); };
 
@@ -246,7 +248,7 @@ function ChatPage({ wikiId }) {
               }
               value={input}
               rows={1}
-              disabled={!wikiId}
+              disabled={!wikiId || isStreaming}
               onChange={(e) => { dispatch(clearChatError()); setInput(e.target.value); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {

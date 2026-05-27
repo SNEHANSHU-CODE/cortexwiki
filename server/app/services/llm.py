@@ -111,13 +111,67 @@ class LLMService:
             yield chunk
 
     async def embed_text(self, text: str) -> list[float]:
+        """
+        Generate embedding for text with caching support.
+        
+        BUG FIX #22: Cache embeddings to reduce API calls and improve performance.
+        """
         if not text:
             return []
+        
+        # BUG FIX #22: Check embedding cache in Redis
+        redis_store = None
+        try:
+            from app.core.redis import get_redis_store
+            redis_store = get_redis_store()
+        except Exception:
+            pass
+        
+        # Create cache key from text signature (length + SHA256) to reduce collision risk
+        text_hash = hashlib.sha256(text.encode()).hexdigest()
+        cache_key = f"embedding:{len(text)}:{text_hash}"
+        
+        # Try to get cached embedding
+        if redis_store:
+            try:
+                cached = await redis_store.get(cache_key)
+                if cached:
+                    logger.debug("Cache hit for embedding: %s", cache_key)
+                    # Cached as JSON string
+                    return json.loads(cached)
+            except Exception as exc:
+                logger.debug("Embedding cache lookup failed: %s", str(exc))
+        
+        # Generate new embedding
         if settings.GEMINI_API_KEY:
             result = await self._gemini_embed(text)
             if result:
+                # Cache the embedding for 24 hours (86400 seconds)
+                if redis_store:
+                    try:
+                        await redis_store.setex(
+                            cache_key,
+                            86400,
+                            json.dumps(result),
+                        )
+                        logger.debug("Cached embedding: %s", cache_key)
+                    except Exception as exc:
+                        logger.warning("Failed to cache embedding: %s", str(exc))
                 return result
-        return self._fallback_embedding(text)
+        
+        # Fallback embedding
+        embedding = self._fallback_embedding(text)
+        # Cache fallback embedding too
+        if redis_store and embedding:
+            try:
+                await redis_store.setex(
+                    cache_key,
+                    86400,
+                    json.dumps(embedding),
+                )
+            except Exception:
+                pass
+        return embedding
 
     async def summarize(self, text: str) -> str:
         if not text:
@@ -177,7 +231,8 @@ class LLMService:
             "stream": False,
         }
         try:
-            async with httpx.AsyncClient(timeout=40.0, verify=settings.OUTBOUND_VERIFY_SSL) as client:
+            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
+            async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits, headers={"User-Agent": settings.USER_AGENT}) as client:
                 response = await client.post(
                     _GROQ_CHAT_URL,
                     json=payload,
@@ -185,11 +240,18 @@ class LLMService:
                 )
                 response.raise_for_status()
                 data = response.json()
-                text = data["choices"][0]["message"]["content"]
+                # BUG FIX #11: Defensive access to nested response fields
+                text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if not text:
+                    logger.warning("Empty response from Groq")
+                    return ""
                 logger.info("Groq generate OK (model=%s)", settings.GROQ_MODEL)
                 return clean_text(text)
-        except (httpx.HTTPError, KeyError, IndexError):
-            logger.exception("Groq generate failed — falling back to Gemini")
+        except (httpx.HTTPError, KeyError, IndexError) as exc:
+            logger.warning("Groq generate failed: %s — falling back to Gemini", str(exc))
+            return ""
+        except Exception:
+            logger.exception("Unexpected error in Groq generate")
             return ""
 
     async def _groq_stream(
@@ -209,7 +271,8 @@ class LLMService:
             "stream": True,
         }
         try:
-            async with httpx.AsyncClient(timeout=None, verify=settings.OUTBOUND_VERIFY_SSL) as client:
+            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
+            async with httpx.AsyncClient(timeout=settings.LLM_STREAM_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits) as client:
                 async with client.stream(
                     "POST",
                     _GROQ_CHAT_URL,
@@ -225,8 +288,10 @@ class LLMService:
                         if data_str == "[DONE]":
                             break
                         try:
-                            delta = json.loads(data_str)["choices"][0]["delta"].get("content", "")
-                        except (json.JSONDecodeError, KeyError, IndexError):
+                            # BUG FIX #11: Defensive access to nested response fields
+                            delta = json.loads(data_str).get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        except (json.JSONDecodeError, KeyError, IndexError, ValueError) as exc:
+                            logger.debug("Failed to parse Groq stream chunk: %s", str(exc))
                             continue
                         if delta:
                             yield delta
@@ -249,7 +314,8 @@ class LLMService:
             "generationConfig": {"temperature": temperature, "maxOutputTokens": max_output_tokens},
         }
         try:
-            async with httpx.AsyncClient(timeout=40.0, verify=settings.OUTBOUND_VERIFY_SSL) as client:
+            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
+            async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits, headers={"User-Agent": settings.USER_AGENT}) as client:
                 response = await client.post(
                     _GEMINI_GENERATE_URL,
                     json=payload,
@@ -277,7 +343,8 @@ class LLMService:
         }
         previous_text = ""
         try:
-            async with httpx.AsyncClient(timeout=None, verify=settings.OUTBOUND_VERIFY_SSL) as client:
+            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
+            async with httpx.AsyncClient(timeout=settings.LLM_STREAM_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits) as client:
                 async with client.stream(
                     "POST",
                     _GEMINI_STREAM_URL,
@@ -311,7 +378,8 @@ class LLMService:
             "content": {"parts": [{"text": text[:4000]}]},
         }
         try:
-            async with httpx.AsyncClient(timeout=30.0, verify=settings.OUTBOUND_VERIFY_SSL) as client:
+            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
+            async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits) as client:
                 response = await client.post(
                     _GEMINI_EMBED_URL,
                     json=payload,

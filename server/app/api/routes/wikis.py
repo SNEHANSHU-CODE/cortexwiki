@@ -21,6 +21,7 @@ from app.db.mongo import get_mongo_manager
 from app.schemas.wikis import WikiCreateRequest, WikiListResponse, WikiResponse, WikiUpdateRequest
 from app.services.graph_service import get_graph_service
 from app.utils.errors import AppError
+from app.utils.logging import get_logger
 
 
 router = APIRouter(prefix="/wikis", tags=["wikis"])
@@ -67,6 +68,11 @@ async def get_wiki(
     wiki_id: str,
     current_user: dict = Depends(get_current_user),
 ):
+    # Validate wiki_id format
+    from bson import ObjectId
+    if not wiki_id or not ObjectId.is_valid(wiki_id):
+        raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+
     wiki = await get_mongo_manager().get_wiki(wiki_id, current_user["id"])
     if not wiki:
         raise AppError(status_code=404, code="wiki_not_found", message="Wiki not found.")
@@ -79,6 +85,11 @@ async def update_wiki(
     payload: WikiUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    # Validate wiki_id format
+    from bson import ObjectId
+    if not wiki_id or not ObjectId.is_valid(wiki_id):
+        raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+
     # Build only the fields that were actually provided
     update_data = payload.model_dump(exclude_none=True)
     if not update_data:
@@ -95,11 +106,47 @@ async def delete_wiki(
     wiki_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    # Delete graph nodes first (Neo4j), then MongoDB data
-    await get_graph_service().delete_wiki_graph(
-        user_id=current_user["id"],
-        wiki_id=wiki_id,
-    )
-    deleted = await get_mongo_manager().delete_wiki(wiki_id, current_user["id"])
-    if not deleted:
+    # Validate wiki_id format
+    from bson import ObjectId
+    if not wiki_id or not ObjectId.is_valid(wiki_id):
+        raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+    """
+    Delete wiki and all associated data.
+    
+    FIX #3: Delete MongoDB first (source of truth), then Neo4j.
+    If Neo4j deletion fails, the wiki is already gone from primary store.
+    """
+    mongo = get_mongo_manager()
+    graph_service = get_graph_service()
+    logger = get_logger("api.routes.wikis")
+    
+    # Verify wiki exists and belongs to user before attempting deletion
+    wiki = await mongo.get_wiki(wiki_id, current_user["id"])
+    if not wiki:
         raise AppError(status_code=404, code="wiki_not_found", message="Wiki not found.")
+    
+    # ── DELETE FROM MONGODB FIRST (PRIMARY STORE) ──
+    try:
+        deleted = await mongo.delete_wiki(wiki_id, current_user["id"])
+        if not deleted:
+            raise AppError(status_code=404, code="wiki_not_found", message="Wiki not found.")
+    except AppError:
+        raise
+    except Exception as exc:
+        raise AppError(
+            status_code=500,
+            code="wiki_deletion_failed",
+            message="Failed to delete wiki from database.",
+        ) from exc
+    
+    # ── DELETE FROM NEO4J (SECONDARY STORE) ──
+    # Failure here doesn't prevent the response since wiki is already deleted from MongoDB
+    try:
+        await graph_service.delete_wiki_graph(
+            user_id=current_user["id"],
+            wiki_id=wiki_id,
+        )
+    except Exception as exc:
+        # Log the error but don't fail the request
+        # The wiki is already deleted from MongoDB (source of truth)
+        logger.warning("Failed to delete wiki graph from Neo4j: wiki_id=%s, error=%s", wiki_id, str(exc))

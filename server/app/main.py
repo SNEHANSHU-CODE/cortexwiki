@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 import socketio
+from bson import ObjectId
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,18 +59,153 @@ async def _authenticate_socket(token: str) -> dict | None:
 
 @sio.event
 async def connect(sid, environ, auth):
+    """
+    BUG FIX #8: Validate and store token for later validation on each message.
+    """
     token = (auth or {}).get("token", "")
     if not token:
         raise socketio.exceptions.ConnectionRefusedError("Authentication required.")
     user = await _authenticate_socket(token)
     if not user:
         raise socketio.exceptions.ConnectionRefusedError("Invalid or expired token.")
-    await sio.save_session(sid, {"user": user})
+    
+    # Store user AND token for validation on each message
+    await sio.save_session(sid, {
+        "user": user,
+        "token": token,  # BUG FIX #8: Store token for re-validation
+    })
+    logger.info("Socket connected: sid=%s, user_id=%s", sid, user.get("id"))
 
 
 @sio.event
 async def disconnect(sid):
+    logger.info("Socket disconnected: sid=%s", sid)
     pass
+
+
+@sio.on("ping")
+async def handle_ping(sid):
+    """
+    BUG FIX #20: Handle heartbeat/ping to keep connection alive and verify token.
+    """
+    # Re-validate token to ensure connection is still valid
+    user = await _validate_socket_token(sid)
+    if not user:
+        await sio.emit("error", {"message": "Token expired. Reconnecting..."}, to=sid)
+        return
+    
+    # Send pong response
+    await sio.emit("pong", {"timestamp": int(__import__('time').time() * 1000)}, to=sid)
+
+
+async def _validate_socket_token(sid: str) -> dict | None:
+    """
+    BUG FIX #8: Validate token on each message to detect expired/revoked tokens.
+    """
+    session = await sio.get_session(sid)
+    if not session:
+        logger.warning("Socket validation: no session for sid=%s", sid)
+        return None
+    
+    token = session.get("token", "")
+    user = session.get("user")
+    
+    if not token or not user:
+        logger.warning("Socket validation: missing token/user for sid=%s", sid)
+        return None
+    
+    # Re-validate token against Redis to catch revoked/expired tokens
+    try:
+        payload = decode_access_token(token)
+        jti = payload["jti"]
+        token_record = await get_redis_store().get_access_token(jti)
+        if not token_record:
+            logger.warning("Socket validation: token not in Redis (revoked/expired) sid=%s, user_id=%s", sid, user.get("id"))
+            return None
+        return user
+    except Exception as exc:
+        logger.warning("Socket validation failed: %s, sid=%s", str(exc), sid)
+        return None
+
+
+async def _check_socket_query_rate_limit(user_id: str) -> bool:
+    """Simple fixed-window rate limiter for socket queries per user.
+
+    Uses Redis when available, otherwise falls back to an in-memory counter
+    stored on the RedisTokenStore instance. Window and limit are configurable
+    via settings: `SOCKET_RATE_LIMIT_WINDOW` (seconds) and
+    `SOCKET_RATE_LIMIT_PER_WINDOW` (count).
+    """
+    store = get_redis_store()
+    window = getattr(settings, "SOCKET_RATE_LIMIT_WINDOW", 60)
+    limit = getattr(settings, "SOCKET_RATE_LIMIT_PER_WINDOW", 30)
+    key = f"socket:rate:{user_id}"
+
+    # Redis-backed increment with expiry
+    try:
+        client = store.client
+        if client is not None:
+            val = await client.incr(key)
+            if val == 1:
+                await client.expire(key, int(window))
+            return val <= limit
+    except Exception:
+        logger.debug("Redis rate limiter unavailable, falling back to memory")
+
+    # In-memory fixed-window fallback
+    now = int(__import__("time").time())
+    window_start = now - (now % int(window))
+    if not hasattr(store, "_memory_rate_counters"):
+        store._memory_rate_counters = {}
+
+    entry = store._memory_rate_counters.get(user_id)
+    if not entry or entry[0] != window_start:
+        store._memory_rate_counters[user_id] = (window_start, 1)
+        return True
+
+    count = entry[1]
+    if count >= limit:
+        return False
+    store._memory_rate_counters[user_id] = (entry[0], count + 1)
+    return True
+
+
+async def _reserve_request_id(user_id: str, request_id: str, ttl: int = 300) -> bool:
+    """Reserve a request_id for a user to prevent duplicate processing.
+
+    Returns True if the request_id was successfully reserved (not seen
+    recently). Uses Redis when available, otherwise an in-memory set with
+    expiry is used on the RedisTokenStore instance.
+    """
+    if not request_id:
+        return True
+
+    store = get_redis_store()
+    key = f"socket:req:{user_id}:{request_id}"
+    try:
+        client = store.client
+        if client is not None:
+            # SET NX with expiry
+            res = await client.set(key, "1", nx=True, ex=int(ttl))
+            return bool(res)
+    except Exception:
+        logger.debug("Redis request-id reservation unavailable, falling back to memory")
+
+    # In-memory fallback
+    if not hasattr(store, "_memory_request_ids"):
+        store._memory_request_ids = {}
+
+    now = int(__import__("time").time())
+    expiry = now + int(ttl)
+    existing = store._memory_request_ids.get(key)
+    if existing and existing > now:
+        return False
+    store._memory_request_ids[key] = expiry
+    # Clean up expired entries opportunistically
+    for k, v in list(store._memory_request_ids.items()):
+        if v <= now:
+            store._memory_request_ids.pop(k, None)
+    return True
 
 
 @sio.on("query:start")
@@ -77,24 +213,63 @@ async def handle_query(sid, data):
     """
     Receives: { requestId, wiki_id, question, debug, allow_internet }
     Emits:    query:started → query:token (N times) → query:complete | query:error
+    
+    BUG FIX #8: Validate token on each message.
+    BUG FIX #9: Validate user context is present and valid.
     """
-    session = await sio.get_session(sid)
-    user = session.get("user")
+    # BUG FIX #8: Re-validate token on each message
+    user = await _validate_socket_token(sid)
     if not user:
-        await sio.emit("query:error", {"message": "Not authenticated."}, to=sid)
+        await sio.emit("query:error", {"message": "Token expired or invalid. Please reconnect."}, to=sid)
+        logger.warning("Query rejected: invalid token for sid=%s", sid)
+        return
+    
+    # BUG FIX #9: Ensure user context is complete and valid
+    if not user.get("id") or not isinstance(user.get("id"), str):
+        await sio.emit("query:error", {"message": "Invalid user context. Please reconnect."}, to=sid)
+        logger.warning("Query rejected: invalid user context for sid=%s", sid)
         return
 
-    request_id = data.get("requestId", "")
-    wiki_id = data.get("wiki_id", "").strip()
-    question = data.get("question", "").strip()
-    debug = data.get("debug", False)
+    request_id = (data.get("requestId") or "").strip()
+    wiki_id = (data.get("wiki_id") or "").strip()
+    question = (data.get("question") or "").strip()
+    debug = bool(data.get("debug", False))
+    allow_internet = bool(data.get("allow_internet", False))
 
+    # Basic input validation and size bounds
+    if request_id:
+        import re
+        if len(request_id) > 36 or not re.match(r'^[A-Za-z0-9_.-]{1,36}$', request_id):
+            await sio.emit("query:error", {"message": "Invalid requestId."}, to=sid)
+            return
     if not wiki_id:
         await sio.emit("query:error", {"message": "wiki_id is required."}, to=sid)
         return
-
+    if len(wiki_id) > 64:
+        await sio.emit("query:error", {"message": "wiki_id too long."}, to=sid)
+        return
+    if not ObjectId.is_valid(wiki_id):
+        await sio.emit("query:error", {"message": "Invalid wiki_id format."}, to=sid)
+        return
     if not question:
         await sio.emit("query:error", {"message": "Question is required."}, to=sid)
+        return
+    if len(question) > 2000:
+        await sio.emit("query:error", {"message": "Question too long."}, to=sid)
+        return
+
+    # Reserve request id to avoid duplicate processing
+    if request_id:
+        reserved = await _reserve_request_id(user["id"], request_id)
+        if not reserved:
+            await sio.emit("query:error", {"message": "Duplicate requestId."}, to=sid)
+            return
+
+    # Rate limit per user for socket queries
+    allowed = await _check_socket_query_rate_limit(user["id"])
+    if not allowed:
+        await sio.emit("query:error", {"message": "Rate limited. Try again later."}, to=sid)
+        logger.warning("Query rate limited for user %s sid=%s", user["id"], sid)
         return
 
     await sio.emit("query:started", {"requestId": request_id, "transport": "socket"}, to=sid)
@@ -171,7 +346,7 @@ async def handle_query(sid, data):
             {"title": p["title"], "url": p["source_url"], "source_type": p.get("source_type", "wiki_page")}
             for p in wiki_pages
         ]
-        confidence = round(min(0.96, 0.4 + (0.1 * len(wiki_pages)) + (0.03 * len(related_concepts))), 2)
+        confidence = round(min(0.96, max(0.18, 0.4 + (0.1 * len(wiki_pages)) + (0.03 * len(related_concepts)))), 2)
 
         await sio.emit(
             "query:complete",
@@ -319,14 +494,24 @@ def create_fastapi_app() -> FastAPI:
     )
 
     app.middleware("http")(request_context_middleware)
+
+    # Validate JSON content-type for API endpoints
+    from app.middleware.content_type import validate_content_type
+    @app.middleware("http")
+    async def content_type_middleware(request, call_next):
+        res = await validate_content_type(request)
+        if res is not None:
+            return res
+        return await call_next(request)
+
     app.add_middleware(AuthenticationMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.frontend_origins_list,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["X-Request-ID"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+        expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
     )
 
     app.add_exception_handler(AppError, app_error_handler)

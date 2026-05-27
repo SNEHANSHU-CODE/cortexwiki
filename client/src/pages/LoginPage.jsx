@@ -123,6 +123,7 @@ function LoginPage() {
                 onChange={handleChange}
                 autoComplete="email"
                 placeholder="you@example.com"
+                disabled={submitting}
                 required
               />
             </div>
@@ -138,6 +139,7 @@ function LoginPage() {
                 onChange={handleChange}
                 autoComplete="current-password"
                 placeholder="••••••••"
+                disabled={submitting}
                 minLength={8}
                 required
               />

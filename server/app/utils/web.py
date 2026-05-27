@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -32,9 +33,12 @@ async def _fetch_transcript_supadata(video_id: str) -> str:
     if not settings.SUPADATA_API_KEY:
         raise ValueError("SUPADATA_API_KEY not configured")
 
+    limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
     async with httpx.AsyncClient(
-        timeout=30.0,
+        timeout=settings.HTTP_REQUEST_TIMEOUT,
         verify=settings.OUTBOUND_VERIFY_SSL,
+        limits=limits,
+        headers={"User-Agent": settings.USER_AGENT},
     ) as client:
         response = await client.get(
             "https://api.supadata.ai/v1/youtube/transcript",
@@ -49,9 +53,9 @@ async def _fetch_transcript_supadata(video_id: str) -> str:
             message="This video has no transcript or captions available.",
         )
     if response.status_code == 401:
-        raise ValueError("Supadata API key is invalid")
+        raise AppError(status_code=401, code="supadata_unauthorized", message="Supadata API key invalid")
     if response.status_code == 429:
-        raise ValueError("Supadata rate limit reached")
+        raise AppError(status_code=429, code="supadata_rate_limited", message="Supadata rate limit reached")
 
     response.raise_for_status()
     data = response.json()
@@ -83,12 +87,22 @@ async def _fetch_transcript_scraperapi(video_id: str) -> str:
     proxy_url = settings.scraperapi_proxy_url
     proxies = {"https": proxy_url, "http": proxy_url}
 
-    transcript_data = await asyncio.to_thread(
-        YouTubeTranscriptApi.get_transcript,
-        video_id,
-        proxies=proxies,
-    )
-    transcript = TextFormatter().format_transcript(transcript_data)
+    try:
+        ctx = contextvars.copy_context()
+        transcript_data = await asyncio.wait_for(
+            asyncio.to_thread(
+                ctx.run,
+                YouTubeTranscriptApi.get_transcript,
+                video_id,
+                proxies=proxies,
+            ),
+            timeout=settings.HTTP_REQUEST_TIMEOUT,
+        )
+        transcript = TextFormatter().format_transcript(transcript_data)
+    except asyncio.TimeoutError:
+        raise AppError(status_code=504, code="youtube_transcript_timeout", message="Transcript fetch timed out")
+    except Exception as exc:
+        raise AppError(status_code=400, code="youtube_transcript_fetch_failed", message=str(exc)) from exc
 
     if not transcript or not transcript.strip():
         raise ValueError("ScraperAPI fallback returned empty transcript")
@@ -138,17 +152,24 @@ async def fetch_youtube_content(url: str) -> dict:
     # Fetch video title from YouTube page (best-effort)
     title = f"YouTube Video {video_id}"
     try:
+        limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
         async with httpx.AsyncClient(
-            timeout=20.0,
+            timeout=settings.HTTP_REQUEST_TIMEOUT,
             headers={"User-Agent": settings.USER_AGENT},
             verify=settings.OUTBOUND_VERIFY_SSL,
+            limits=limits,
         ) as client:
             response = await client.get(f"https://www.youtube.com/watch?v={video_id}")
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, "html.parser")
                 meta_title = soup.find("meta", property="og:title")
                 if meta_title and meta_title.get("content"):
-                    title = meta_title["content"].strip()
+                    # Sanitize title to strip HTML and truncate to safe length
+                    raw = meta_title.get("content", "")
+                    safe = BeautifulSoup(raw, "html.parser").get_text()
+                    safe = clean_text(safe).strip()
+                    if safe:
+                        title = safe[:200]
     except Exception:
         pass
 
@@ -164,14 +185,41 @@ async def fetch_youtube_content(url: str) -> dict:
 
 async def fetch_web_page_content(url: str) -> dict:
     try:
+        limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
         async with httpx.AsyncClient(
-            timeout=20.0,
+            timeout=settings.HTTP_REQUEST_TIMEOUT,
             headers={"User-Agent": settings.USER_AGENT},
             follow_redirects=True,
             verify=settings.OUTBOUND_VERIFY_SSL,
+            limits=limits,
         ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
+                content_length = response.headers.get("Content-Length")
+                max_bytes = settings.INGEST_MAX_CHARACTERS * 10
+                if content_length:
+                    try:
+                        if int(content_length) > max_bytes:
+                            raise AppError(
+                                status_code=413,
+                                code="web_content_too_large",
+                                message="Page content is too large to ingest.",
+                            )
+                    except ValueError:
+                        pass
+
+                body_parts = []
+                total_bytes = 0
+                async for chunk in response.aiter_bytes():
+                    total_bytes += len(chunk)
+                    if total_bytes > max_bytes:
+                        raise AppError(
+                            status_code=413,
+                            code="web_content_too_large",
+                            message="Page content is too large to ingest.",
+                        )
+                    body_parts.append(chunk)
+                text_body = b"".join(body_parts).decode("utf-8", errors="replace")
     except httpx.HTTPError as exc:
         raise AppError(
             status_code=400,
@@ -179,12 +227,15 @@ async def fetch_web_page_content(url: str) -> dict:
             message="Unable to fetch web page.",
         ) from exc
 
-    soup = BeautifulSoup(response.text, "html.parser")
-    for script in soup(["script", "style", "noscript"]):
-        script.decompose()
+    try:
+        soup = BeautifulSoup(text_body, "html.parser")
+        for script in soup(["script", "style", "noscript"]):
+            script.decompose()
 
-    title = soup.title.string.strip() if soup.title and soup.title.string else url
-    text = clean_text(" ".join(soup.stripped_strings))
+        title = soup.title.string.strip() if soup.title and soup.title.string else url
+        text = clean_text(" ".join(soup.stripped_strings))
+    except Exception as exc:
+        raise AppError(status_code=400, code="web_parse_failed", message="Failed to parse web page content") from exc
     if not text:
         raise AppError(
             status_code=400,
@@ -209,11 +260,13 @@ async def search_web(query: str, limit: int | None = None) -> list[dict]:
     result_limit = limit or settings.INTERNET_SEARCH_RESULT_LIMIT
 
     try:
+        limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
         async with httpx.AsyncClient(
-            timeout=20.0,
+            timeout=settings.HTTP_REQUEST_TIMEOUT,
             headers={"User-Agent": settings.USER_AGENT},
             follow_redirects=True,
             verify=settings.OUTBOUND_VERIFY_SSL,
+            limits=limits,
         ) as client:
             response = await client.post(
                 settings.INTERNET_SEARCH_ENDPOINT,

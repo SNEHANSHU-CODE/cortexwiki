@@ -72,8 +72,18 @@ class GraphManager:
                 r.updated_at = datetime()
             """
             async with self.driver.session() as session:
-                await session.run(concept_query, user_id=user_id, wiki_id=wiki_id, page_id=page_id, nodes=nodes)
-                await session.run(edge_query, user_id=user_id, wiki_id=wiki_id, page_id=page_id, relationships=relationships)
+                tx = await session.begin_transaction()
+                try:
+                    await tx.run(concept_query, user_id=user_id, wiki_id=wiki_id, page_id=page_id, nodes=nodes)
+                    await tx.run(edge_query, user_id=user_id, wiki_id=wiki_id, page_id=page_id, relationships=relationships)
+                    await tx.commit()
+                except Exception:
+                    # Ensure transaction is closed/rolled back on error
+                    try:
+                        await tx.rollback()
+                    except Exception:
+                        logger.debug("Transaction rollback failed or not needed")
+                    raise
             return
 
         key = (user_id, wiki_id)
@@ -92,6 +102,7 @@ class GraphManager:
         query_terms: list[str],
         limit: int = 10,
     ) -> list[dict]:
+        limit = max(1, min(limit, 100))
         normalized = [t.lower() for t in query_terms if t]
         if not normalized:
             return []
@@ -121,7 +132,9 @@ class GraphManager:
                     "target": edge.get("target", ""),
                     "evidence": edge.get("evidence", ""),
                 })
-        return matches[:limit]
+                if len(matches) >= limit:
+                    break
+        return matches
 
     async def get_topic_subgraph(
         self,
@@ -131,6 +144,7 @@ class GraphManager:
         topic: str,
         limit: int = 50,
     ) -> dict:
+        limit = max(1, min(limit, 100))
         normalized_topic = topic.strip().lower()
 
         if self.driver is not None:
@@ -167,9 +181,10 @@ class GraphManager:
             for node in list(self._nodes[key].values())[:min(limit, 12)]:
                 nodes[node["id"]] = node
 
+        limited_nodes = list(nodes.values())[:limit]
         return {
-            "nodes": [{"id": n["id"], "type": n.get("type", "concept"), "description": n.get("description", ""), "importance": float(n.get("importance", 0.5)), "category": n.get("category")} for n in nodes.values()],
-            "edges": edges,
+            "nodes": [{"id": n["id"], "type": n.get("type", "concept"), "description": n.get("description", ""), "importance": float(n.get("importance", 0.5)), "category": n.get("category")} for n in limited_nodes],
+            "edges": edges[:limit],
         }
 
     async def delete_wiki_graph(self, *, user_id: str, wiki_id: str) -> None:

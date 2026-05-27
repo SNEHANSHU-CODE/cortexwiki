@@ -18,6 +18,7 @@ class RedisTokenStore:
         self._memory_tokens: dict[str, tuple[dict, datetime]] = {}
         self._memory_user_index: dict[str, set[str]] = {}
         self._lock = asyncio.Lock()
+        self._wiki_ingest_locks: dict[str, asyncio.Lock] = {}  # per-wiki ingestion lock
 
     async def connect(self) -> None:
         if not settings.REDIS_URL:
@@ -53,7 +54,10 @@ class RedisTokenStore:
         expires_at: datetime,
         token: str,
     ) -> None:
-        ttl = max(int((expires_at - datetime.now(UTC)).total_seconds()), 1)
+        # Use ceil to avoid truncation to zero for short-lived tokens
+        import math
+        remaining = (expires_at - datetime.now(UTC)).total_seconds()
+        ttl = max(int(math.ceil(remaining)), 1)
         # Only store metadata, not the raw token — reduces security exposure
         payload = {
             "user_id": user_id,
@@ -132,6 +136,13 @@ class RedisTokenStore:
             token_ids = list(self._memory_user_index.pop(user_id, set()))
             for jti in token_ids:
                 self._memory_tokens.pop(jti, None)
+
+    async def acquire_wiki_ingest_lock(self, wiki_id: str) -> asyncio.Lock:
+        """Acquire a per-wiki lock to prevent concurrent ingestion race conditions."""
+        async with self._lock:
+            if wiki_id not in self._wiki_ingest_locks:
+                self._wiki_ingest_locks[wiki_id] = asyncio.Lock()
+            return self._wiki_ingest_locks[wiki_id]
 
 
 _redis_store = RedisTokenStore()

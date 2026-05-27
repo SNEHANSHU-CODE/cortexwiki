@@ -25,6 +25,7 @@ class AgentState(TypedDict):
     # Input
     user_id: str
     question: str
+    wiki_id: str
     debug: bool
     allow_internet: bool
 
@@ -145,12 +146,14 @@ class QueryAgentGraph:
         self,
         *,
         user_id: str,
+        wiki_id: str,
         question: str,
         debug: bool,
         allow_internet: bool,
     ) -> dict:
         return {
             "user_id": user_id,
+            "wiki_id": wiki_id,
             "question": question.strip(),
             "debug": debug,
             "allow_internet": allow_internet,
@@ -172,6 +175,7 @@ class QueryAgentGraph:
         self,
         *,
         user_id: str,
+        wiki_id: str,
         question: str,
         debug: bool = False,
         allow_internet: bool = False,
@@ -179,6 +183,7 @@ class QueryAgentGraph:
         final_state = await self._graph.ainvoke(
             self._initial_state(
                 user_id=user_id,
+                wiki_id=wiki_id,
                 question=question,
                 debug=debug,
                 allow_internet=allow_internet,
@@ -190,12 +195,14 @@ class QueryAgentGraph:
         self,
         *,
         user_id: str,
+        wiki_id: str,
         question: str,
         debug: bool = False,
         allow_internet: bool = False,
     ):
         accumulated: dict = self._initial_state(
             user_id=user_id,
+            wiki_id=wiki_id,
             question=question,
             debug=debug,
             allow_internet=allow_internet,
