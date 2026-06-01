@@ -3,6 +3,13 @@ import re
 from collections import Counter
 from itertools import combinations
 
+_WHITESPACE_RE = re.compile(r"\s+")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_SLUG_RE = re.compile(r"[^a-zA-Z0-9\s-]")
+_WORD_RE = re.compile(r"[a-zA-Z0-9]{3,}")
+_CAPITALIZED_PHRASE_RE = re.compile(r"\b(?:[A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)\b")
+_CONCEPT_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]{2,}")
+
 
 STOPWORDS = {
     "about",
@@ -54,24 +61,24 @@ STOPWORDS = {
 
 
 def clean_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
+    return _WHITESPACE_RE.sub(" ", text.replace("\xa0", " ")).strip()
 
 
 def split_sentences(text: str) -> list[str]:
     normalized = clean_text(text)
     if not normalized:
         return []
-    return [segment.strip() for segment in re.split(r"(?<=[.!?])\s+", normalized) if segment.strip()]
+    return [segment.strip() for segment in _SENTENCE_SPLIT_RE.split(normalized) if segment.strip()]
 
 
 def slugify(value: str) -> str:
-    value = re.sub(r"[^a-zA-Z0-9\s-]", "", value).strip().lower()
+    value = _SLUG_RE.sub("", value).strip().lower()
     return re.sub(r"[-\s]+", "-", value).strip("-") or "untitled"
 
 
 def keyword_score(query: str, text: str) -> float:
-    query_terms = [term for term in re.findall(r"[a-zA-Z0-9]{3,}", query.lower()) if term not in STOPWORDS]
-    text_terms = set(re.findall(r"[a-zA-Z0-9]{3,}", text.lower()))
+    query_terms = [term for term in _WORD_RE.findall(query.lower()) if term not in STOPWORDS]
+    text_terms = set(_WORD_RE.findall(text.lower()))
     if not query_terms:
         return 0.0
     overlap = sum(1 for term in query_terms if term in text_terms)
@@ -91,10 +98,10 @@ def cosine_similarity(vector_a: list[float], vector_b: list[float]) -> float:
 
 def extract_candidate_concepts(text: str, limit: int = 12) -> list[str]:
     sentences = split_sentences(text)
-    capitalized = re.findall(r"\b(?:[A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)\b", text)
+    capitalized = _CAPITALIZED_PHRASE_RE.findall(text)
     counts = Counter(
         word.lower()
-        for word in re.findall(r"[A-Za-z][A-Za-z0-9-]{2,}", text)
+        for word in _CONCEPT_WORD_RE.findall(text)
         if word.lower() not in STOPWORDS
     )
 

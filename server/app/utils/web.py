@@ -101,8 +101,8 @@ async def _fetch_transcript_scraperapi(video_id: str) -> str:
         transcript = TextFormatter().format_transcript(transcript_data)
     except asyncio.TimeoutError:
         raise AppError(status_code=504, code="youtube_transcript_timeout", message="Transcript fetch timed out")
-    except Exception as exc:
-        raise AppError(status_code=400, code="youtube_transcript_fetch_failed", message=str(exc)) from exc
+    except Exception:
+        raise AppError(status_code=400, code="youtube_transcript_fetch_failed", message="Unable to retrieve YouTube transcript at this time.")
 
     if not transcript or not transcript.strip():
         raise ValueError("ScraperAPI fallback returned empty transcript")

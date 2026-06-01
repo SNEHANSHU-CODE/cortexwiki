@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.db.mongo import get_mongo_manager
 from app.schemas.query import QueryData, QueryRequest, QuerySource
 from app.services.graph_service import get_graph_service
@@ -43,8 +44,9 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     if not ObjectId.is_valid(payload.wiki_id):
         raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
 
-    # BUG FIX #28: Validate debug flag only enabled outside production
-    if payload.debug and settings.is_production:
+    # BUG FIX #13: Verify debug mode is disabled in production environment
+    # Check ENVIRONMENT setting instead of non-existent is_production property
+    if payload.debug and settings.ENVIRONMENT == "production":
         raise AppError(status_code=400, code="debug_disabled", message="Debug mode not available in production.")
 
     await _validate_wiki(payload.wiki_id, current_user["id"])
@@ -78,8 +80,9 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
 
     context_blocks = [
         {
-            "title": page["title"],
-            "source_url": page["source_url"],
+            # BUG FIX #15: Use .get() consistently to handle missing fields gracefully
+            "title": page.get("title", "Untitled Source"),
+            "source_url": page.get("source_url", ""),
             "summary": page.get("summary", ""),
             "concepts": page.get("concepts", []),
         }
@@ -110,8 +113,9 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
 
     sources = [
         QuerySource(
-            title=page["title"],
-            url=page["source_url"],
+            # BUG FIX #15: Use .get() to handle missing fields
+            title=page.get("title", "Untitled Source"),
+            url=page.get("source_url", ""),
             source_type=page.get("source_type", "wiki_page"),
         )
         for page in wiki_pages
@@ -141,9 +145,13 @@ def _build_fallback_answer(*, wiki_pages: list[dict], graph_context: list[str]) 
     parts: list[str] = []
     if wiki_pages:
         lead_page = wiki_pages[0]
-        parts.append(lead_page.get("summary") or f"The strongest matching source is {lead_page['title']}.")
+        # BUG FIX #15: Handle missing fields gracefully
+        lead_title = lead_page.get("title", "ingested source")
+        lead_summary = lead_page.get("summary", "")
+        parts.append(lead_summary or f"The strongest matching source is {lead_title}.")
         if len(wiki_pages) > 1:
-            related_titles = ", ".join(page["title"] for page in wiki_pages[1:3])
+            # BUG FIX #15: Use .get() for all field accesses
+            related_titles = ", ".join(page.get("title", "Untitled") for page in wiki_pages[1:3])
             parts.append(f"Related ingested sources include {related_titles}.")
     if graph_context:
         parts.append(f"Connected concepts in the graph include {'; '.join(graph_context[:3])}.")

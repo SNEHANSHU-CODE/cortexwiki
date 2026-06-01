@@ -25,11 +25,14 @@ const createNoopStorage = () => ({
 const storage =
   typeof window !== "undefined" ? createWebStorage("local") : createNoopStorage();
 
-// BUG FIX #23: Add Redux persistence to prevent state loss on refresh
+// BUG FIX #12: Persist chat state so users don't lose chat history on refresh
+// Also persist wiki state for graph exploration continuity
 const persistConfig = {
   key: "cortexwiki",
   storage,
-  whitelist: ["auth"],  // Only persist auth state
+  whitelist: ["auth", "chat", "wiki"],  // Persist auth (sessions), chat (history), wiki (metadata)
+  // Note: graph state is too large for localStorage (can be ~1-5MB with large graphs)
+  // Users can reload it from backend if needed
 };
 
 const persistedAuthReducer = persistReducer(persistConfig, authReducer);

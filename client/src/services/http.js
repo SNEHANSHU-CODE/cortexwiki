@@ -39,6 +39,9 @@ const refreshClient = axios.create({
 
 let boundStore = null;
 let refreshPromise = null;
+let lastRefreshAttempt = 0;  // BUG FIX #2: Track refresh timestamp to prevent loops
+let isRefreshing = false;  // BUG FIX #14: Global flag to prevent concurrent refresh attempts
+const REFRESH_COOLDOWN_MS = 2000;  // BUG FIX #2: Cooldown between refresh attempts
 
 export function initializeHttpClient(store) {
   if (boundStore) {
@@ -72,12 +75,39 @@ export function initializeHttpClient(store) {
 
       try {
         originalRequest._retry = true;
-        // BUG FIX #13: Limit retries to max 2 to prevent infinite loops
+        
+        // BUG FIX #14: Prevent concurrent refresh attempts by multiple requests
+        // If already refreshing, wait for the existing refresh to complete
+        if (isRefreshing) {
+          // Wait for current refresh to complete
+          if (refreshPromise) {
+            await refreshPromise;
+          }
+          // Retry original request with new token
+          return await httpClient(originalRequest);
+        }
+        
+        // BUG FIX #2: Limit retries to max 2 to prevent infinite loops
         const retryCount = (originalRequest._retryCount || 0) + 1;
         if (retryCount > 2) {
+          logger?.warn("Max retries exceeded for", originalRequest.url);
           throw error;  // Give up after 2 retries
         }
         originalRequest._retryCount = retryCount;
+        
+        // Mark as refreshing
+        isRefreshing = true;
+        
+        // BUG FIX #2: Add cooldown between refresh attempts to prevent thundering herd
+        const now = Date.now();
+        const timeSinceLastRefresh = now - lastRefreshAttempt;
+        if (timeSinceLastRefresh < REFRESH_COOLDOWN_MS) {
+          await new Promise(resolve => 
+            setTimeout(resolve, REFRESH_COOLDOWN_MS - timeSinceLastRefresh)
+          );
+        }
+        lastRefreshAttempt = Date.now();
+        
         const session = await refreshSession();
         boundStore.dispatch(
           setSession({
@@ -87,12 +117,16 @@ export function initializeHttpClient(store) {
             accessToken: session.access_token,
           }),
         );
+        
         // Retry original request — access token will be added by the request interceptor
         return await httpClient(originalRequest);
       } catch (refreshError) {
         boundStore.dispatch(clearSession());
         boundStore.dispatch(finishHydration());
         throw refreshError;
+      } finally {
+        // BUG FIX #14: Clear refreshing flag after attempt completes
+        isRefreshing = false;
       }
     },
   );

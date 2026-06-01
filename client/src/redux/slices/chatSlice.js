@@ -19,8 +19,10 @@ const chatSlice = createSlice({
 
     startAssistantMessage(state, action) {
       const { id, createdAt } = action.payload;
-      // Guard: never create a duplicate placeholder
-      if (!state.messages.find((m) => m.id === id)) {
+      // BUG FIX #6: Guard against duplicate assistant message bubbles
+      // Check if message with this ID already exists
+      const existingMessage = state.messages.find((m) => m.id === id);
+      if (!existingMessage) {
         state.messages.push({
           id,
           role: "assistant",
@@ -29,6 +31,15 @@ const chatSlice = createSlice({
           createdAt,
           metadata: null,
         });
+        // Log duplicate prevention for debugging
+        if (typeof console !== "undefined" && process.env.NODE_ENV !== "production") {
+          console.debug(`[ChatSlice] Created assistant message: ${id}`);
+        }
+      } else {
+        // Duplicate detected - log for debugging socket race conditions
+        if (typeof console !== "undefined" && process.env.NODE_ENV !== "production") {
+          console.warn(`[ChatSlice] Duplicate assistant message prevented: ${id} (already exists with status: ${existingMessage.status})`);
+        }
       }
       state.pendingMessageId = id;
       state.status = "streaming";

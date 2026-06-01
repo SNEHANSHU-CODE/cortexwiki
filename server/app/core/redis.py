@@ -26,7 +26,11 @@ class RedisTokenStore:
             return
 
         try:
-            self.client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+            self.client = Redis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                max_connections=settings.REDIS_MAX_CONNECTIONS,
+            )
             await self.client.ping()
             self.mode = "redis"
             logger.info("Connected to Redis token store")

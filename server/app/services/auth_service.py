@@ -54,9 +54,9 @@ class AuthService:
             "user_id": user["id"],
             "event_type": "auth",
             "event_name": "register",
-            "details": {"email": user["email"], "ip_address": ip_address, "user_agent": user_agent},
+            "details": {"ip_address": ip_address, "user_agent": user_agent},
         })
-        logger.info("Registered user %s", user["email"])
+        logger.info("Registered user id=%s", user["id"])
         return await self._issue_session(user=user, user_agent=user_agent, ip_address=ip_address)
 
     async def login_user(self, *, email: str, password: str, user_agent: str = "", ip_address: str = "") -> dict:
@@ -71,7 +71,7 @@ class AuthService:
             "event_name": "login",
             "details": {"ip_address": ip_address, "user_agent": user_agent},
         })
-        logger.info("Logged in user %s", user["email"])
+        logger.info("Logged in user id=%s", user["id"])
         return await self._issue_session(user=user, user_agent=user_agent, ip_address=ip_address)
 
     async def refresh_session(self, *, refresh_token: str, user_agent: str = "", ip_address: str = "") -> dict:

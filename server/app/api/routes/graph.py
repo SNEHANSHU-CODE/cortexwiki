@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, validate_wiki_id
 from app.db.mongo import get_mongo_manager
 from app.schemas.graph import GraphData, GraphEdgeData, GraphNodeData
 from app.services.graph_service import get_graph_service
@@ -23,6 +23,9 @@ async def get_graph(
     topic: str = Query(default="", max_length=120),
     current_user: dict = Depends(get_current_user),
 ):
+    # BUG FIX #5: Validate wiki_id format before querying
+    await validate_wiki_id(wiki_id)
+    
     await _validate_wiki(wiki_id, current_user["id"])
 
     result = await get_graph_service().get_topic_graph(

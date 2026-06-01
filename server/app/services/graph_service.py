@@ -10,6 +10,16 @@ import unicodedata
 
 from app.utils.logging import get_logger
 
+_QUERY_TERM_RE = re.compile(r"[a-zA-Z]{3,}")
+_CAPITALIZED_PHRASE_RE = re.compile(r"\b[A-Z][a-zA-Z]{2,}(?:\s[A-Z][a-zA-Z]{2,})*\b")
+_HYPHENATED_TERM_RE = re.compile(r"\b[a-zA-Z]+-[a-zA-Z]+(?:-[a-zA-Z]+)*\b")
+_TECHNICAL_TERM_RE = re.compile(r"\b[A-Z]{2,}(?:[A-Z][a-z]+)*\b|\b[a-z]+(?:[A-Z][a-z]+)+\b")
+
+
+def _normalize_text(value: str) -> str:
+    normalized = unicodedata.normalize('NFKD', value)
+    return normalized.encode('ascii', 'ignore').decode('ascii')
+
 
 logger = get_logger("services.graph")
 
@@ -51,10 +61,7 @@ class GraphService:
         
         BUG FIX #11: Add fallback to keyword search if semantic search fails.
         """
-        terms = re.findall(r"[a-zA-Z]{3,}", query.lower())
-        # Normalize unicode characters for consistent matching (e.g., café → cafe)
-        terms = [unicodedata.normalize('NFKD', t).encode('ascii', 'ignore').decode('ascii') for t in terms]
-        terms = [t for t in terms if t]  # Remove empty strings from normalization
+        terms = [t for t in (_normalize_text(term) for term in _QUERY_TERM_RE.findall(query.lower())) if t]
         
         # Try semantic search first
         try:
@@ -124,22 +131,10 @@ class GraphService:
         
         # BUG FIX #5: Extract concepts using multiple patterns
         # 1. Capitalized phrases (proper nouns)
-        capitalized = re.findall(
-            r'\b[A-Z][a-zA-Z]{2,}(?:\s[A-Z][a-zA-Z]{2,})*\b',
-            content[:5000],
-        )
-        
-        # 2. Hyphenated terms (machine-learning, client-side, etc)
-        hyphenated = re.findall(
-            r'\b[a-zA-Z]+-[a-zA-Z]+(?:-[a-zA-Z]+)*\b',
-            content[:5000],
-        )
-        
-        # 3. Code/technical terms (UPPERCASE or camelCase, but not too long)
-        technical = re.findall(
-            r'\b[A-Z]{2,}(?:[A-Z][a-z]+)*\b|\b[a-z]+(?:[A-Z][a-z]+)+\b',
-            content[:5000],
-        )
+        content_force = content[:5000]
+        capitalized = _CAPITALIZED_PHRASE_RE.findall(content_force)
+        hyphenated = _HYPHENATED_TERM_RE.findall(content_force)
+        technical = _TECHNICAL_TERM_RE.findall(content_force)
         
         # Combine and deduplicate with sanitized IDs
         def _sanitize_id(s: str, max_len: int = 64) -> str:

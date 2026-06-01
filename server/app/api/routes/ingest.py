@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Response
+from bson import ObjectId
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, validate_wiki_id
 from app.core.redis import get_redis_store
 from app.db.mongo import get_mongo_manager
 from app.schemas.ingest import IngestData, IngestHistoryItem, WebIngestRequest, YouTubeIngestRequest
@@ -77,6 +78,9 @@ def _build_ingest_response(result: dict) -> IngestData:
 
 @router.post("/youtube", response_model=IngestData)
 async def ingest_youtube(payload: YouTubeIngestRequest, current_user: dict = Depends(get_current_user), response: Response = None):
+    # BUG FIX #5: Validate wiki_id format before processing
+    await validate_wiki_id(payload.wiki_id)
+    
     # BUG FIX #21: Apply rate limiting
     # BUG FIX #26: Return rate limit headers
     allowed, headers = await _check_ingest_rate_limit(current_user["id"], payload.wiki_id)
@@ -106,6 +110,9 @@ async def ingest_youtube(payload: YouTubeIngestRequest, current_user: dict = Dep
 
 @router.post("/web", response_model=IngestData)
 async def ingest_web(payload: WebIngestRequest, current_user: dict = Depends(get_current_user), response: Response = None):
+    # BUG FIX #5: Validate wiki_id format before processing
+    await validate_wiki_id(payload.wiki_id)
+    
     # BUG FIX #21: Apply rate limiting
     # BUG FIX #26: Return rate limit headers
     allowed, headers = await _check_ingest_rate_limit(current_user["id"], payload.wiki_id)
@@ -138,11 +145,9 @@ async def ingest_history(
     wiki_id: str | None = None,
     current_user: dict = Depends(get_current_user),
 ):
-    # BUG FIX #14: Validate wiki_id format if provided
+    # BUG FIX #5: Validate wiki_id format if provided (use centralized validator)
     if wiki_id:
-        from bson import ObjectId
-        if not ObjectId.is_valid(wiki_id):
-            raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+        await validate_wiki_id(wiki_id)
     
     items = await get_mongo_manager().list_recent_ingestions(
         current_user["id"],

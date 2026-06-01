@@ -16,7 +16,7 @@ Routes:
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, validate_wiki_id
 from app.db.mongo import get_mongo_manager
 from app.schemas.wikis import WikiCreateRequest, WikiListResponse, WikiResponse, WikiUpdateRequest
 from app.services.graph_service import get_graph_service
@@ -68,10 +68,8 @@ async def get_wiki(
     wiki_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    # Validate wiki_id format
-    from bson import ObjectId
-    if not wiki_id or not ObjectId.is_valid(wiki_id):
-        raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+    # BUG FIX #5: Validate wiki_id format using centralized validator
+    await validate_wiki_id(wiki_id)
 
     wiki = await get_mongo_manager().get_wiki(wiki_id, current_user["id"])
     if not wiki:
@@ -85,10 +83,8 @@ async def update_wiki(
     payload: WikiUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    # Validate wiki_id format
-    from bson import ObjectId
-    if not wiki_id or not ObjectId.is_valid(wiki_id):
-        raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+    # BUG FIX #5: Validate wiki_id format using centralized validator
+    await validate_wiki_id(wiki_id)
 
     # Build only the fields that were actually provided
     update_data = payload.model_dump(exclude_none=True)
@@ -106,10 +102,9 @@ async def delete_wiki(
     wiki_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    # Validate wiki_id format
-    from bson import ObjectId
-    if not wiki_id or not ObjectId.is_valid(wiki_id):
-        raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+    # BUG FIX #5: Validate wiki_id format using centralized validator
+    await validate_wiki_id(wiki_id)
+    
     """
     Delete wiki and all associated data.
     

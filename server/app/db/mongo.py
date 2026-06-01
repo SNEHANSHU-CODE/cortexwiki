@@ -32,7 +32,12 @@ class MongoManager:
             logger.warning("MONGO_URI not set, using in-memory Mongo fallback")
             return
         try:
-            self.client = AsyncIOMotorClient(settings.MONGO_URI, serverSelectionTimeoutMS=5000)
+            self.client = AsyncIOMotorClient(
+                settings.MONGO_URI,
+                serverSelectionTimeoutMS=5000,
+                maxPoolSize=settings.MONGO_MAX_POOL_SIZE,
+                minPoolSize=settings.MONGO_MIN_POOL_SIZE,
+            )
             await self.client.admin.command("ping")
             self.database = self.client[settings.MONGO_DB_NAME]
             await self._ensure_indexes()
@@ -50,17 +55,47 @@ class MongoManager:
         self.client = None
         self.database = None
 
+    async def _safe_create_index(self, collection, keys: list, **kwargs) -> None:
+        """
+        Create an index, handling IndexKeySpecsConflict (MongoDB error code 86).
+        This occurs when an index with the same key pattern already exists but
+        with different options (e.g. a non-unique index that should now be unique).
+        We drop the old index and recreate it with the desired spec.
+        """
+        from pymongo.errors import OperationFailure
+        try:
+            await collection.create_index(keys, **kwargs)
+        except OperationFailure as exc:
+            if exc.code == 86:
+                index_name = "_".join(f"{field}_{direction}" for field, direction in keys)
+                logger.warning(
+                    "Index conflict on %s (%s) — dropping old index and recreating.",
+                    collection.name, index_name,
+                )
+                try:
+                    await collection.drop_index(index_name)
+                except Exception as drop_exc:
+                    logger.error("Failed to drop conflicting index %s: %s", index_name, drop_exc)
+                    raise
+                await collection.create_index(keys, **kwargs)
+            else:
+                raise
+
     async def _ensure_indexes(self) -> None:
         if self.database is None:
             return
-        await self.database.users.create_index([("email", ASCENDING)], unique=True)
-        await self.database.users.create_index([("username", ASCENDING)], unique=True)
-        await self.database.refresh_tokens.create_index([("token_hash", ASCENDING)], unique=True)
-        await self.database.refresh_tokens.create_index([("user_id", ASCENDING)])
-        await self.database.wikis.create_index([("user_id", ASCENDING), ("created_at", ASCENDING)])
-        await self.database.wiki_pages.create_index([("user_id", ASCENDING), ("wiki_id", ASCENDING), ("slug", ASCENDING)])
-        await self.database.raw_data.create_index([("user_id", ASCENDING), ("wiki_id", ASCENDING), ("created_at", ASCENDING)])
-        await self.database.agent_logs.create_index([("user_id", ASCENDING), ("created_at", ASCENDING)])
+        await self._safe_create_index(self.database.users, [("email", ASCENDING)], unique=True)
+        await self._safe_create_index(self.database.users, [("username", ASCENDING)], unique=True)
+        await self._safe_create_index(self.database.refresh_tokens, [("token_hash", ASCENDING)], unique=True)
+        await self._safe_create_index(self.database.refresh_tokens, [("user_id", ASCENDING)])
+        await self._safe_create_index(self.database.refresh_tokens, [("expires_at", ASCENDING)], expireAfterSeconds=0)
+        await self._safe_create_index(self.database.wikis, [("user_id", ASCENDING), ("created_at", ASCENDING)])
+        await self._safe_create_index(self.database.wiki_pages, [("user_id", ASCENDING), ("wiki_id", ASCENDING), ("slug", ASCENDING)], unique=True)
+        await self._safe_create_index(self.database.wiki_pages, [("user_id", ASCENDING), ("wiki_id", ASCENDING), ("source_url", ASCENDING)])
+        await self._safe_create_index(self.database.raw_data, [("user_id", ASCENDING), ("wiki_id", ASCENDING), ("created_at", ASCENDING)])
+        await self._safe_create_index(self.database.raw_data, [("wiki_id", ASCENDING), ("user_id", ASCENDING), ("source_url", ASCENDING)], unique=True)
+        await self._safe_create_index(self.database.agent_logs, [("user_id", ASCENDING), ("wiki_id", ASCENDING), ("event_type", ASCENDING), ("created_at", ASCENDING)])
+        await self._safe_create_index(self.database.wiki_pages, [("wiki_id", ASCENDING), ("source_url", ASCENDING)])
 
     def _copy(self, document: dict | None) -> dict | None:
         return copy.deepcopy(document) if document else None

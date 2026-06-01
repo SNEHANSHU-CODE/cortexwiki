@@ -11,6 +11,37 @@ from app.utils.logging import get_logger
 logger = get_logger("utils.errors")
 
 
+SENSITIVE_KEYS = {
+    "password",
+    "token",
+    "refresh_token",
+    "access_token",
+    "secret",
+    "api_key",
+    "apikey",
+    "jwt",
+    "stack",
+    "traceback",
+    "exc_info",
+    "internal",
+    "debug",
+}
+
+
+def _sanitize_details(details: dict | list | str | None):
+    if isinstance(details, dict):
+        sanitized: dict = {}
+        for key, value in details.items():
+            if any(sensitive in key.lower() for sensitive in SENSITIVE_KEYS):
+                sanitized[key] = "[redacted]"
+            else:
+                sanitized[key] = _sanitize_details(value)
+        return sanitized
+    if isinstance(details, list):
+        return [_sanitize_details(item) for item in details]
+    return details
+
+
 class AppError(Exception):
     def __init__(self, *, status_code: int, code: str, message: str, details: dict | list | None = None) -> None:
         self.status_code = status_code
@@ -25,7 +56,7 @@ def error_payload(*, request: Request, code: str, message: str, details: dict | 
         code=code,
         message=message,
         request_id=getattr(request.state, "request_id", None),
-        details=details or None,
+        details=_sanitize_details(details) if details else None,
     )
     return {
         "success": False,
@@ -40,11 +71,13 @@ def error_payload(*, request: Request, code: str, message: str, details: dict | 
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     if exc.status_code >= 500:
         logger.exception("Application error: %s", exc.message)
+        details = None
     else:
         logger.warning("Application error: %s", exc.message)
+        details = exc.details
     return JSONResponse(
         status_code=exc.status_code,
-        content=error_payload(request=request, code=exc.code, message=exc.message, details=exc.details),
+        content=error_payload(request=request, code=exc.code, message=exc.message, details=details),
     )
 
 

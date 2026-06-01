@@ -32,11 +32,26 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
   const containerRef  = useRef(null);
   const graphRef      = useRef(null);
   const hasAutoFitRef = useRef(false);
-  // positionCache is a ref — never triggers re-renders
+  // BUG FIX #4: Position cache uses useRef (not useState) to prevent infinite update loops
+  // Positions are NOT a dependency of useMemo, avoiding circular computation
   const positionCache = useRef(new Map());
 
   const [hoveredNodeId, setHoveredNodeId] = useState("");
   const [size, setSize]                   = useState({ width: 0, height: 0 });
+
+  // BUG FIX #7: Load persisted positions from localStorage on mount
+  useEffect(() => {
+    try {
+      const key = "graph:positions:cache";
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const data = JSON.parse(stored);
+        positionCache.current = new Map(Object.entries(data));
+      }
+    } catch (err) {
+      console.warn("Failed to load persisted graph positions:", err);
+    }
+  }, []);
 
   // ── ResizeObserver ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -148,6 +163,14 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
         vx: node.vx ?? 0, vy: node.vy ?? 0,
       });
     });
+    // BUG FIX #7: Also save positions to localStorage for persistence across refreshes
+    try {
+      const key = "graph:positions:cache";
+      const data = Object.fromEntries(positionCache.current);
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (err) {
+      console.warn("Failed to persist graph positions:", err);
+    }
   }, [normalizedData.nodes]);
 
   const handleNodeDragEnd = useCallback((node) => {

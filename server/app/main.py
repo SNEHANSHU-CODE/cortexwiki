@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
+import asyncio
 import socketio
+import time
 from bson import ObjectId
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -22,6 +24,41 @@ from app.db.mongo import get_mongo_manager
 configure_logging(settings.LOG_LEVEL)
 logger = get_logger("app.main")
 
+# BUG FIX #1: Track socket connections with timeout cleanup
+_active_socket_connections = 0
+_socket_connection_lock = asyncio.Lock()
+_socket_connection_map = {}  # sid -> { user_id, created_at, last_activity }
+
+
+async def _cleanup_stale_socket_connections():
+    """BUG FIX #1: Periodically clean up stale socket connections.
+    
+    Runs every 30 seconds to find and close connections that haven't
+    sent activity for more than 120 seconds (in case disconnect event
+    didn't fire due to network drop).
+    """
+    global _active_socket_connections
+    import time
+    
+    while True:
+        try:
+            await asyncio.sleep(30)
+            now = time.time()
+            stale_sids = []
+            
+            async with _socket_connection_lock:
+                for sid, info in list(_socket_connection_map.items()):
+                    last_activity = info.get("last_activity", now)
+                    if now - last_activity > 120:  # 2 minute timeout
+                        stale_sids.append(sid)
+            
+            for sid in stale_sids:
+                logger.warning(f"Closing stale socket connection: sid={sid}")
+                await sio.disconnect(sid)
+                
+        except Exception as exc:
+            logger.exception("Error in socket cleanup task: %s", exc)
+
 
 # ── Socket.io server ──────────────────────────────────────────────────────────
 sio = socketio.AsyncServer(
@@ -29,6 +66,11 @@ sio = socketio.AsyncServer(
     cors_allowed_origins=settings.frontend_origins_list,
     logger=False,
     engineio_logger=False,
+    # BUG FIX #1: Add ping/pong heartbeat to detect stale connections
+    # Clients must respond to pings within ping_timeout, or connection is closed
+    ping_interval=25,      # Send ping every 25 seconds
+    ping_timeout=10,       # Client must pong within 10 seconds
+    max_http_buffer_size=1_000_000,  # Limit buffer to prevent memory exhaustion
 )
 
 
@@ -60,27 +102,54 @@ async def _authenticate_socket(token: str) -> dict | None:
 @sio.event
 async def connect(sid, environ, auth):
     """
+    BUG FIX #1: Track connection with timeout for cleanup if disconnect doesn't fire.
     BUG FIX #8: Validate and store token for later validation on each message.
     """
+    async with _socket_connection_lock:
+        global _active_socket_connections
+        if _active_socket_connections >= settings.MAX_SOCKET_CONNECTIONS:
+            raise socketio.exceptions.ConnectionRefusedError("Server is busy. Try again later.")
+        _active_socket_connections += 1
+
     token = (auth or {}).get("token", "")
     if not token:
+        async with _socket_connection_lock:
+            _active_socket_connections -= 1
         raise socketio.exceptions.ConnectionRefusedError("Authentication required.")
+    
     user = await _authenticate_socket(token)
     if not user:
+        async with _socket_connection_lock:
+            _active_socket_connections -= 1
         raise socketio.exceptions.ConnectionRefusedError("Invalid or expired token.")
+    
+    # BUG FIX #1: Track connection with metadata for cleanup
+    import time
+    async with _socket_connection_lock:
+        _socket_connection_map[sid] = {
+            "user_id": user.get("id"),
+            "created_at": time.time(),
+            "last_activity": time.time(),
+        }
     
     # Store user AND token for validation on each message
     await sio.save_session(sid, {
         "user": user,
         "token": token,  # BUG FIX #8: Store token for re-validation
     })
-    logger.info("Socket connected: sid=%s, user_id=%s", sid, user.get("id"))
+    logger.info("Socket connected: sid=%s, user_id=%s, active_connections=%d", 
+                sid, user.get("id"), _active_socket_connections)
 
 
 @sio.event
 async def disconnect(sid):
-    logger.info("Socket disconnected: sid=%s", sid)
-    pass
+    """BUG FIX #1: Clean up connection tracking on disconnect."""
+    async with _socket_connection_lock:
+        global _active_socket_connections
+        if _active_socket_connections > 0:
+            _active_socket_connections -= 1
+        _socket_connection_map.pop(sid, None)
+    logger.info("Socket disconnected: sid=%s, active_connections=%d", sid, _active_socket_connections)
 
 
 @sio.on("ping")
@@ -214,9 +283,16 @@ async def handle_query(sid, data):
     Receives: { requestId, wiki_id, question, debug, allow_internet }
     Emits:    query:started → query:token (N times) → query:complete | query:error
     
+    BUG FIX #1: Track activity for stale connection cleanup.
     BUG FIX #8: Validate token on each message.
     BUG FIX #9: Validate user context is present and valid.
     """
+    # BUG FIX #1: Update last activity for this connection
+    import time
+    async with _socket_connection_lock:
+        if sid in _socket_connection_map:
+            _socket_connection_map[sid]["last_activity"] = time.time()
+    
     # BUG FIX #8: Re-validate token on each message
     user = await _validate_socket_token(sid)
     if not user:
@@ -413,7 +489,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
                 token_record = await get_redis_store().get_access_token(jti)
                 if not token_record or token_record.get("user_id") != user_id:
-                    logger.warning("Bearer token validation failed: jti=%s, user_id=%s, token_record=%s", jti, user_id, token_record)
+                    logger.warning("Bearer token validation failed: jti=%s, user_id=%s", jti, user_id)
                     raise AppError(
                         status_code=401,
                         code="access_token_invalid",
@@ -448,7 +524,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
                 token_record = await get_redis_store().get_access_token(jti)
                 if not token_record or token_record.get("user_id") != user_id:
-                    logger.warning("Cookie token validation failed: jti=%s, user_id=%s, token_record=%s, redis_mode=%s", jti, user_id, token_record, get_redis_store().mode)
+                    logger.warning("Cookie token validation failed: jti=%s, user_id=%s, redis_mode=%s", jti, user_id, get_redis_store().mode)
                     raise AppError(
                         status_code=401,
                         code="access_token_invalid",
@@ -475,6 +551,105 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             logger.debug("No cookie token found for path: %s, available cookies: %s", path, list(request.cookies.keys()))
 
         return await call_next(request)
+
+
+async def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+async def _increment_rate_counter(key: str, window: int) -> tuple[int, int]:
+    store = get_redis_store()
+    try:
+        client = store.client
+        if client is not None:
+            value = await client.incr(key)
+            if value == 1:
+                await client.expire(key, int(window))
+            ttl = await client.ttl(key)
+            return int(value), int(ttl if ttl is not None and ttl >= 0 else window)
+    except Exception:
+        logger.debug("Redis rate limiter unavailable, falling back to memory")
+
+    if not hasattr(store, "_memory_rate_counters"):
+        store._memory_rate_counters = {}
+
+    now = int(time.time())
+    window_start = now - (now % int(window))
+    entry = store._memory_rate_counters.get(key)
+    if not entry or entry[0] != window_start:
+        store._memory_rate_counters[key] = (window_start, 1, now + int(window))
+        return 1, int(window)
+
+    count = entry[1] + 1
+    store._memory_rate_counters[key] = (window_start, count, entry[2])
+    return count, max(entry[2] - now, 0)
+
+
+async def _check_api_request_rate_limit(request: Request) -> tuple[bool, dict[str, str]]:
+    # Use getattr to safely access state.user — it may not be set if this
+    # middleware runs before AuthenticationMiddleware initialises request.state.
+    user = getattr(request.state, "user", None)
+    if user is not None and isinstance(user, dict):
+        user_id = user.get("id")
+    else:
+        user_id = None
+
+    if user_id:
+        key = f"api:rate:user:{user_id}"
+        limit = settings.API_REQUESTS_PER_MINUTE_PER_USER
+    else:
+        key = f"api:rate:ip:{await _get_client_ip(request)}"
+        limit = settings.API_REQUESTS_PER_MINUTE_PER_IP
+
+    count, reset = await _increment_rate_counter(key, 60)
+    remaining = max(limit - count, 0)
+    headers = {
+        "X-RateLimit-Limit": str(limit),
+        "X-RateLimit-Remaining": str(remaining),
+        "X-RateLimit-Reset": str(reset),
+    }
+    return count <= limit, headers
+
+
+class RequestRateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        allowed, headers = await _check_api_request_rate_limit(request)
+        if not allowed:
+            raise AppError(
+                status_code=429,
+                code="rate_limit_exceeded",
+                message="Too many requests. Please slow down.",
+            )
+        response = await call_next(request)
+        response.headers.update(headers)
+        return response
+
+
+class ConcurrentRequestLimiterMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app):
+        super().__init__(app)
+        self._semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_REQUESTS)
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        # asyncio.Semaphore does not have acquire_nowait(); use locked() to
+        # detect exhaustion, then acquire normally (it will not block because
+        # we only reach acquire() when a slot is free).
+        if self._semaphore.locked():
+            raise AppError(
+                status_code=503,
+                code="server_busy",
+                message="Server is handling too many requests. Please retry later.",
+            )
+        await self._semaphore.acquire()
+        try:
+            return await call_next(request)
+        finally:
+            self._semaphore.release()
 
 
 @asynccontextmanager
@@ -504,7 +679,12 @@ def create_fastapi_app() -> FastAPI:
             return res
         return await call_next(request)
 
-    app.add_middleware(AuthenticationMiddleware)
+    # Middleware is applied in reverse-registration order (last added = outermost).
+    # Desired runtime order: CORS → ConcurrentRequestLimiter → Authentication → RequestRateLimit → route
+    # So we register in the opposite sequence:
+    app.add_middleware(RequestRateLimitMiddleware)           # runs last  (needs request.state.user set first)
+    app.add_middleware(AuthenticationMiddleware)             # runs 2nd   (sets request.state.user)
+    app.add_middleware(ConcurrentRequestLimiterMiddleware)   # runs 1st after CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.frontend_origins_list,

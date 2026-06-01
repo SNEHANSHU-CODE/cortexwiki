@@ -9,10 +9,16 @@ const COMPLETE_EVENT     = import.meta.env.VITE_SOCKET_COMPLETE_EVENT || "query:
 const ERROR_EVENT        = import.meta.env.VITE_SOCKET_ERROR_EVENT  || "query:error";
 
 function tokenDelay(token) {
-  // BUG FIX #9: Removed artificial delay calculation
-  // Streaming delay should be determined by network latency, not token length
-  // Real-time token delivery provides better UX
-  return 0;
+  // BUG FIX #9: Implement proper streaming delay for realistic token-by-token delivery
+  // Previous code returned 0, causing all tokens to arrive at once in HTTP fallback
+  // Now: calculate delay based on token length + random variance for natural feel
+  // Token delay = base (10ms) + length factor (5ms per char) + random jitter (±5ms)
+  if (!token) return 0;
+  const baseDelay = 10;  // Base 10ms per token
+  const lengthDelay = Math.min(token.length * 5, 60);  // 5ms per char, max 60ms
+  const jitter = (Math.random() - 0.5) * 10;  // ±5ms random variation
+  const totalDelay = Math.max(5, baseDelay + lengthDelay + jitter);
+  return Math.round(totalDelay);
 }
 
 function wait(ms) {
@@ -54,16 +60,29 @@ async function streamFallbackResponse({
       onComplete?.({ requestId, content: result.answer, metadata: result });
     }
   } catch (error) {
-    // BUG FIX #16: Preserve full error details and stack trace for debugging
+    // BUG FIX #11: Don't expose stack traces to client - only send user-safe error info
     if (!signal?.aborted) {
+      // Limit details size to prevent Redux state bloat
+      let details = error?.response?.data || error?.data || {};
+      const detailsStr = JSON.stringify(details);
+      if (detailsStr.length > 500) {
+        details = { message: "Error details too large to display" };
+      }
+      
       const errorData = {
         message: error?.message || "Unknown error occurred",
         status: error?.status || error?.response?.status,
         code: error?.code || "UNKNOWN_ERROR",
-        details: error?.response?.data || error?.data || {},
+        details: details,
         timestamp: new Date().toISOString(),
-        stack: error?.stack,  // Include stack trace for debugging
+        // BUG FIX #11: Don't include stack trace in client state (only log to console in dev)
       };
+      
+      // Log full error including stack to console for debugging (dev only)
+      if (typeof console !== "undefined" && process.env.NODE_ENV !== "production") {
+        console.error("[ChatStream Error]", error);
+      }
+      
       onError?.(errorData);
     }
   }
@@ -79,7 +98,7 @@ export function createChatStreamSession({
 }) {
   let socket = null;
   let heartbeatInterval = null;
-  let deadConnectionCheck = null;  // BUG FIX #20: Initialize to null for cleanup in all paths
+  let deadConnectionCheck = null;  // BUG FIX #3: Initialize to null for cleanup in all paths
 
   if (SOCKET_URL) {
     socket = io(SOCKET_URL, {
@@ -96,7 +115,7 @@ export function createChatStreamSession({
     socket.on("connect",           () => {
       onConnectionChange?.("connected");
       
-      // BUG FIX #20: Start heartbeat on connection to keep socket alive
+      // BUG FIX #3: Clear existing interval before creating new one to prevent leak
       if (heartbeatInterval) clearInterval(heartbeatInterval);
       heartbeatInterval = setInterval(() => {
         if (socket?.connected) {
@@ -107,8 +126,16 @@ export function createChatStreamSession({
     
     socket.on("disconnect", () => {
       onConnectionChange?.("reconnecting");
-      // Clear heartbeat on disconnect
-      if (heartbeatInterval) clearInterval(heartbeatInterval);
+      // BUG FIX #3: Clear heartbeat on disconnect
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+      }
+      // BUG FIX #3: Clear dead connection check on disconnect
+      if (deadConnectionCheck) {
+        clearInterval(deadConnectionCheck);
+        deadConnectionCheck = null;
+      }
       // BUG FIX #8: Attempt reconnection after delay
       setTimeout(() => {
         if (socket && !socket.connected) {
@@ -128,16 +155,16 @@ export function createChatStreamSession({
       }, 5000);
     });
     
-    // BUG FIX #20: Handle pong responses from server and track connection health
+    // BUG FIX #3: Handle pong responses from server and track connection health
     let lastPongTime = Date.now();
     socket.on("pong", (data) => {
       lastPongTime = Date.now();
       // Socket is healthy, connection state is fresh
-      logger?.debug?.(`Pong received at ${lastPongTime}`);
     });
     
-    // BUG FIX #20: Detect dead connections if no pong within 60 seconds
-    const deadConnectionCheck = setInterval(() => {
+    // BUG FIX #3: Detect dead connections if no pong within 60 seconds
+    // Store in outer variable so it can be cleaned up in disconnect()
+    deadConnectionCheck = setInterval(() => {
       if (socket?.connected && Date.now() - lastPongTime > 60000) {
         logger?.warn?.("Socket appears dead - no pong in 60s, disconnecting");
         socket.disconnect();
@@ -155,8 +182,15 @@ export function createChatStreamSession({
   }
 
   const disconnect = () => {
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-    if (deadConnectionCheck) clearInterval(deadConnectionCheck);
+    // BUG FIX #3: Properly clean up all intervals and listeners to prevent memory leaks
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+    if (deadConnectionCheck) {
+      clearInterval(deadConnectionCheck);
+      deadConnectionCheck = null;
+    }
     if (socket) {
       socket.removeAllListeners();
       socket.disconnect();

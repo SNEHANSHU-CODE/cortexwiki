@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from typing import Literal
 
 from pydantic import field_validator
@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str | None = None
     REDIS_ACCESS_TOKEN_PREFIX: str = "access_tokens"
+    REDIS_MAX_CONNECTIONS: int = 20
+
+    # Mongo connection pool tuning
+    MONGO_MAX_POOL_SIZE: int = 50
+    MONGO_MIN_POOL_SIZE: int = 5
 
     # Neo4j
     NEO4J_URI: str | None = None
@@ -90,6 +95,16 @@ class Settings(BaseSettings):
     LLM_REQUEST_TIMEOUT: int = 40
     LLM_STREAM_TIMEOUT: int = 120
 
+    # Request and connection limits
+    API_REQUESTS_PER_MINUTE_PER_USER: int = 120
+    API_REQUESTS_PER_MINUTE_PER_IP: int = 20
+    MAX_CONCURRENT_REQUESTS: int = 100
+    MAX_SOCKET_CONNECTIONS: int = 100
+
+    # External API resilience
+    EXTERNAL_API_FAILURE_THRESHOLD: int = 3
+    EXTERNAL_API_CIRCUIT_RESET_SECONDS: int = 120
+
     @field_validator("DEBUG", mode="before")
     @classmethod
     def parse_debug(cls, value) -> bool:
@@ -116,25 +131,25 @@ class Settings(BaseSettings):
                 return False
         return bool(value)
 
-    @property
+    @cached_property
     def frontend_origins_list(self) -> list[str]:
         """Parse FRONTEND_ORIGINS string into a list — used by CORS and Socket.io."""
         if not self.FRONTEND_ORIGINS:
             return ["http://localhost:5173"]
         return [o.strip().rstrip("/") for o in self.FRONTEND_ORIGINS.split(",") if o.strip()]
 
-    @property
+    @cached_property
     def scraperapi_proxy_url(self) -> str | None:
         """ScraperAPI residential proxy URL for youtube-transcript-api fallback."""
         if not self.SCRAPERAPI_KEY:
             return None
         return f"http://scraperapi:{self.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001"
 
-    @property
+    @cached_property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
 
-    @property
+    @cached_property
     def base_url(self) -> str:
         host = "localhost" if self.HOST == "0.0.0.0" else self.HOST
         return f"http://{host}:{self.PORT}"

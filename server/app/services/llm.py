@@ -9,9 +9,11 @@ LLM provider strategy:
   - merge_notes   : compounds existing master note with new source summary
 """
 
+import asyncio
 import hashlib
 import json
 import re
+import time
 
 import httpx
 
@@ -21,6 +23,43 @@ from app.utils.text import chunk_words, clean_text, split_sentences
 
 
 logger = get_logger("services.llm")
+
+
+class _ExternalApiCircuitBreaker:
+    def __init__(self, threshold: int, reset_seconds: int) -> None:
+        self.threshold = threshold
+        self.reset_seconds = reset_seconds
+        self._state: dict[str, tuple[int, float]] = {}
+        self._lock = asyncio.Lock()
+
+    async def is_open(self, name: str) -> bool:
+        async with self._lock:
+            count, last_failure = self._state.get(name, (0, 0.0))
+            if count >= self.threshold and time.monotonic() - last_failure < self.reset_seconds:
+                return True
+            if time.monotonic() - last_failure >= self.reset_seconds:
+                self._state.pop(name, None)
+            return False
+
+    async def record_success(self, name: str) -> None:
+        async with self._lock:
+            self._state.pop(name, None)
+
+    async def record_failure(self, name: str) -> None:
+        async with self._lock:
+            count, last_failure = self._state.get(name, (0, time.monotonic()))
+            now = time.monotonic()
+            if now - last_failure >= self.reset_seconds:
+                count = 1
+            else:
+                count += 1
+            self._state[name] = (count, now)
+
+
+_api_circuit_breaker = _ExternalApiCircuitBreaker(
+    settings.EXTERNAL_API_FAILURE_THRESHOLD,
+    settings.EXTERNAL_API_CIRCUIT_RESET_SECONDS,
+)
 
 _GROQ_CHAT_URL = f"{settings.GROQ_BASE_URL}/chat/completions"
 
@@ -230,6 +269,10 @@ class LLMService:
             "max_tokens": max_output_tokens,
             "stream": False,
         }
+        if await _api_circuit_breaker.is_open("groq"):
+            logger.warning("Groq circuit breaker open — skipping GROQ request")
+            return ""
+
         try:
             limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
             async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits, headers={"User-Agent": settings.USER_AGENT}) as client:
@@ -244,13 +287,17 @@ class LLMService:
                 text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                 if not text:
                     logger.warning("Empty response from Groq")
+                    await _api_circuit_breaker.record_failure("groq")
                     return ""
+                await _api_circuit_breaker.record_success("groq")
                 logger.info("Groq generate OK (model=%s)", settings.GROQ_MODEL)
                 return clean_text(text)
         except (httpx.HTTPError, KeyError, IndexError) as exc:
+            await _api_circuit_breaker.record_failure("groq")
             logger.warning("Groq generate failed: %s — falling back to Gemini", str(exc))
             return ""
         except Exception:
+            await _api_circuit_breaker.record_failure("groq")
             logger.exception("Unexpected error in Groq generate")
             return ""
 
@@ -270,6 +317,10 @@ class LLMService:
             "max_tokens": max_output_tokens,
             "stream": True,
         }
+        if await _api_circuit_breaker.is_open("groq"):
+            logger.warning("Groq circuit breaker open — skipping GROQ stream")
+            return
+
         try:
             limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
             async with httpx.AsyncClient(timeout=settings.LLM_STREAM_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits) as client:
@@ -296,8 +347,9 @@ class LLMService:
                         if delta:
                             yield delta
             logger.info("Groq stream OK (model=%s)", settings.GROQ_MODEL)
-        except (httpx.HTTPError, json.JSONDecodeError):
-            logger.exception("Groq stream failed — falling back to Gemini")
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            await _api_circuit_breaker.record_failure("groq")
+            logger.exception("Groq stream failed — falling back to Gemini: %s", str(exc))
 
     # ── Gemini ────────────────────────────────────────────────────────────────
 
@@ -313,6 +365,10 @@ class LLMService:
             "contents": [{"parts": self._build_gemini_parts(prompt, system_instruction)}],
             "generationConfig": {"temperature": temperature, "maxOutputTokens": max_output_tokens},
         }
+        if await _api_circuit_breaker.is_open("gemini"):
+            logger.warning("Gemini circuit breaker open — skipping Gemini generate")
+            return ""
+
         try:
             limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
             async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits, headers={"User-Agent": settings.USER_AGENT}) as client:
@@ -323,10 +379,12 @@ class LLMService:
                 )
                 response.raise_for_status()
                 text = self._extract_gemini_text(response.json())
+                await _api_circuit_breaker.record_success("gemini")
                 logger.info("Gemini generate OK (model=%s)", settings.GEMINI_MODEL)
                 return text
-        except httpx.HTTPError:
-            logger.exception("Gemini generate failed — using static fallback")
+        except httpx.HTTPError as exc:
+            await _api_circuit_breaker.record_failure("gemini")
+            logger.exception("Gemini generate failed — using static fallback: %s", str(exc))
             return ""
 
     async def _gemini_stream(
@@ -369,14 +427,19 @@ class LLMService:
                         if delta:
                             yield delta
             logger.info("Gemini stream OK (model=%s)", settings.GEMINI_MODEL)
-        except (httpx.HTTPError, json.JSONDecodeError):
-            logger.exception("Gemini stream failed — using static fallback")
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            await _api_circuit_breaker.record_failure("gemini")
+            logger.exception("Gemini stream failed — using static fallback: %s", str(exc))
 
     async def _gemini_embed(self, text: str) -> list[float]:
         payload = {
             "model": _GEMINI_EMBED_MODEL,
             "content": {"parts": [{"text": text[:4000]}]},
         }
+        if await _api_circuit_breaker.is_open("gemini"):
+            logger.warning("Gemini circuit breaker open — skipping Gemini embedding request")
+            return []
+
         try:
             limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
             async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits) as client:
@@ -387,9 +450,11 @@ class LLMService:
                 )
                 response.raise_for_status()
                 values = response.json().get("embedding", {}).get("values", [])
+                await _api_circuit_breaker.record_success("gemini")
                 return values or []
-        except httpx.HTTPError:
-            logger.exception("Gemini embed failed — using hash fallback")
+        except httpx.HTTPError as exc:
+            await _api_circuit_breaker.record_failure("gemini")
+            logger.exception("Gemini embed failed — using hash fallback: %s", str(exc))
             return []
 
     # ── Helpers ───────────────────────────────────────────────────────────────
