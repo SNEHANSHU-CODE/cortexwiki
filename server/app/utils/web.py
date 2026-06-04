@@ -33,18 +33,13 @@ async def _fetch_transcript_supadata(video_id: str) -> str:
     if not settings.SUPADATA_API_KEY:
         raise ValueError("SUPADATA_API_KEY not configured")
 
-    limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
-    async with httpx.AsyncClient(
-        timeout=settings.HTTP_REQUEST_TIMEOUT,
-        verify=settings.OUTBOUND_VERIFY_SSL,
-        limits=limits,
-        headers={"User-Agent": settings.USER_AGENT},
-    ) as client:
-        response = await client.get(
-            "https://api.supadata.ai/v1/youtube/transcript",
-            params={"videoId": video_id, "text": "true"},
-            headers={"x-api-key": settings.SUPADATA_API_KEY},
-        )
+    from app.core.http import get_http_client
+    client = get_http_client()
+    response = await client.get(
+        "https://api.supadata.ai/v1/youtube/transcript",
+        params={"videoId": video_id, "text": "true"},
+        headers={"x-api-key": settings.SUPADATA_API_KEY},
+    )
 
     if response.status_code == 404:
         raise AppError(
@@ -152,24 +147,19 @@ async def fetch_youtube_content(url: str) -> dict:
     # Fetch video title from YouTube page (best-effort)
     title = f"YouTube Video {video_id}"
     try:
-        limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
-        async with httpx.AsyncClient(
-            timeout=settings.HTTP_REQUEST_TIMEOUT,
-            headers={"User-Agent": settings.USER_AGENT},
-            verify=settings.OUTBOUND_VERIFY_SSL,
-            limits=limits,
-        ) as client:
-            response = await client.get(f"https://www.youtube.com/watch?v={video_id}")
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
-                meta_title = soup.find("meta", property="og:title")
-                if meta_title and meta_title.get("content"):
-                    # Sanitize title to strip HTML and truncate to safe length
-                    raw = meta_title.get("content", "")
-                    safe = BeautifulSoup(raw, "html.parser").get_text()
-                    safe = clean_text(safe).strip()
-                    if safe:
-                        title = safe[:200]
+        from app.core.http import get_http_client
+        client = get_http_client()
+        response = await client.get(f"https://www.youtube.com/watch?v={video_id}")
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, "html.parser")
+            meta_title = soup.find("meta", property="og:title")
+            if meta_title and meta_title.get("content"):
+                # Sanitize title to strip HTML and truncate to safe length
+                raw = meta_title.get("content", "")
+                safe = BeautifulSoup(raw, "html.parser").get_text()
+                safe = clean_text(safe).strip()
+                if safe:
+                    title = safe[:200]
     except Exception:
         pass
 
@@ -184,16 +174,54 @@ async def fetch_youtube_content(url: str) -> dict:
 # ── Web page fetch ────────────────────────────────────────────────────────────
 
 async def fetch_web_page_content(url: str) -> dict:
+    from app.core.http import get_http_client
+    client = get_http_client()
+    
+    max_redirects = 5
+    current_url = url
+    
+    def is_blocked_ip(target_url: str) -> bool:
+        from urllib.parse import urlparse
+        import socket
+        try:
+            parsed = urlparse(target_url)
+            hostname = parsed.hostname or ""
+            if not hostname:
+                return True
+            # Block known local names
+            if hostname in ["localhost", "127.0.0.1", "0.0.0.0"] or hostname.startswith("192.168.") or hostname.startswith("10.") or hostname.startswith("172.16.") or hostname.startswith("169.254."):
+                return True
+            # Resolve to IP and check IP
+            ip = socket.gethostbyname(hostname)
+            if ip in ["127.0.0.1", "0.0.0.0"] or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.16.") or ip.startswith("169.254."):
+                return True
+        except Exception:
+            pass
+        return False
+
+    text_body = ""
     try:
-        limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
-        async with httpx.AsyncClient(
-            timeout=settings.HTTP_REQUEST_TIMEOUT,
-            headers={"User-Agent": settings.USER_AGENT},
-            follow_redirects=True,
-            verify=settings.OUTBOUND_VERIFY_SSL,
-            limits=limits,
-        ) as client:
-            async with client.stream("GET", url) as response:
+        for hop in range(max_redirects + 1):
+            if is_blocked_ip(current_url):
+                raise AppError(
+                    status_code=400,
+                    code="url_blocked_local",
+                    message="Redirect to local network is blocked.",
+                )
+            
+            async with client.stream("GET", current_url, follow_redirects=False) as response:
+                if response.status_code in (301, 302, 303, 307, 308):
+                    location = response.headers.get("Location")
+                    if not location:
+                        raise AppError(
+                            status_code=400,
+                            code="web_fetch_failed",
+                            message="Redirect response missing Location header.",
+                        )
+                    from urllib.parse import urljoin
+                    current_url = urljoin(current_url, location)
+                    continue
+                
                 response.raise_for_status()
                 content_length = response.headers.get("Content-Length")
                 max_bytes = settings.INGEST_MAX_CHARACTERS * 10
@@ -220,6 +248,15 @@ async def fetch_web_page_content(url: str) -> dict:
                         )
                     body_parts.append(chunk)
                 text_body = b"".join(body_parts).decode("utf-8", errors="replace")
+                break
+        else:
+            raise AppError(
+                status_code=400,
+                code="too_many_redirects",
+                message="Too many redirect hops.",
+            )
+    except AppError:
+        raise
     except httpx.HTTPError as exc:
         raise AppError(
             status_code=400,
@@ -260,19 +297,13 @@ async def search_web(query: str, limit: int | None = None) -> list[dict]:
     result_limit = limit or settings.INTERNET_SEARCH_RESULT_LIMIT
 
     try:
-        limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
-        async with httpx.AsyncClient(
-            timeout=settings.HTTP_REQUEST_TIMEOUT,
-            headers={"User-Agent": settings.USER_AGENT},
-            follow_redirects=True,
-            verify=settings.OUTBOUND_VERIFY_SSL,
-            limits=limits,
-        ) as client:
-            response = await client.post(
-                settings.INTERNET_SEARCH_ENDPOINT,
-                data={"q": query},
-            )
-            response.raise_for_status()
+        from app.core.http import get_http_client
+        client = get_http_client()
+        response = await client.post(
+            settings.INTERNET_SEARCH_ENDPOINT,
+            data={"q": query},
+        )
+        response.raise_for_status()
     except httpx.HTTPError:
         return []
 

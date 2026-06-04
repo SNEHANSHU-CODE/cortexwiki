@@ -44,6 +44,8 @@ class MongoManager:
             self.mode = "mongo"
             logger.info("Connected to MongoDB")
         except Exception:
+            if self.client is not None:
+                self.client.close()
             self.client = None
             self.database = None
             self.mode = "memory"
@@ -439,8 +441,19 @@ class MongoManager:
         slug = slugify(payload["title"])
         wiki_id = payload.get("wiki_id")
         existing_pages = await self.list_wiki_pages(payload["user_id"], wiki_id=wiki_id, limit=200)
-        matching_versions = [page for page in existing_pages if page["slug"] == slug]
+        
+        import re
+        version_pattern = re.compile(rf"^{re.escape(slug)}-v\d+$")
+        matching_versions = []
+        for page in existing_pages:
+            p_slug = page.get("slug", "")
+            if p_slug == slug or version_pattern.match(p_slug):
+                matching_versions.append(page)
+                
         version = max([page.get("version", 1) for page in matching_versions], default=0) + 1
+        
+        if version > 1:
+            slug = f"{slug}-v{version}"
 
         document = {
             **payload,

@@ -1,53 +1,47 @@
-import { useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
-import Navbar from "../components/Navbar";
-import { clearSession } from "../redux/slices/authSlice";
-import { clearMessages } from "../redux/slices/chatSlice";
-import { clearGraphState } from "../redux/slices/graphSlice";
-import { clearIngestFeedback } from "../redux/slices/ingestSlice";
-import { logoutRequest } from "../utils/api";
-
-function AppShell() {
-  const [loggingOut, setLoggingOut] = useState(false);
-  const { user } = useSelector((state) => state.auth);
-  const dispatch  = useDispatch();
-  const navigate  = useNavigate();
-
-  const handleLogout = async () => {
-    if (loggingOut) return; // prevent double-click
-    setLoggingOut(true);
-    try {
-      await logoutRequest();
-    } catch {
-      // Clear local session even if the server call fails.
-    } finally {
-      dispatch(clearMessages());
-      dispatch(clearGraphState());
-      dispatch(clearIngestFeedback());
-      dispatch(clearSession());
-      navigate("/login", { replace: true });
-      // No need to reset loggingOut — component unmounts after navigation.
-    }
-  };
-
+function AppSkeleton({ compact, label = "Loading..." }) {
   return (
-    <div className="workspace-shell">
-      <Navbar
-        links={[
-          { to: "/chat",   label: "Chat" },
-          { to: "/ingest", label: "Ingest" },
-          { to: "/graph",  label: "Graph" },
-        ]}
-        user={user}
-        loggingOut={loggingOut}
-        onLogout={handleLogout}
-      />
-      <main className="workspace-main" id="main-content">
-        <Outlet />
-      </main>
+    <div className={`app-skeleton${compact ? " is-compact" : ""}`}>
+      <div className="app-skeleton-shell">
+        <div className="app-skeleton-header">
+          <div className="app-skeleton-brand">
+            <div className="app-skeleton-mark" />
+            <div className="app-skeleton-brand-copy">
+              <span className="skeleton-line is-short" />
+              <span className="skeleton-line" />
+            </div>
+          </div>
+          <div className="app-skeleton-nav">
+            <span className="skeleton-pill" />
+            <span className="skeleton-pill" />
+          </div>
+        </div>
+        <div className="app-skeleton-grid">
+          <div className="surface-panel app-skeleton-card">
+            <span className="skeleton-line is-short" />
+            <span className="skeleton-line is-wide" />
+            <span className="skeleton-line" />
+            <div className="app-skeleton-pills">
+              <span className="skeleton-pill" />
+              <span className="skeleton-pill" />
+              <span className="skeleton-pill" />
+            </div>
+          </div>
+          {!compact && (
+            <div className="surface-panel app-skeleton-card">
+              <span className="skeleton-line is-short" />
+              <span className="skeleton-line is-wide" />
+              <span className="skeleton-line" />
+              <div className="app-skeleton-pills">
+                <span className="skeleton-pill" />
+                <span className="skeleton-pill" />
+              </div>
+            </div>
+          )}
+        </div>
+        {label && <p className="app-skeleton-label">{label}</p>}
+      </div>
     </div>
   );
 }
 
-export default AppShell;
+export default AppSkeleton;

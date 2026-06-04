@@ -27,23 +27,33 @@ const storage =
 
 // BUG FIX #12: Persist chat state so users don't lose chat history on refresh
 // Also persist wiki state for graph exploration continuity
-const persistConfig = {
-  key: "cortexwiki",
+const authPersistConfig = {
+  key: "auth",
   storage,
-  whitelist: ["auth", "chat", "wiki"],  // Persist auth (sessions), chat (history), wiki (metadata)
-  // Note: graph state is too large for localStorage (can be ~1-5MB with large graphs)
-  // Users can reload it from backend if needed
+  blacklist: ["initialized", "status", "error"],
 };
 
-const persistedAuthReducer = persistReducer(persistConfig, authReducer);
+const chatPersistConfig = {
+  key: "chat",
+  storage,
+};
+
+const wikiPersistConfig = {
+  key: "wiki",
+  storage,
+};
+
+const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
+const persistedChatReducer = persistReducer(chatPersistConfig, chatReducer);
+const persistedWikiReducer = persistReducer(wikiPersistConfig, wikiReducer);
 
 export const store = configureStore({
   reducer: {
     auth:   persistedAuthReducer,
-    chat:   chatReducer,
+    chat:   persistedChatReducer,
     graph:  graphReducer,
     ingest: ingestReducer,
-    wiki:   wikiReducer,
+    wiki:   persistedWikiReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

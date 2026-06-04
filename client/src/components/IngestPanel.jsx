@@ -108,6 +108,8 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
   const [fallbackSource, setFallbackSource] = useState(null);
   const [fallbackOpen, setFallbackOpen] = useState(false);
   const prevWikiIdRef = useRef(null);
+  const wikiIdRef = useRef(wikiId);
+  wikiIdRef.current = wikiId;
   const dispatch = useDispatch();
   const { items, historyStatus, submitStatus, error, successMessage } =
     useSelector((s) => s.ingest);
@@ -174,12 +176,17 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
     if (!wikiId || pendingSources.length === 0 || submitStatus === "loading") return;
     
     dispatch(clearIngestFeedback());
+    const startWikiId = wikiId;
     
     // Process all sources sequentially
     let successCount = 0;
     const updatedSources = [...pendingSources];
     
     for (let i = 0; i < updatedSources.length; i++) {
+      if (wikiIdRef.current !== startWikiId) {
+        break;
+      }
+      
       const source = updatedSources[i];
       source.status = "ingesting";
       setPendingSources([...updatedSources]);
@@ -187,8 +194,12 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
       const action = await dispatch(submitIngestion({
         sourceType: source.type,
         url: source.url,
-        wikiId
+        wikiId: startWikiId
       }));
+      
+      if (wikiIdRef.current !== startWikiId) {
+        break;
+      }
       
       if (submitIngestion.fulfilled.match(action)) {
         source.status = "success";
@@ -204,20 +215,33 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
       setPendingSources([...updatedSources]);
     }
     
-    // Clear successful sources, keep failed ones
-    setPendingSources(updatedSources.filter((s) => s.status === "failed"));
-    
-    if (successCount > 0) {
-      onIngestSuccess?.({ count: successCount });
+    if (wikiIdRef.current === startWikiId) {
+      // Clear successful sources, keep failed ones
+      setPendingSources(updatedSources.filter((s) => s.status === "failed"));
+      
+      if (successCount > 0) {
+        onIngestSuccess?.({ count: successCount });
+      }
     }
   };
 
   const handleFallbackSubmit = async (fallbackData) => {
-    // TODO: Implement fallback ingest endpoint on server
-    console.log("Fallback ingest:", fallbackData);
     setFallbackOpen(false);
-    // After successful submission, mark the source as removed from pending
-    setPendingSources(pendingSources.filter((s) => s.id !== fallbackSource?.id));
+    const action = await dispatch(
+      submitIngestion({
+        sourceType: fallbackData.type,
+        url: fallbackData.url,
+        wikiId,
+        content: fallbackData.content,
+      })
+    );
+
+    if (submitIngestion.fulfilled.match(action)) {
+      setPendingSources(pendingSources.filter((s) => s.id !== fallbackSource?.id));
+      if (action.payload?.id) {
+        setActiveTabId(action.payload.id);
+      }
+    }
   };
 
   const isSubmitting = submitStatus === "loading";

@@ -171,9 +171,9 @@ class LLMService:
         cache_key = f"embedding:{len(text)}:{text_hash}"
         
         # Try to get cached embedding
-        if redis_store:
+        if redis_store and redis_store.client:
             try:
-                cached = await redis_store.get(cache_key)
+                cached = await redis_store.client.get(cache_key)
                 if cached:
                     logger.debug("Cache hit for embedding: %s", cache_key)
                     # Cached as JSON string
@@ -186,9 +186,9 @@ class LLMService:
             result = await self._gemini_embed(text)
             if result:
                 # Cache the embedding for 24 hours (86400 seconds)
-                if redis_store:
+                if redis_store and redis_store.client:
                     try:
-                        await redis_store.setex(
+                        await redis_store.client.setex(
                             cache_key,
                             86400,
                             json.dumps(result),
@@ -201,9 +201,9 @@ class LLMService:
         # Fallback embedding
         embedding = self._fallback_embedding(text)
         # Cache fallback embedding too
-        if redis_store and embedding:
+        if redis_store and redis_store.client and embedding:
             try:
-                await redis_store.setex(
+                await redis_store.client.setex(
                     cache_key,
                     86400,
                     json.dumps(embedding),
@@ -274,24 +274,25 @@ class LLMService:
             return ""
 
         try:
-            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
-            async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits, headers={"User-Agent": settings.USER_AGENT}) as client:
-                response = await client.post(
-                    _GROQ_CHAT_URL,
-                    json=payload,
-                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
-                )
-                response.raise_for_status()
-                data = response.json()
-                # BUG FIX #11: Defensive access to nested response fields
-                text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                if not text:
-                    logger.warning("Empty response from Groq")
-                    await _api_circuit_breaker.record_failure("groq")
-                    return ""
-                await _api_circuit_breaker.record_success("groq")
-                logger.info("Groq generate OK (model=%s)", settings.GROQ_MODEL)
-                return clean_text(text)
+            from app.core.http import get_http_client
+            client = get_http_client()
+            response = await client.post(
+                _GROQ_CHAT_URL,
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                timeout=settings.LLM_REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            data = response.json()
+            # BUG FIX #11: Defensive access to nested response fields
+            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not text:
+                logger.warning("Empty response from Groq")
+                await _api_circuit_breaker.record_failure("groq")
+                return ""
+            await _api_circuit_breaker.record_success("groq")
+            logger.info("Groq generate OK (model=%s)", settings.GROQ_MODEL)
+            return clean_text(text)
         except (httpx.HTTPError, KeyError, IndexError) as exc:
             await _api_circuit_breaker.record_failure("groq")
             logger.warning("Groq generate failed: %s — falling back to Gemini", str(exc))
@@ -322,30 +323,31 @@ class LLMService:
             return
 
         try:
-            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
-            async with httpx.AsyncClient(timeout=settings.LLM_STREAM_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits) as client:
-                async with client.stream(
-                    "POST",
-                    _GROQ_CHAT_URL,
-                    json=payload,
-                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
-                ) as response:
-                    response.raise_for_status()
-                    async for raw_line in response.aiter_lines():
-                        line = raw_line.strip()
-                        if not line.startswith("data:"):
-                            continue
-                        data_str = line.removeprefix("data:").strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            # BUG FIX #11: Defensive access to nested response fields
-                            delta = json.loads(data_str).get("choices", [{}])[0].get("delta", {}).get("content", "")
-                        except (json.JSONDecodeError, KeyError, IndexError, ValueError) as exc:
-                            logger.debug("Failed to parse Groq stream chunk: %s", str(exc))
-                            continue
-                        if delta:
-                            yield delta
+            from app.core.http import get_http_client
+            client = get_http_client()
+            async with client.stream(
+                "POST",
+                _GROQ_CHAT_URL,
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                timeout=settings.LLM_STREAM_TIMEOUT,
+            ) as response:
+                response.raise_for_status()
+                async for raw_line in response.aiter_lines():
+                    line = raw_line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data_str = line.removeprefix("data:").strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        # BUG FIX #11: Defensive access to nested response fields
+                        delta = json.loads(data_str).get("choices", [{}])[0].get("delta", {}).get("content", "")
+                    except (json.JSONDecodeError, KeyError, IndexError, ValueError) as exc:
+                        logger.debug("Failed to parse Groq stream chunk: %s", str(exc))
+                        continue
+                    if delta:
+                        yield delta
             logger.info("Groq stream OK (model=%s)", settings.GROQ_MODEL)
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
             await _api_circuit_breaker.record_failure("groq")
@@ -370,18 +372,19 @@ class LLMService:
             return ""
 
         try:
-            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
-            async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits, headers={"User-Agent": settings.USER_AGENT}) as client:
-                response = await client.post(
-                    _GEMINI_GENERATE_URL,
-                    json=payload,
-                    params={"key": settings.GEMINI_API_KEY},
-                )
-                response.raise_for_status()
-                text = self._extract_gemini_text(response.json())
-                await _api_circuit_breaker.record_success("gemini")
-                logger.info("Gemini generate OK (model=%s)", settings.GEMINI_MODEL)
-                return text
+            from app.core.http import get_http_client
+            client = get_http_client()
+            response = await client.post(
+                _GEMINI_GENERATE_URL,
+                json=payload,
+                params={"key": settings.GEMINI_API_KEY},
+                timeout=settings.LLM_REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            text = self._extract_gemini_text(response.json())
+            await _api_circuit_breaker.record_success("gemini")
+            logger.info("Gemini generate OK (model=%s)", settings.GEMINI_MODEL)
+            return text
         except httpx.HTTPError as exc:
             await _api_circuit_breaker.record_failure("gemini")
             logger.exception("Gemini generate failed — using static fallback: %s", str(exc))
@@ -401,31 +404,32 @@ class LLMService:
         }
         previous_text = ""
         try:
-            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
-            async with httpx.AsyncClient(timeout=settings.LLM_STREAM_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits) as client:
-                async with client.stream(
-                    "POST",
-                    _GEMINI_STREAM_URL,
-                    json=payload,
-                    params={"key": settings.GEMINI_API_KEY, "alt": "sse"},
-                ) as response:
-                    response.raise_for_status()
-                    async for raw_line in response.aiter_lines():
-                        line = raw_line.strip()
-                        if not line.startswith("data:"):
-                            continue
-                        try:
-                            chunk_text = self._extract_gemini_text(
-                                json.loads(line.removeprefix("data:").strip())
-                            )
-                        except json.JSONDecodeError:
-                            continue
-                        if not chunk_text:
-                            continue
-                        delta = chunk_text[len(previous_text):] if chunk_text.startswith(previous_text) else chunk_text
-                        previous_text = chunk_text
-                        if delta:
-                            yield delta
+            from app.core.http import get_http_client
+            client = get_http_client()
+            async with client.stream(
+                "POST",
+                _GEMINI_STREAM_URL,
+                json=payload,
+                params={"key": settings.GEMINI_API_KEY, "alt": "sse"},
+                timeout=settings.LLM_STREAM_TIMEOUT,
+            ) as response:
+                response.raise_for_status()
+                async for raw_line in response.aiter_lines():
+                    line = raw_line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    try:
+                        chunk_text = self._extract_gemini_text(
+                            json.loads(line.removeprefix("data:").strip())
+                        )
+                    except json.JSONDecodeError:
+                        continue
+                    if not chunk_text:
+                        continue
+                    delta = chunk_text[len(previous_text):] if chunk_text.startswith(previous_text) else chunk_text
+                    previous_text = chunk_text
+                    if delta:
+                        yield delta
             logger.info("Gemini stream OK (model=%s)", settings.GEMINI_MODEL)
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
             await _api_circuit_breaker.record_failure("gemini")
@@ -441,17 +445,18 @@ class LLMService:
             return []
 
         try:
-            limits = httpx.Limits(max_keepalive_connections=10, max_connections=50)
-            async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT, verify=settings.OUTBOUND_VERIFY_SSL, limits=limits) as client:
-                response = await client.post(
-                    _GEMINI_EMBED_URL,
-                    json=payload,
-                    params={"key": settings.GEMINI_API_KEY},
-                )
-                response.raise_for_status()
-                values = response.json().get("embedding", {}).get("values", [])
-                await _api_circuit_breaker.record_success("gemini")
-                return values or []
+            from app.core.http import get_http_client
+            client = get_http_client()
+            response = await client.post(
+                _GEMINI_EMBED_URL,
+                json=payload,
+                params={"key": settings.GEMINI_API_KEY},
+                timeout=settings.LLM_REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            values = response.json().get("embedding", {}).get("values", [])
+            await _api_circuit_breaker.record_success("gemini")
+            return values or []
         except httpx.HTTPError as exc:
             await _api_circuit_breaker.record_failure("gemini")
             logger.exception("Gemini embed failed — using hash fallback: %s", str(exc))

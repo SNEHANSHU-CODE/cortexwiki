@@ -63,6 +63,16 @@ export async function ingestWeb(url, wikiId) {
   return data;
 }
 
+export async function submitFallbackIngest({ url, wikiId, content, type }) {
+  const { data } = await httpClient.post("/api/ingest/fallback", {
+    url,
+    wiki_id: wikiId,
+    content,
+    type,
+  });
+  return data;
+}
+
 export async function fetchIngestionHistory(wikiId) {
   const { data } = await httpClient.get("/api/ingest/history", {
     params: wikiId ? { wiki_id: wikiId } : undefined,

@@ -41,3 +41,12 @@ class IngestHistoryItem(BaseModel):
     source_url: str
     summary: str
     created_at: datetime
+
+
+class FallbackIngestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: HttpUrl
+    wiki_id: str
+    content: str
+    type: str  # "youtube" or "web"

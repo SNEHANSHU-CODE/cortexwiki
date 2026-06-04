@@ -463,7 +463,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         "/api/auth/login",
         "/api/auth/register",
         "/api/auth/refresh",
-        "/api/auth/logout",
         "/health",
         "/api/ping",
     }
@@ -657,6 +656,8 @@ async def lifespan(_app: FastAPI):
     await initialize_datastores()
     await initialize_redis()
     yield
+    from app.core.http import close_http_client
+    await close_http_client()
     await close_redis()
     await close_datastores()
 

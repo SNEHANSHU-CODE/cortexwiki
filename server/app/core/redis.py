@@ -35,6 +35,8 @@ class RedisTokenStore:
             self.mode = "redis"
             logger.info("Connected to Redis token store")
         except Exception:
+            if self.client is not None:
+                await self.client.aclose()
             self.client = None
             self.mode = "memory"
             logger.exception("Redis unavailable — falling back to in-memory token store")

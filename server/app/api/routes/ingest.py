@@ -4,7 +4,7 @@ from bson import ObjectId
 from app.api.deps import get_current_user, validate_wiki_id
 from app.core.redis import get_redis_store
 from app.db.mongo import get_mongo_manager
-from app.schemas.ingest import IngestData, IngestHistoryItem, WebIngestRequest, YouTubeIngestRequest
+from app.schemas.ingest import FallbackIngestRequest, IngestData, IngestHistoryItem, WebIngestRequest, YouTubeIngestRequest
 from app.services.graph_service import get_graph_service
 from app.services.llm import get_llm_service
 from app.utils.errors import AppError
@@ -32,24 +32,27 @@ async def _check_ingest_rate_limit(user_id: str, wiki_id: str, limit: int = 10, 
     next_reset = window_start + window
     key = f"rate_limit:ingest:{user_id}:{wiki_id}:{window_start}"
 
-    try:
-        current = await redis_store.incr(key)
-        if current == 1:
-            # Set expiration to the remaining seconds in the window
-            expire = (next_reset - now) + 1
-            await redis_store.expire(key, int(expire))
+    if redis_store and redis_store.client is not None:
+        try:
+            current = await redis_store.client.incr(key)
+            if current == 1:
+                # Set expiration to the remaining seconds in the window
+                expire = (next_reset - now) + 1
+                await redis_store.client.expire(key, int(expire))
 
-        headers = {
-            "X-RateLimit-Limit": str(limit),
-            "X-RateLimit-Remaining": str(max(0, limit - current)),
-            "X-RateLimit-Reset": str(next_reset),
-        }
+            headers = {
+                "X-RateLimit-Limit": str(limit),
+                "X-RateLimit-Remaining": str(max(0, limit - current)),
+                "X-RateLimit-Reset": str(next_reset),
+            }
 
-        if current > limit:
-            return False, headers
-        return True, headers
-    except Exception:
-        # If Redis fails, allow the request
+            if current > limit:
+                return False, headers
+            return True, headers
+        except Exception:
+            # If Redis fails, allow the request
+            return True, {}
+    else:
         return True, {}
 
 
@@ -136,6 +139,62 @@ async def ingest_web(payload: WebIngestRequest, current_user: dict = Depends(get
         source_type=source["source_type"],
         source_url=source["source_url"],
         raw_content=source["content"],
+    )
+    return _build_ingest_response(result)
+
+
+@router.post("/fallback", response_model=IngestData)
+async def ingest_fallback(
+    payload: FallbackIngestRequest,
+    current_user: dict = Depends(get_current_user),
+    response: Response = None,
+):
+    # BUG FIX #5: Validate wiki_id format before processing
+    await validate_wiki_id(payload.wiki_id)
+    
+    # Apply rate limiting
+    allowed, headers = await _check_ingest_rate_limit(current_user["id"], payload.wiki_id)
+    if response:
+        for key, value in headers.items():
+            response.headers[key] = value
+            
+    if not allowed:
+        raise AppError(
+            status_code=429,
+            code="ingest_rate_limited",
+            message="Too many ingestions. Please wait a minute before trying again.",
+        )
+        
+    await _validate_wiki(payload.wiki_id, current_user["id"])
+    
+    # Generate title using LLM from content
+    llm = get_llm_service()
+    from urllib.parse import urlparse
+    parsed = urlparse(str(payload.url))
+    
+    title = ""
+    try:
+        prompt = (
+            "Generate a short, concise, and descriptive title (under 60 characters) "
+            "for the following document. Do not include quotes or markdown. Just the title text.\n\n"
+            f"{payload.content[:1500]}"
+        )
+        generated_title = await llm.generate_text(prompt=prompt, temperature=0.3, max_output_tokens=30)
+        if generated_title:
+            title = generated_title.strip().replace('"', '')
+    except Exception:
+        pass
+        
+    if not title:
+        title = f"Manual Ingest - {parsed.netloc}"
+        
+    result = await _ingest_source(
+        user_id=current_user["id"],
+        wiki_id=payload.wiki_id,
+        title=title,
+        source_type=payload.type,
+        source_url=str(payload.url),
+        raw_content=payload.content,
     )
     return _build_ingest_response(result)
 

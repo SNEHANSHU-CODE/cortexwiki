@@ -34,24 +34,22 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
   const hasAutoFitRef = useRef(false);
   // BUG FIX #4: Position cache uses useRef (not useState) to prevent infinite update loops
   // Positions are NOT a dependency of useMemo, avoiding circular computation
-  const positionCache = useRef(new Map());
-
-  const [hoveredNodeId, setHoveredNodeId] = useState("");
-  const [size, setSize]                   = useState({ width: 0, height: 0 });
-
-  // BUG FIX #7: Load persisted positions from localStorage on mount
-  useEffect(() => {
+  const positionCache = useRef((() => {
     try {
       const key = "graph:positions:cache";
-      const stored = localStorage.getItem(key);
+      const stored = typeof window !== "undefined" ? localStorage.getItem(key) : null;
       if (stored) {
         const data = JSON.parse(stored);
-        positionCache.current = new Map(Object.entries(data));
+        return new Map(Object.entries(data));
       }
     } catch (err) {
       console.warn("Failed to load persisted graph positions:", err);
     }
-  }, []);
+    return new Map();
+  })());
+
+  const [hoveredNodeId, setHoveredNodeId] = useState("");
+  const [size, setSize]                   = useState({ width: 0, height: 0 });
 
   // ── ResizeObserver ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -231,7 +229,11 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
 
     ctx.fillStyle = "rgba(10, 15, 30, 0.82)";
     ctx.beginPath();
-    ctx.roundRect?.(textX - pad, node.y - fontSize * 0.75, textWidth + pad * 2, fontSize * 1.6, 3);
+    if (ctx.roundRect) {
+      ctx.roundRect(textX - pad, node.y - fontSize * 0.75, textWidth + pad * 2, fontSize * 1.6, 3);
+    } else {
+      ctx.rect(textX - pad, node.y - fontSize * 0.75, textWidth + pad * 2, fontSize * 1.6);
+    }
     ctx.fill();
 
     ctx.fillStyle = isActive ? "#fde68a" : isHighlighted ? "#5eead4" : "#cbd5e1";

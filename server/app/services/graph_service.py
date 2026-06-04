@@ -57,13 +57,10 @@ class GraphService:
         limit: int = 8,
     ) -> list[dict]:
         """
-        Get related concepts from graph with fallback search.
-        
-        BUG FIX #11: Add fallback to keyword search if semantic search fails.
+        Get related concepts from graph.
         """
         terms = [t for t in (_normalize_text(term) for term in _QUERY_TERM_RE.findall(query.lower())) if t]
         
-        # Try semantic search first
         try:
             concepts = await self._graph.get_related_concepts(
                 user_id=user_id,
@@ -74,27 +71,8 @@ class GraphService:
             if concepts:
                 return concepts
         except Exception as exc:
-            logger.warning("Semantic search failed for query=%s: %s", query, str(exc))
+            logger.warning("Search failed for query=%s: %s", query, str(exc))
         
-        # BUG FIX #11: Fallback to broader keyword search if semantic search fails or returns empty
-        logger.info("Falling back to keyword search for query=%s", query)
-        try:
-            # The underlying GraphManager does not implement `get_keyword_concepts()`.
-            # Instead, attempt a broader related-concepts search using the same
-            # `get_related_concepts` API with keyword-style arguments. If that
-            # also fails, return an empty list rather than raising AttributeError.
-            concepts = await self._graph.get_related_concepts(
-                user_id=user_id,
-                wiki_id=wiki_id,
-                query_terms=terms,
-                limit=limit,
-            )
-            if concepts:
-                return concepts
-        except Exception as exc:
-            logger.warning("Fallback related-concepts search also failed: %s", str(exc))
-
-        # Return empty list with helpful message
         logger.info("No concepts found for query=%s, returning empty result", query)
         return []
 

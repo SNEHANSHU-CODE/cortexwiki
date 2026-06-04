@@ -31,6 +31,8 @@ class GraphManager:
             self.mode = "neo4j"
             logger.info("Connected to Neo4j")
         except Exception:
+            if self.driver is not None:
+                await self.driver.close()
             self.driver = None
             self.mode = "memory"
             logger.exception("Neo4j unavailable, using in-memory graph store")

@@ -90,7 +90,7 @@ export function initializeHttpClient(store) {
         // BUG FIX #2: Limit retries to max 2 to prevent infinite loops
         const retryCount = (originalRequest._retryCount || 0) + 1;
         if (retryCount > 2) {
-          logger?.warn("Max retries exceeded for", originalRequest.url);
+          console.warn("Max retries exceeded for", originalRequest.url);
           throw error;  // Give up after 2 retries
         }
         originalRequest._retryCount = retryCount;
@@ -108,15 +108,7 @@ export function initializeHttpClient(store) {
         }
         lastRefreshAttempt = Date.now();
         
-        const session = await refreshSession();
-        boundStore.dispatch(
-          setSession({
-            user: session.user,
-            refreshToken: session.refresh_token,
-            accessTokenExpiresAt: session.expires_at,
-            accessToken: session.access_token,
-          }),
-        );
+        await refreshSession();
         
         // Retry original request — access token will be added by the request interceptor
         return await httpClient(originalRequest);
@@ -136,7 +128,18 @@ export async function refreshSession() {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       const response = await refreshClient.post("/api/auth/refresh");
-      return response.data;
+      const session = response.data;
+      if (boundStore) {
+        boundStore.dispatch(
+          setSession({
+            user: session.user,
+            refreshToken: session.refresh_token,
+            accessTokenExpiresAt: session.expires_at,
+            accessToken: session.access_token,
+          })
+        );
+      }
+      return session;
     })()
       .finally(() => {
         refreshPromise = null;

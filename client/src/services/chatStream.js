@@ -112,6 +112,8 @@ export function createChatStreamSession({
       reconnectionDelayMax: 5_000,
     });
 
+    let lastPongTime = Date.now();
+
     socket.on("connect",           () => {
       onConnectionChange?.("connected");
       
@@ -122,6 +124,16 @@ export function createChatStreamSession({
           socket.emit("ping", { timestamp: Date.now() });
         }
       }, 30000); // Send ping every 30 seconds
+
+      // BUG FIX #3: Clear and restart connection health monitor on reconnect
+      if (deadConnectionCheck) clearInterval(deadConnectionCheck);
+      lastPongTime = Date.now();
+      deadConnectionCheck = setInterval(() => {
+        if (socket?.connected && Date.now() - lastPongTime > 60000) {
+          console.warn("Socket appears dead - no pong in 60s, disconnecting");
+          socket.disconnect();
+        }
+      }, 30000);
     });
     
     socket.on("disconnect", () => {
@@ -156,20 +168,10 @@ export function createChatStreamSession({
     });
     
     // BUG FIX #3: Handle pong responses from server and track connection health
-    let lastPongTime = Date.now();
     socket.on("pong", (data) => {
       lastPongTime = Date.now();
       // Socket is healthy, connection state is fresh
     });
-    
-    // BUG FIX #3: Detect dead connections if no pong within 60 seconds
-    // Store in outer variable so it can be cleaned up in disconnect()
-    deadConnectionCheck = setInterval(() => {
-      if (socket?.connected && Date.now() - lastPongTime > 60000) {
-        logger?.warn?.("Socket appears dead - no pong in 60s, disconnecting");
-        socket.disconnect();
-      }
-    }, 30000);
     
     socket.on(START_EVENT,    (data) => onStart?.(data));
     socket.on(TOKEN_EVENT,    (data) => onToken?.(data));

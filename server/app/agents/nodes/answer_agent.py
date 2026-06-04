@@ -22,16 +22,16 @@ _NO_EVIDENCE_MESSAGE = (
 def _build_sources(state: dict) -> list[dict]:
     internal = [
         {
-            "title": page["title"],
-            "url": page["source_url"],
+            "title": page.get("title", "Untitled Source"),
+            "url": page.get("source_url", ""),
             "source_type": page.get("source_type", "wiki_page"),
         }
         for page in state.get("wiki_pages", [])
     ]
     external = [
         {
-            "title": result["title"],
-            "url": result["url"],
+            "title": result.get("title", "Untitled External Source"),
+            "url": result.get("url", ""),
             "source_type": result.get("source_type", "internet"),
         }
         for result in state.get("internet_results", [])
@@ -127,22 +127,22 @@ class AnswerAgent:
     def _build_prompt(self, state: dict) -> str:
         wiki_context = [
             {
-                "title": page["title"],
+                "title": page.get("title", "Untitled Source"),
                 "summary": page.get("summary", ""),
                 "concepts": page.get("concepts", []),
-                "source_url": page["source_url"],
+                "source_url": page.get("source_url", ""),
             }
             for page in state.get("wiki_pages", [])
         ]
         graph_context = [
-            f'{item["source"]} {item["relationship"]} {item["target"]}'
+            f'{item.get("source", "")} {item.get("relationship", "")} {item.get("target", "")}'
             for item in state.get("related_concepts", [])
         ]
         internet_context = [
             {
-                "title": result["title"],
+                "title": result.get("title", "Untitled External Source"),
                 "description": result.get("description", ""),
-                "url": result["url"],
+                "url": result.get("url", ""),
             }
             for result in state.get("internet_results", [])
         ]
@@ -168,12 +168,12 @@ class AnswerAgent:
         return {
             "plan": state.get("plan", {}),
             "trace": state.get("trace", []),
-            "wiki_results": [page["title"] for page in state.get("wiki_pages", [])],
+            "wiki_results": [page.get("title", "Untitled Source") for page in state.get("wiki_pages", [])],
             "related_concepts": [
-                f'{item["source"]} {item["relationship"]} {item["target"]}'
+                f'{item.get("source", "")} {item.get("relationship", "")} {item.get("target", "")}'
                 for item in state.get("related_concepts", [])
             ],
-            "internet_results": [r["title"] for r in state.get("internet_results", [])],
+            "internet_results": [r.get("title", "Untitled External Source") for r in state.get("internet_results", [])],
             "guard": state.get("guard", {}),
         }
 
