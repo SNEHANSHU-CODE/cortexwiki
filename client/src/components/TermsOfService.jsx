@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import "./styles/TermsOfService.css";
 const EFFECTIVE_DATE = new Date(new Date().getFullYear(), 0, 1)
   .toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
@@ -42,6 +43,10 @@ const SECTIONS = [
 ];
 
 function TermsOfService() {
+  useEffect(() => {
+    window.__hideSplash?.();
+  }, []);
+
   return (
     <main className="legal-page">
       <div className="legal-inner">

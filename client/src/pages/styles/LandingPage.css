@@ -23,6 +23,73 @@
   --font-display: 'Syne', 'Clash Display', system-ui, sans-serif;
   --font-body:    'DM Sans', system-ui, sans-serif;
   --font-mono:    'IBM Plex Mono', monospace;
+  --text-bright:  #f8fafc;
+}
+
+html[data-theme='light'] {
+  --ink:        #eef3fb;
+  --ink-2:      #ffffff;
+  --ink-3:      #f7fafe;
+  --muted:      #66768d;
+  --muted-2:    #516075;
+  --surface:    #ffffff;
+  --surface-2:  #f7fafe;
+  --border:     rgba(15, 23, 42, 0.08);
+  --border-2:   rgba(15, 23, 42, 0.14);
+  --accent:     #0f62fe;
+  --accent-2:   #0f766e;
+  --accent-3:   #0842b3;
+  --text:       #0f172a;
+  --text-2:     #0f172a;
+  --text-dim:   #516075;
+  --text-bright:  #0f172a;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────── */
+.lp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  white-space: nowrap;
+}
+
+.lp-btn-lg {
+  padding: 0.85rem 1.75rem;
+  font-size: 1rem;
+  border-radius: 10px;
+}
+
+.lp-btn-primary {
+  background: var(--accent);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.lp-btn-primary:hover {
+  background: var(--accent-2);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.35);
+}
+
+.lp-btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid var(--border-2);
+}
+
+.lp-btn-ghost:hover {
+  color: var(--text);
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.06);
 }
 
 
@@ -95,7 +162,7 @@
   font-size: clamp(2.8rem, 5vw, 4.2rem);
   font-weight: 800; line-height: 1.05;
   letter-spacing: -0.03em;
-  color: #f8fafc;
+  color: var(--text-bright);
   margin-bottom: 1.25rem;
 }
 .lp-h1 em {
@@ -210,7 +277,7 @@
   font-family: var(--font-display);
   font-size: clamp(2rem, 3.5vw, 2.8rem);
   font-weight: 800; line-height: 1.1;
-  letter-spacing: -0.025em; color: #f8fafc;
+  letter-spacing: -0.025em; color: var(--text-bright);
   margin-bottom: 1rem;
 }
 .lp-h2 em {
@@ -370,7 +437,7 @@
   font-family: var(--font-display);
   font-size: clamp(2.2rem, 4vw, 3.2rem);
   font-weight: 800; letter-spacing: -0.03em;
-  color: #f8fafc; line-height: 1.1; margin-bottom: 1rem;
+  color: var(--text-bright); line-height: 1.1; margin-bottom: 1rem;
 }
 .lp-cta-p { font-size: 1rem; color: var(--text-dim); margin-bottom: 2rem; font-weight: 300; }
 .lp-cta-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
@@ -412,4 +479,84 @@
   .lp-stats-inner { grid-template-columns: 1fr 1fr; }
   .lp-hero-stats { gap: 1.25rem; }
   .lp-stat-num { font-size: 1.4rem; }
+}
+
+/* ── Light Theme Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .lp-hero-grid {
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
+}
+
+html[data-theme='light'] .demo-msg-ai {
+  background: rgba(15, 98, 254, 0.05);
+  border-color: rgba(15, 98, 254, 0.12);
+}
+
+html[data-theme='light'] .lp-tab.active {
+  color: #ffffff;
+}
+
+html[data-theme='light'] .lp-btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+html[data-theme='light'] .lp-btn-primary:hover {
+  background: var(--accent-3);
+  box-shadow: 0 6px 20px rgba(15, 98, 254, 0.25);
+}
+
+html[data-theme='light'] .lp-btn-ghost {
+  color: var(--text);
+  border-color: var(--border-2);
+}
+
+html[data-theme='light'] .lp-btn-ghost:hover {
+  background: rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 23, 42, 0.24);
+}
+
+html[data-theme='light'] .lp-eyebrow {
+  border-color: rgba(15, 98, 254, 0.25);
+  background: rgba(15, 98, 254, 0.06);
+}
+
+html[data-theme='light'] .lp-feature-card:hover {
+  background: var(--ink-3);
+}
+
+html[data-theme='light'] .lp-step:hover {
+  background: var(--ink-3);
+}
+
+html[data-theme='light'] .demo-chat-window {
+  box-shadow: 0 32px 64px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 98, 254, 0.08);
+}
+
+html[data-theme='light'] .lp-cta-orb {
+  background: radial-gradient(circle, rgba(15, 98, 254, 0.08) 0%, transparent 70%);
+}
+
+html[data-theme='light'] .lp-step-tag[data-t="agent"] {
+  background: rgba(15, 98, 254, 0.06);
+  color: var(--accent);
+  border-color: rgba(15, 98, 254, 0.18);
+}
+
+html[data-theme='light'] .lp-step-tag[data-t="storage"] {
+  background: rgba(8, 66, 179, 0.06);
+  color: var(--accent-3);
+  border-color: rgba(8, 66, 179, 0.18);
+}
+
+html[data-theme='light'] .lp-step-tag[data-t="llm"] {
+  background: rgba(15, 118, 110, 0.06);
+  color: var(--accent-2);
+  border-color: rgba(15, 118, 110, 0.18);
+}
+
+html[data-theme='light'] .lp-step-tag[data-t="conditional"] {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
 }

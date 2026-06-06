@@ -1,5 +1,10 @@
+import { useEffect } from "react";
 import "./styles/ContactPage.css";
 function ContactPage() {
+  useEffect(() => {
+    window.__hideSplash?.();
+  }, []);
+
   return (
     <main className="legal-page">
       <div className="legal-inner">

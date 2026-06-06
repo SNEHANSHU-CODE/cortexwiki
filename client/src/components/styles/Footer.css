@@ -90,3 +90,29 @@
     flex: none;
   }
 }
+
+/* ── Light Mode Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .cw-footer {
+  background: #ffffff;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme='light'] .cw-footer__name {
+  color: #0f172a;
+}
+
+html[data-theme='light'] .cw-footer__link {
+  color: #516075;
+}
+
+html[data-theme='light'] .cw-footer__link:hover {
+  color: #0f62fe;
+}
+
+html[data-theme='light'] .cw-footer__sep {
+  color: rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme='light'] .cw-footer__copy {
+  color: #516075;
+}

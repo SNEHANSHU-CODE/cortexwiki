@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { clearAuthError, setAuthError, setSession, setStatus } from "../redux/slices/authSlice";
@@ -19,6 +19,10 @@ function LoginPage() {
   const navigate  = useNavigate();
   const location  = useLocation();
   const { user, status, error } = useSelector((s) => s.auth);
+
+  useEffect(() => {
+    window.__hideSplash?.();
+  }, []);
 
   if (status === "authenticated" && user) return <Navigate to="/wiki" replace />;
 

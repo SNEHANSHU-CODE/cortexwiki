@@ -155,13 +155,13 @@
   text-align: center;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.8rem;
-  color: var(--ws-text-mute, #334155);
+  color: var(--ws-text-mute);
   letter-spacing: 0.04em;
 }
 
 .ingest-empty--no-wiki {
   /* "No wiki selected" — slightly dimmer */
-  color: #334155;
+  color: var(--ws-text-mute);
 }
 
 .ingest-empty--no-sources {
@@ -173,13 +173,13 @@
 
 .ingest-empty__primary {
   font-size: 0.85rem;
-  color: #64748b;
+  color: var(--ws-text-dim);
   margin: 0;
 }
 
 .ingest-empty__secondary {
   font-size: 0.78rem;
-  color: #334155;
+  color: var(--ws-text-mute);
   margin: 0;
 }
 
@@ -243,3 +243,18 @@
     padding: 0.75rem 0.875rem;
   }
 }
+
+/* ── Light Theme Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .ingest-tab[aria-selected="true"] .ingest-tab__title,
+html[data-theme='light'] .ingest-tab--active .ingest-tab__title {
+  color: var(--ws-text);
+}
+
+html[data-theme='light'] .ingest-tab:hover {
+  background: rgba(15, 98, 254, 0.04);
+}
+
+html[data-theme='light'] .ingest-tab[aria-selected="true"],
+html[data-theme='light'] .ingest-tab--active {
+  background: rgba(15, 98, 254, 0.06);
+}

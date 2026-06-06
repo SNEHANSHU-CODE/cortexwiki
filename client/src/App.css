@@ -11,7 +11,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--ink, #0a0f1e);
+  background: var(--bg);
 }
 
 .app-main {
@@ -24,26 +24,22 @@
 .surface-panel {
   border-radius: 24px;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(12px);
 }
 
-@media (prefers-color-scheme: dark) {
-  .surface-panel {
-    background: rgba(15, 23, 42, 0.55);
-  }
+html[data-theme='light'] .surface-panel {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .surface-card {
   border-radius: 18px;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(15, 23, 42, 0.45);
 }
 
-@media (prefers-color-scheme: dark) {
-  .surface-card {
-    background: rgba(15, 23, 42, 0.45);
-  }
+html[data-theme='light'] .surface-card {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 /* ── Eyebrow / badge ──────────────────────────────────────────────────── */
@@ -73,14 +69,12 @@
   border-radius: 999px;
   font-size: 0.78rem;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(15, 23, 42, 0.45);
   color: var(--text-soft);
 }
 
-@media (prefers-color-scheme: dark) {
-  .tag {
-    background: rgba(15, 23, 42, 0.45);
-  }
+html[data-theme='light'] .tag {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────────── */
@@ -115,13 +109,11 @@
 .button-secondary {
   color: var(--text);
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(15, 23, 42, 0.5);
 }
 
-@media (prefers-color-scheme: dark) {
-  .button-secondary {
-    background: rgba(15, 23, 42, 0.5);
-  }
+html[data-theme='light'] .button-secondary {
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .button-secondary:hover {
@@ -163,7 +155,7 @@
   padding: 0.85rem 1rem;
   border-radius: 16px;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(15, 23, 42, 0.5);
   color: var(--text);
   font-size: 0.95rem;
   font-family: inherit;
@@ -171,11 +163,9 @@
   resize: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  .text-input,
-  .text-area {
-    background: rgba(15, 23, 42, 0.5);
-  }
+html[data-theme='light'] .text-input,
+html[data-theme='light'] .text-area {
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .text-input:focus,
@@ -568,15 +558,15 @@
   color: var(--text);
   border: 1px solid var(--surface-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(15, 23, 42, 0.42);
   cursor: pointer;
   font-family: inherit;
   font-size: 0.875rem;
   transition: background 0.15s;
 }
 
-@media (prefers-color-scheme: dark) {
-  .quick-prompt { background: rgba(15, 23, 42, 0.42); }
+html[data-theme='light'] .quick-prompt {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .quick-prompt:hover { background: rgba(255, 255, 255, 0.72); }
@@ -780,15 +770,15 @@
   color: var(--text-soft);
   border: 1px solid var(--surface-border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.52);
+  background: rgba(15, 23, 42, 0.5);
   cursor: pointer;
   font-family: inherit;
   font-weight: 600;
   transition: all 0.15s;
 }
 
-@media (prefers-color-scheme: dark) {
-  .segment { background: rgba(15, 23, 42, 0.5); }
+html[data-theme='light'] .segment {
+  background: rgba(255, 255, 255, 0.52);
 }
 
 .segment.is-active {
@@ -885,11 +875,11 @@
   padding: 0.95rem 1rem;
   border: 1px solid var(--surface-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.52);
+  background: rgba(15, 23, 42, 0.45);
 }
 
-@media (prefers-color-scheme: dark) {
-  .metric-chip { background: rgba(15, 23, 42, 0.45); }
+html[data-theme='light'] .metric-chip {
+  background: rgba(255, 255, 255, 0.52);
 }
 
 .metric-chip span { font-size: 0.75rem; color: var(--text-muted); display: block; }
@@ -903,11 +893,11 @@
   text-align: left;
   border: 1px solid var(--surface-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.52);
+  background: rgba(15, 23, 42, 0.45);
 }
 
-@media (prefers-color-scheme: dark) {
-  .details-item { background: rgba(15, 23, 42, 0.45); }
+html[data-theme='light'] .details-item {
+  background: rgba(255, 255, 255, 0.52);
 }
 
 .details-item span { color: var(--text-muted); font-size: 0.8rem; }
@@ -924,11 +914,11 @@
   padding: 2rem;
   border: 1px dashed var(--surface-border-strong);
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.38);
+  background: rgba(15, 23, 42, 0.32);
 }
 
-@media (prefers-color-scheme: dark) {
-  .empty-state { background: rgba(15, 23, 42, 0.32); }
+html[data-theme='light'] .empty-state {
+  background: rgba(255, 255, 255, 0.38);
 }
 
 .empty-state h3 { margin: 0; }
@@ -970,4 +960,13 @@
   }
 
   .app-main { padding-top: 58px; } /* smaller navbar on mobile */
+}
+
+/* ── Light Mode Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .app-skeleton {
+  background: var(--bg);
+}
+
+html[data-theme='light'] .app-skeleton-label {
+  color: var(--text-muted);
 }

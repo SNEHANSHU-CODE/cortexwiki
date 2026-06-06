@@ -2,9 +2,11 @@ import { useEffect, useRef } from "react";
 import { useSelector } from "react-redux";
 import IngestPanel from "../components/IngestPanel";
 import MarkdownContent from "../components/MarkdownContent";
+import { useTheme } from "../hooks/useTheme";
 import "./styles/Ingest.css";
 
 export function NoteDrawer({ item, onClose }) {
+  const { theme } = useTheme();
   const overlayRef = useRef(null);
 
   useEffect(() => {
@@ -44,7 +46,7 @@ export function NoteDrawer({ item, onClose }) {
         position: "fixed",
         inset: 0,
         zIndex: 500,
-        background: "rgba(10, 15, 30, 0.85)",
+        background: theme === "light" ? "rgba(255, 255, 255, 0.5)" : "rgba(10, 15, 30, 0.85)",
         backdropFilter: "blur(8px)",
         display: "flex",
         alignItems: "stretch",
@@ -52,15 +54,16 @@ export function NoteDrawer({ item, onClose }) {
       }}
     >
       <div
+        className="workspace-page"
         style={{
           width: "100vw",
           height: "100vh",
-          background: "#111827",
-          borderLeft: "1px solid rgba(148,163,184,0.12)",
+          background: "var(--ws-surface)",
+          borderLeft: "1px solid var(--ws-border)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          boxShadow: "-32px 0 80px rgba(0,0,0,0.6)",
+          boxShadow: theme === "light" ? "-20px 0 50px rgba(15, 23, 42, 0.08)" : "-32px 0 80px rgba(0,0,0,0.6)",
         }}
       >
         <div
@@ -70,7 +73,7 @@ export function NoteDrawer({ item, onClose }) {
             justifyContent: "space-between",
             gap: "1rem",
             padding: "1.5rem 2rem 1.25rem",
-            borderBottom: "1px solid rgba(148,163,184,0.08)",
+            borderBottom: "1px solid var(--ws-border)",
             flexShrink: 0,
           }}
         >
@@ -81,7 +84,7 @@ export function NoteDrawer({ item, onClose }) {
                 style={{
                   fontFamily: "'IBM Plex Mono', monospace",
                   fontSize: "0.65rem",
-                  color: "#475569",
+                  color: "var(--ws-text-mute)",
                   letterSpacing: "0.04em",
                 }}
                 dateTime={item.created_at || item.updated_at}
@@ -94,7 +97,7 @@ export function NoteDrawer({ item, onClose }) {
                 fontFamily: "'Syne', system-ui, sans-serif",
                 fontSize: "clamp(1.1rem, 2.5vw, 1.4rem)",
                 fontWeight: 800,
-                color: "#f8fafc",
+                color: "var(--ws-text)",
                 margin: 0,
                 letterSpacing: "-0.02em",
                 lineHeight: 1.2,
@@ -115,9 +118,9 @@ export function NoteDrawer({ item, onClose }) {
               width: 36,
               height: 36,
               borderRadius: 8,
-              border: "1px solid rgba(226,232,240,0.38)",
-              background: "rgba(15,23,42,0.92)",
-              color: "#f8fafc",
+              border: "1px solid var(--ws-border-2)",
+              background: "var(--ws-surface-2)",
+              color: "var(--ws-text)",
               fontSize: "1rem",
               fontWeight: 700,
               cursor: "pointer",
@@ -134,7 +137,7 @@ export function NoteDrawer({ item, onClose }) {
               style={{
                 fontFamily: "'IBM Plex Mono', monospace",
                 fontSize: "0.65rem",
-                color: "#38bdf8",
+                color: "var(--ws-accent)",
                 letterSpacing: "0.1em",
                 textTransform: "uppercase",
                 display: "block",
@@ -147,7 +150,7 @@ export function NoteDrawer({ item, onClose }) {
               style={{
                 fontFamily: "'DM Sans', system-ui, sans-serif",
                 fontSize: "0.95rem",
-                color: "#cbd5e1",
+                color: "var(--ws-text-dim)",
                 lineHeight: 1.8,
                 margin: 0,
                 fontWeight: 300,
@@ -163,7 +166,7 @@ export function NoteDrawer({ item, onClose }) {
                 style={{
                   fontFamily: "'IBM Plex Mono', monospace",
                   fontSize: "0.65rem",
-                  color: "#38bdf8",
+                  color: "var(--ws-accent)",
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
                   display: "block",
@@ -174,10 +177,14 @@ export function NoteDrawer({ item, onClose }) {
               </span>
               <div
                 style={{
-                  background: "linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.88))",
-                  border: "1px solid rgba(148, 163, 184, 0.14)",
+                  background: theme === "light"
+                    ? "linear-gradient(180deg, #ffffff, #f1f5f9)"
+                    : "linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.88))",
+                  border: "1px solid var(--ws-border-2)",
                   borderRadius: "14px",
-                  boxShadow: "0 14px 42px rgba(2, 6, 23, 0.35)",
+                  boxShadow: theme === "light"
+                    ? "0 10px 30px rgba(15, 23, 42, 0.04)"
+                    : "0 14px 42px rgba(2, 6, 23, 0.35)",
                   padding: "1.1rem 1.2rem",
                 }}
               >

@@ -71,7 +71,7 @@ function HistoryTabs({ items, activeId, onSelect }) {
                 {item.source_type}
               </span>
               <time
-                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "0.6rem", color: "#475569" }}
+                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "0.6rem", color: "var(--ws-text-mute)" }}
                 dateTime={item.created_at}
               >
                 {new Date(item.created_at).toLocaleDateString()}
@@ -82,7 +82,7 @@ function HistoryTabs({ items, activeId, onSelect }) {
                 fontFamily: "'DM Sans', system-ui, sans-serif",
                 fontSize: "0.83rem",
                 fontWeight: isActive ? 600 : 400,
-                color: isActive ? "#f8fafc" : "#94a3b8",
+                color: isActive ? "var(--ws-text)" : "var(--ws-text-dim)",
                 lineHeight: 1.35,
                 overflow: "hidden",
                 display: "-webkit-box",
@@ -369,7 +369,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                   alignItems: "center",
                   justifyContent: "space-between",
                   cursor: isDisabled ? "not-allowed" : "pointer",
-                  color: selectedFile ? "#f8fafc" : "#64748b",
+                  color: selectedFile ? "var(--ws-text)" : "var(--ws-text-dim)",
                   boxSizing: "border-box",
                   minHeight: "43px",
                   overflow: "hidden",
@@ -380,7 +380,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                 </span>
                 {selectedFile ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexShrink: 0 }}>
-                    <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                    <span style={{ fontSize: "0.75rem", color: "var(--ws-text-dim)" }}>
                       ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
                     </span>
                     <button
@@ -388,7 +388,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                       style={{
                         background: "transparent",
                         border: "none",
-                        color: "#94a3b8",
+                        color: "var(--ws-text-dim)",
                         cursor: "pointer",
                         fontSize: "0.8rem",
                         padding: "0 0.25rem",
@@ -406,7 +406,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                     </button>
                   </div>
                 ) : (
-                  <span style={{ fontSize: "0.75rem", color: "#64748b", flexShrink: 0 }}>
+                  <span style={{ fontSize: "0.75rem", color: "var(--ws-text-dim)", flexShrink: 0 }}>
                     Browse
                   </span>
                 )}
@@ -492,7 +492,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                   </span>
                   <p style={{
                     fontSize: "0.75rem",
-                    color: "#94a3b8",
+                    color: "var(--ws-text-dim)",
                     margin: "0.25rem 0 0",
                     wordBreak: "break-all",
                     lineHeight: 1.3,
@@ -500,17 +500,17 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                     {source.url}
                   </p>
                   {source.status === "ingesting" && (
-                    <p style={{ fontSize: "0.7rem", color: "#38bdf8", margin: "0.25rem 0 0", fontStyle: "italic" }}>
+                    <p style={{ fontSize: "0.7rem", color: "var(--ws-accent)", margin: "0.25rem 0 0", fontStyle: "italic" }}>
                       Processing…
                     </p>
                   )}
                   {source.status === "failed" && source.error && (
-                    <p style={{ fontSize: "0.7rem", color: "#ef4444", margin: "0.25rem 0 0", fontStyle: "italic" }}>
+                    <p style={{ fontSize: "0.7rem", color: "var(--ws-red)", margin: "0.25rem 0 0", fontStyle: "italic" }}>
                       {source.error}
                     </p>
                   )}
                   {source.status === "success" && (
-                    <p style={{ fontSize: "0.7rem", color: "#10b981", margin: "0.25rem 0 0", fontStyle: "italic" }}>
+                    <p style={{ fontSize: "0.7rem", color: "var(--ws-green)", margin: "0.25rem 0 0", fontStyle: "italic" }}>
                       ✓ Ingested
                     </p>
                   )}
@@ -596,7 +596,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
           <p style={{
             fontFamily: "'IBM Plex Mono', monospace",
             fontSize: "0.68rem",
-            color: "#475569",
+            color: "var(--ws-text-mute)",
             letterSpacing: "0.04em",
             margin: 0,
           }}>
@@ -608,7 +608,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
       {/* ── History section ───────────────────────────────────────────── */}
       <div
         className="ws-panel__header"
-        style={{ borderTop: "1px solid rgba(148,163,184,0.10)" }}
+        style={{ borderTop: "1px solid var(--ws-border)" }}
       >
         <div>
           <span className="ws-eyebrow" style={{ marginBottom: "0.25rem" }}>History</span>
@@ -619,7 +619,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                 fontFamily: "'IBM Plex Mono', monospace",
                 fontSize: "0.65rem",
                 fontWeight: 400,
-                color: "#475569",
+                color: "var(--ws-text-mute)",
                 marginLeft: "0.4rem",
               }}>
                 {items.length}
@@ -646,7 +646,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
           padding: "1.5rem 1rem",
           textAlign: "center",
           fontSize: "0.8rem",
-          color: "#334155",
+          color: "var(--ws-text-mute)",
           fontFamily: "'IBM Plex Mono', monospace",
           letterSpacing: "0.04em",
         }}>
@@ -660,8 +660,8 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
           flexDirection: "column",
           gap: "0.375rem",
         }}>
-          <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0 }}>No sources yet</p>
-          <p style={{ fontSize: "0.78rem", color: "#334155", margin: 0 }}>
+          <p style={{ fontSize: "0.85rem", color: "var(--ws-text-dim)", margin: 0 }}>No sources yet</p>
+          <p style={{ fontSize: "0.78rem", color: "var(--ws-text-mute)", margin: 0 }}>
             Add sources above and click "Ingest all" to begin.
           </p>
         </div>

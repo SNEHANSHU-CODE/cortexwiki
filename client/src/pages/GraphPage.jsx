@@ -44,12 +44,12 @@ function NodeDetails({ node, relationships, connectedNodes, onSelectNode }) {
           <h3 style={{
             fontFamily: "'Syne', system-ui, sans-serif",
             fontWeight: 800, fontSize: "1rem",
-            color: "#f8fafc", margin: "0 0 0.3rem",
+            color: "var(--ws-text)", margin: "0 0 0.3rem",
           }}>
             {node.id}
           </h3>
           {node.description && (
-            <p style={{ fontSize: "0.82rem", color: "#64748b", margin: 0, lineHeight: 1.6 }}>
+            <p style={{ fontSize: "0.82rem", color: "var(--ws-text-dim)", margin: 0, lineHeight: 1.6 }}>
               {node.description}
             </p>
           )}

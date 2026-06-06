@@ -281,3 +281,54 @@
   overflow-x: auto;
   line-height: 1.6;
 }
+
+/* ── Light Theme Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .message-row {
+  --c-ink:       #eef3fb;
+  --c-ink-2:     #ffffff;
+  --c-ink-3:     #f7fafe;
+  --c-border:    rgba(15, 23, 42, 0.08);
+  --c-border-2:  rgba(15, 23, 42, 0.14);
+  --c-accent:    #0f62fe;
+  --c-accent-2:  #0f766e;
+  --c-amber:     #d97706;
+  --c-text:      #0f172a;
+  --c-text-2:    #0f172a;
+  --c-text-dim:  #516075;
+  --c-text-mute: #66768d;
+}
+
+html[data-theme='light'] .message-plain {
+  color: #0f172a;
+}
+
+html[data-theme='light'] .ghost-button:hover {
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.24);
+  background: rgba(15, 23, 42, 0.04);
+}
+
+html[data-theme='light'] .source-pill {
+  border-color: rgba(15, 98, 254, 0.2);
+  background: rgba(15, 98, 254, 0.06);
+}
+
+html[data-theme='light'] .source-pill:hover {
+  background: rgba(15, 98, 254, 0.12);
+  border-color: rgba(15, 98, 254, 0.35);
+  color: #0842b3;
+}
+
+html[data-theme='light'] .meta-badge.is-grounded {
+  background: rgba(15, 118, 110, 0.08);
+  border-color: rgba(15, 118, 110, 0.2);
+}
+
+html[data-theme='light'] .meta-badge.is-warning {
+  background: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.2);
+}
+
+html[data-theme='light'] .bubble-user .message-plain {
+  color: #ffffff;
+}

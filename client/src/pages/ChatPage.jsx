@@ -146,7 +146,7 @@ function ChatPage({ wikiId }) {
       <div className="chat-embed__meta">
         <div className="chat-embed__meta-left">
           <span className="ws-eyebrow">Conversation</span>
-          <span style={{ color: "#475569", fontSize: "0.75rem" }}>
+          <span style={{ color: "var(--ws-text-mute)", fontSize: "0.75rem" }}>
             {messages.length} message{messages.length !== 1 ? "s" : ""}
           </span>
         </div>

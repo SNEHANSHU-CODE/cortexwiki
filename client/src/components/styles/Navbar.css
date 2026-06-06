@@ -240,3 +240,112 @@
     display: none !important;
   }
 }
+
+/* ── Theme Toggle ────────────────────────────────────────────────────── */
+.cw-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cw-theme-toggle:hover {
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.cw-theme-toggle__icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Light mode overrides for theme toggle button */
+html[data-theme='light'] .cw-theme-toggle {
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #516075;
+}
+
+html[data-theme='light'] .cw-theme-toggle:hover {
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.24);
+  background: rgba(15, 23, 42, 0.04);
+}
+
+/* Light mode overrides for Navbar elements */
+html[data-theme='light'] .cw-navbar--solid .cw-navbar__inner {
+  background: rgba(238, 243, 251, 0.92);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme='light'] .cw-navbar__name {
+  color: #0f172a;
+}
+
+html[data-theme='light'] .cw-navbar__link {
+  color: #516075;
+}
+
+html[data-theme='light'] .cw-navbar__link:hover,
+html[data-theme='light'] .cw-navbar__link--active {
+  color: #0f172a;
+  background: rgba(15, 23, 42, 0.04);
+}
+
+html[data-theme='light'] .cw-navbar__link--active {
+  color: #0f62fe;
+}
+
+html[data-theme='light'] .cw-navbar__profile {
+  color: #516075;
+}
+
+html[data-theme='light'] .cw-navbar__drawer {
+  background: rgba(238, 243, 251, 0.97);
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme='light'] .cw-navbar__drawer-profile {
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme='light'] .cw-navbar__drawer-profile strong {
+  color: #0f172a;
+}
+
+/* Light mode overrides for buttons inside Navbar */
+html[data-theme='light'] .cw-btn--ghost {
+  color: #516075;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme='light'] .cw-btn--ghost:hover {
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.24);
+  background: rgba(15, 23, 42, 0.04);
+}
+
+html[data-theme='light'] .cw-btn--primary {
+  background: #0f62fe;
+  color: #ffffff;
+}
+
+html[data-theme='light'] .cw-btn--primary:hover {
+  background: #0842b3;
+  box-shadow: 0 6px 20px rgba(15, 98, 254, 0.25);
+}
+
+html[data-theme='light'] .cw-navbar__hamburger {
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme='light'] .cw-navbar__hamburger span {
+  background: #516075;
+}

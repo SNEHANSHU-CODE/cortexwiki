@@ -207,3 +207,62 @@
 .code-block .token.comment  { color: #475569; font-style: italic; }
 .code-block .token.number   { color: #f9a8d4; }
 .code-block .token.function { color: #7dd3fc; }
+
+/* ── Light Theme Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .markdown-content {
+  --c-ink:       #eef3fb;
+  --c-ink-3:     #f7fafe;
+  --c-border:    rgba(15, 23, 42, 0.08);
+  --c-border-2:  rgba(15, 23, 42, 0.14);
+  --c-accent:    #0f62fe;
+  --c-accent-2:  #0f766e;
+  --c-text-2:    #0f172a;
+  --c-text-dim:  #516075;
+  --c-text-mute: #66768d;
+}
+
+html[data-theme='light'] .markdown-content h1,
+html[data-theme='light'] .markdown-content h2,
+html[data-theme='light'] .markdown-content h3 {
+  color: #0f172a;
+}
+
+html[data-theme='light'] .markdown-content a:hover {
+  color: #0842b3;
+}
+
+html[data-theme='light'] .inline-code {
+  background: rgba(15, 118, 110, 0.08);
+  border-color: rgba(15, 118, 110, 0.15);
+}
+
+html[data-theme='light'] .code-block code {
+  color: #0f172a;
+}
+
+html[data-theme='light'] .ghost-button:hover {
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.24);
+  background: rgba(15, 23, 42, 0.04);
+}
+
+html[data-theme='light'] .code-block .token.comment {
+  color: #66768d;
+}
+
+html[data-theme='light'] .code-block .token.keyword {
+  color: #0f62fe;
+  font-weight: 600;
+}
+
+html[data-theme='light'] .code-block .token.string {
+  color: #0f766e;
+}
+
+html[data-theme='light'] .code-block .token.number {
+  color: #d97706;
+}
+
+html[data-theme='light'] .code-block .token.function {
+  color: #85144b;
+}

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
+import { useTheme } from "../hooks/useTheme";
 import "./styles/GraphViewer.css";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ const NODE_COLORS = {
 // ── Component ──────────────────────────────────────────────────────────────
 
 function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
+  const { theme } = useTheme();
   const containerRef  = useRef(null);
   const graphRef      = useRef(null);
   const hasAutoFitRef = useRef(false);
@@ -190,8 +192,8 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
       ctx.beginPath();
       ctx.arc(node.x, node.y, radius + 6, 0, 2 * Math.PI, false);
       const glow = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius + 6);
-      glow.addColorStop(0, "rgba(245, 158, 11, 0.3)");
-      glow.addColorStop(1, "rgba(245, 158, 11, 0)");
+      glow.addColorStop(0, theme === "light" ? "rgba(15, 98, 254, 0.2)" : "rgba(245, 158, 11, 0.3)");
+      glow.addColorStop(1, theme === "light" ? "rgba(15, 98, 254, 0)" : "rgba(245, 158, 11, 0)");
       ctx.fillStyle = glow;
       ctx.fill();
     }
@@ -200,19 +202,19 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
     ctx.fillStyle = isActive
-      ? NODE_COLORS.active
+      ? (theme === "light" ? "#0f62fe" : NODE_COLORS.active)
       : isHighlighted
-      ? NODE_COLORS.highlighted
+      ? (theme === "light" ? "#0f766e" : NODE_COLORS.highlighted)
       : node.category === "core"
-      ? NODE_COLORS.core
-      : NODE_COLORS.default;
+      ? (theme === "light" ? "#0284c7" : NODE_COLORS.core)
+      : (theme === "light" ? "#64748b" : NODE_COLORS.default);
     ctx.fill();
 
     // Subtle ring on highlighted
     if (isHighlighted && !isActive) {
       ctx.beginPath();
       ctx.arc(node.x, node.y, radius + 1.5, 0, 2 * Math.PI, false);
-      ctx.strokeStyle = "rgba(94, 234, 212, 0.4)";
+      ctx.strokeStyle = theme === "light" ? "rgba(15, 118, 110, 0.4)" : "rgba(94, 234, 212, 0.4)";
       ctx.lineWidth   = 1;
       ctx.stroke();
     }
@@ -227,7 +229,7 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     const textWidth = ctx.measureText(label).width;
     const pad       = 5;
 
-    ctx.fillStyle = "rgba(10, 15, 30, 0.82)";
+    ctx.fillStyle = theme === "light" ? "rgba(255, 255, 255, 0.94)" : "rgba(10, 15, 30, 0.82)";
     ctx.beginPath();
     if (ctx.roundRect) {
       ctx.roundRect(textX - pad, node.y - fontSize * 0.75, textWidth + pad * 2, fontSize * 1.6, 3);
@@ -236,9 +238,13 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     }
     ctx.fill();
 
-    ctx.fillStyle = isActive ? "#fde68a" : isHighlighted ? "#5eead4" : "#cbd5e1";
+    ctx.fillStyle = isActive
+      ? (theme === "light" ? "#0f62fe" : "#fde68a")
+      : isHighlighted
+      ? (theme === "light" ? "#0f766e" : "#5eead4")
+      : (theme === "light" ? "#0f172a" : "#cbd5e1");
     ctx.fillText(label, textX, textY);
-  }, [activeNodeId, highlightedNodeIds]);
+  }, [activeNodeId, highlightedNodeIds, theme]);
 
   return (
     <div
@@ -257,7 +263,7 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
           cooldownTicks={180}
           onEngineStop={() => { configureForces(); persistPositions(); }}
           linkWidth={(l)                    => highlightedLinks.has(l.id) ? 2.5 : 0.9}
-          linkColor={(l)                    => highlightedLinks.has(l.id) ? "rgba(94,234,212,0.85)" : "rgba(148,163,184,0.2)"}
+          linkColor={(l)                    => highlightedLinks.has(l.id) ? (theme === "light" ? "rgba(15, 98, 254, 0.85)" : "rgba(94, 234, 212, 0.85)") : (theme === "light" ? "rgba(15, 23, 42, 0.15)" : "rgba(148, 163, 184, 0.2)")}
           linkDirectionalParticles={(l)     => highlightedLinks.has(l.id) ? 3 : 0}
           linkDirectionalParticleWidth={(l) => highlightedLinks.has(l.id) ? 2.5 : 0}
           linkDirectionalArrowLength={4}

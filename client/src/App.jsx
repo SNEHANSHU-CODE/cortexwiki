@@ -1,4 +1,4 @@
-﻿import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 
@@ -65,7 +65,10 @@ function AppRouter() {
   const navProps = isLanding
     ? {
         transparent: true,
-        links: LANDING_LINKS,
+        links: user ? [{ to: "/wiki", label: "Workspace" }, ...LANDING_LINKS] : LANDING_LINKS,
+        user,
+        loggingOut,
+        onLogout: handleLogout,
         actions: [
           { to: "/login", label: "Sign in", kind: "secondary" },
           { to: "/register", label: "Get started", kind: "primary" },
@@ -127,16 +130,33 @@ function AppRouter() {
   );
 }
 
+import { ThemeProvider } from "./hooks/useTheme";
+
 function App({ onReady }) {
   const { isInitialized } = useAuthInitialization();
 
   useEffect(() => {
-    if (isInitialized) onReady?.();
+    if (typeof window !== "undefined") {
+      window.__hideSplash = onReady;
+    }
+  }, [onReady]);
+
+  useEffect(() => {
+    if (isInitialized) {
+      const timer = setTimeout(() => {
+        onReady?.();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
   }, [isInitialized, onReady]);
 
   if (!isInitialized) return null;
 
-  return <AppRouter />;
+  return (
+    <ThemeProvider>
+      <AppRouter />
+    </ThemeProvider>
+  );
 }
 
 export default App;

@@ -343,3 +343,53 @@
 @media (max-width: 900px) {
   .chat-embed__quickbar { display: none; }
 }
+
+/* ── Light Theme Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .chat-embed {
+  --ws-ink:       #eef3fb;
+  --ws-surface:   #ffffff;
+  --ws-surface-2: #f7fafe;
+  --ws-surface-3: #e2e8f0;
+  --ws-border:    rgba(15, 23, 42, 0.08);
+  --ws-border-2:  rgba(15, 23, 42, 0.14);
+  --ws-accent:    #0f62fe;
+  --ws-accent-2:  #0f766e;
+  --ws-amber:     #d97706;
+  --ws-red:       #dc2626;
+  --ws-text:      #0f172a;
+  --ws-text-dim:  #516075;
+  --ws-text-mute: #66768d;
+}
+
+html[data-theme='light'] .chat-embed__meta {
+  background: #ffffff;
+}
+
+html[data-theme='light'] .chat-embed__composer {
+  background: #ffffff;
+}
+
+html[data-theme='light'] .chat-embed__quickbar {
+  background: #eef3fb;
+}
+
+html[data-theme='light'] .ws-composer__textarea::placeholder {
+  color: #94a3b8;
+}
+
+html[data-theme='light'] .chat-embed__quick-btn {
+  background: rgba(15, 23, 42, 0.03);
+  border-color: rgba(15, 23, 42, 0.08);
+  color: #516075;
+}
+
+html[data-theme='light'] .chat-embed__quick-btn:hover {
+  background: rgba(15, 98, 254, 0.06);
+  border-color: rgba(15, 98, 254, 0.2);
+  color: #0f62fe;
+}
+
+html[data-theme='light'] .ws-composer:focus-within {
+  border-color: rgba(15, 98, 254, 0.3);
+  box-shadow: 0 0 0 3px rgba(15, 98, 254, 0.06);
+}

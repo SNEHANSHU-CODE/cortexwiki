@@ -342,7 +342,7 @@ export function WebFallback({ sourceUrl, wikiId, onSubmit, onClose, isSubmitting
                 border: "1px solid rgba(16, 185, 129, 0.10)",
                 borderRadius: "0.375rem",
                 fontSize: "0.8rem",
-                color: "#10b981",
+                color: "var(--ws-green)",
               }}>
                 ✓ File loaded ({Math.round(content.length / 1024)}KB)
               </div>

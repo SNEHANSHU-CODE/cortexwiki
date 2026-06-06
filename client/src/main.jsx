@@ -20,6 +20,9 @@ function hideSplash() {
   setTimeout(() => el.remove(), 450);
 }
 
+window.__hideSplash = hideSplash;
+
+
 const root = createRoot(document.getElementById("root"));
 
 root.render(

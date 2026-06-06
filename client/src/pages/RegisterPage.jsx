@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { clearAuthError, setAuthError, setSession, setStatus } from "../redux/slices/authSlice";
@@ -18,6 +18,10 @@ function RegisterPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user, status, error } = useSelector((s) => s.auth);
+
+  useEffect(() => {
+    window.__hideSplash?.();
+  }, []);
 
   if (status === "authenticated" && user) return <Navigate to="/wiki" replace />;
 
@@ -124,7 +128,7 @@ function RegisterPage() {
 
             <div className="auth-field">
               <label className="auth-field__label" htmlFor="username">
-                Username <span style={{ color: "#334155", fontWeight: 400 }}>(required)</span>
+                Username <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(required)</span>
               </label>
               <input
                 id="username"
@@ -157,7 +161,7 @@ function RegisterPage() {
 
             <div className="auth-field">
               <label className="auth-field__label" htmlFor="password">
-                Password <span style={{ color: "#334155", fontWeight: 400 }}>(min 8 chars)</span>
+                Password <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(min 8 chars)</span>
               </label>
               <input
                 id="password"

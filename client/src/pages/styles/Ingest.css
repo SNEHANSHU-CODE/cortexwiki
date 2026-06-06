@@ -391,3 +391,39 @@
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.35; }
 }
+
+/* ── Light Theme Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .workspace-page,
+html[data-theme='light'] .ws-panel {
+  --ws-ink:       #eef3fb;
+  --ws-surface:   #ffffff;
+  --ws-surface-2: #f7fafe;
+  --ws-surface-3: #e2e8f0;
+  --ws-border:    rgba(15, 23, 42, 0.08);
+  --ws-border-2:  rgba(15, 23, 42, 0.14);
+  --ws-accent:    #0f62fe;
+  --ws-accent-2:  #0f766e;
+  --ws-red:       #dc2626;
+  --ws-green:     #15803d;
+  --ws-text:      #0f172a;
+  --ws-text-dim:  #516075;
+  --ws-text-mute: #66768d;
+}
+
+html[data-theme='light'] .ws-field__input {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.16);
+}
+
+html[data-theme='light'] .ws-field__input::placeholder {
+  color: #94a3b8;
+}
+
+html[data-theme='light'] .ws-field__input:focus {
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(15, 98, 254, 0.15);
+}
+
+html[data-theme='light'] .ws-history-card__link:hover {
+  color: #0842b3;
+}

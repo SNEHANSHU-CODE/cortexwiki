@@ -240,6 +240,10 @@ function WikiDashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
+    window.__hideSplash?.();
+  }, []);
+
+  useEffect(() => {
     void dispatch(loadWikis());
   }, [dispatch]);
 
@@ -335,8 +339,8 @@ function WikiDashboard() {
               </div>
             ) : wikis.length === 0 ? (
               <div className="cw-wiki-list__empty" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
-                <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.1rem", fontWeight: 700, color: "#f8fafc" }}>No wikis yet</h3>
-                <p style={{ margin: 0, fontSize: "0.875rem", color: "#64748b", textAlign: "center" }}>Click "New wiki" to create your first knowledge base</p>
+                <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.1rem", fontWeight: 700, color: "var(--text)" }}>No wikis yet</h3>
+                <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--text-muted)", textAlign: "center" }}>Click "New wiki" to create your first knowledge base</p>
               </div>
             ) : (
               <div className="cw-wiki-list__items" style={{ display: "flex", flexDirection: "column", padding: "0.5rem" }}>

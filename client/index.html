@@ -1,19 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https: wss: ws:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https: wss: ws:;" />
+  <script>try { var t = localStorage.getItem("theme"); document.documentElement.setAttribute("data-theme", (t === "light" || t === "dark") ? t : "dark"); } catch (e) {}</script>
   <title>CortexWiki — Knowledge-native AI workspace</title>
   <meta name="description"
     content="AI that remembers what you taught it. Ingest sources, build a knowledge graph, ask grounded questions." />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <style>
-    /* ── HTML-level loading screen ─────────────────────────────────────
-         Shown before React mounts — pure HTML/CSS, zero JS dependency.
-         React removes it by calling window.__hideSplash() from main.jsx.
-      ─────────────────────────────────────────────────────────────────── */
     *,
     *::before,
     *::after {
@@ -156,6 +153,28 @@
       100% {
         transform: translateX(260px);
       }
+    }
+
+    /* ── Light mode overrides for splash screen ──────────────────────── */
+    html[data-theme='light'] body {
+      background: #eef3fb;
+      color: #0f172a;
+    }
+
+    html[data-theme='light'] #cw-splash {
+      background: #eef3fb;
+    }
+
+    html[data-theme='light'] .splash-name {
+      color: #0f172a;
+    }
+
+    html[data-theme='light'] .splash-tagline {
+      color: #66768d;
+    }
+
+    html[data-theme='light'] .splash-bar {
+      background: rgba(15, 23, 42, 0.08);
     }
   </style>
 </head>

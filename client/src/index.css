@@ -1,28 +1,28 @@
 :root {
-  color-scheme: light;
-  --bg: #eef3fb;
-  --bg-elevated: #f7fafe;
-  --surface: rgba(255, 255, 255, 0.84);
-  --surface-strong: rgba(255, 255, 255, 0.94);
-  --surface-border: rgba(15, 23, 42, 0.08);
-  --surface-border-strong: rgba(15, 23, 42, 0.14);
-  --text: #0f172a;
-  --text-soft: #516075;
-  --text-muted: #66768d;
+  color-scheme: dark;
+  --bg: #07111f;
+  --bg-elevated: #0b1729;
+  --surface: rgba(10, 20, 38, 0.82);
+  --surface-strong: rgba(12, 24, 44, 0.92);
+  --surface-border: rgba(148, 163, 184, 0.16);
+  --surface-border-strong: rgba(148, 163, 184, 0.24);
+  --text: #e5eefb;
+  --text-soft: #b0bed2;
+  --text-muted: #90a0b7;
   --accent: #0f62fe;
   --accent-strong: #0842b3;
-  --accent-soft: rgba(15, 98, 254, 0.12);
+  --accent-soft: rgba(56, 189, 248, 0.16);
   --teal: #0f766e;
-  --teal-soft: rgba(15, 118, 110, 0.14);
+  --teal-soft: rgba(45, 212, 191, 0.16);
   --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, 0.14);
+  --warning-soft: rgba(245, 158, 11, 0.16);
   --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, 0.14);
+  --danger-soft: rgba(248, 113, 113, 0.16);
   --success: #15803d;
-  --success-soft: rgba(21, 128, 61, 0.14);
-  --shadow-sm: 0 10px 30px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 20px 50px rgba(15, 23, 42, 0.1);
-  --shadow-lg: 0 30px 80px rgba(15, 23, 42, 0.14);
+  --success-soft: rgba(74, 222, 128, 0.16);
+  --shadow-sm: 0 10px 30px rgba(2, 6, 23, 0.35);
+  --shadow-md: 0 20px 50px rgba(2, 6, 23, 0.48);
+  --shadow-lg: 0 30px 80px rgba(2, 6, 23, 0.58);
   --radius-sm: 16px;
   --radius-md: 24px;
   --radius-lg: 32px;
@@ -42,27 +42,25 @@
   --type-5: clamp(2.5rem, 5vw, 4.75rem);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: #07111f;
-    --bg-elevated: #0b1729;
-    --surface: rgba(10, 20, 38, 0.82);
-    --surface-strong: rgba(12, 24, 44, 0.92);
-    --surface-border: rgba(148, 163, 184, 0.16);
-    --surface-border-strong: rgba(148, 163, 184, 0.24);
-    --text: #e5eefb;
-    --text-soft: #b0bed2;
-    --text-muted: #90a0b7;
-    --accent-soft: rgba(56, 189, 248, 0.16);
-    --teal-soft: rgba(45, 212, 191, 0.16);
-    --warning-soft: rgba(245, 158, 11, 0.16);
-    --danger-soft: rgba(248, 113, 113, 0.16);
-    --success-soft: rgba(74, 222, 128, 0.16);
-    --shadow-sm: 0 10px 30px rgba(2, 6, 23, 0.35);
-    --shadow-md: 0 20px 50px rgba(2, 6, 23, 0.48);
-    --shadow-lg: 0 30px 80px rgba(2, 6, 23, 0.58);
-  }
+html[data-theme='light'] {
+  color-scheme: light;
+  --bg: #eef3fb;
+  --bg-elevated: #f7fafe;
+  --surface: rgba(255, 255, 255, 0.84);
+  --surface-strong: rgba(255, 255, 255, 0.94);
+  --surface-border: rgba(15, 23, 42, 0.08);
+  --surface-border-strong: rgba(15, 23, 42, 0.14);
+  --text: #0f172a;
+  --text-soft: #516075;
+  --text-muted: #66768d;
+  --accent-soft: rgba(15, 98, 254, 0.12);
+  --teal-soft: rgba(15, 118, 110, 0.14);
+  --warning-soft: rgba(217, 119, 6, 0.14);
+  --danger-soft: rgba(220, 38, 38, 0.14);
+  --success-soft: rgba(21, 128, 61, 0.14);
+  --shadow-sm: 0 10px 30px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 20px 50px rgba(15, 23, 42, 0.1);
+  --shadow-lg: 0 30px 80px rgba(15, 23, 42, 0.14);
 }
 
 *,
@@ -201,13 +199,11 @@ img {
 .button-secondary {
   color: var(--text);
   border-color: var(--surface-border-strong);
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(15, 23, 42, 0.45);
 }
 
-@media (prefers-color-scheme: dark) {
-  .button-secondary {
-    background: rgba(15, 23, 42, 0.45);
-  }
+html[data-theme='light'] .button-secondary {
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .ghost-button {
@@ -295,14 +291,12 @@ img {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent-strong);
+  color: #8dc9ff;
   background: var(--accent-soft);
 }
 
-@media (prefers-color-scheme: dark) {
-  .eyebrow {
-    color: #8dc9ff;
-  }
+html[data-theme='light'] .eyebrow {
+  color: var(--accent-strong);
 }
 
 .badge,
@@ -323,17 +317,15 @@ img {
 .source-pill,
 .meta-badge {
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.54);
+  background: rgba(15, 23, 42, 0.5);
   color: var(--text-soft);
 }
 
-@media (prefers-color-scheme: dark) {
-  .badge,
-  .tag,
-  .source-pill,
-  .meta-badge {
-    background: rgba(15, 23, 42, 0.5);
-  }
+html[data-theme='light'] .badge,
+html[data-theme='light'] .tag,
+html[data-theme='light'] .source-pill,
+html[data-theme='light'] .meta-badge {
+  background: rgba(255, 255, 255, 0.54);
 }
 
 .status-banner {

@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import MarkdownContent from "./MarkdownContent";
+import { useTheme } from "../hooks/useTheme";
 import "./styles/MessageBubble.css";
 
 // ── Copy button ────────────────────────────────────────────────────────────
@@ -36,8 +37,11 @@ function CopyButton({ content }) {
 // ── Confidence bar ─────────────────────────────────────────────────────────
 
 function ConfidenceBar({ value }) {
+  const { theme } = useTheme();
   const pct   = Math.round(value * 100);
-  const color = pct >= 70 ? "#5eead4" : pct >= 40 ? "#f59e0b" : "#f87171";
+  const color = theme === "light"
+    ? (pct >= 70 ? "#0f766e" : pct >= 40 ? "#d97706" : "#dc2626")
+    : (pct >= 70 ? "#5eead4" : pct >= 40 ? "#f59e0b" : "#f87171");
   return (
     <div className="confidence-bar">
       <div

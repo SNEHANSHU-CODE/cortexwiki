@@ -1,7 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────────────
    GraphViewer.css
    Styles for GraphViewer.jsx only.
-   Depends on the shared design tokens defined in ./styles/Components.css
    Import alongside the component:
      import "./GraphViewer.css";
 ───────────────────────────────────────────────────────────────────────── */
@@ -29,7 +28,6 @@
 }
 
 /* ── Canvas element rendered by react-force-graph-2d ─────────────────── */
-/* The library injects a <canvas> directly inside the container.          */
 .graph-viewer canvas {
   display: block;       /* removes the inline baseline gap */
   border-radius: inherit;
@@ -41,9 +39,7 @@
   outline-offset: 2px;
 }
 
-/* ── Loading / empty state placeholder ──────────────────────────────────
-   Shown while size.width / size.height are still 0 (before the
-   ResizeObserver fires its first callback).                               */
+/* ── Loading / empty state placeholder ────────────────────────────────── */
 .graph-viewer:empty::after {
   content: "";
   position: absolute;
@@ -58,8 +54,7 @@
   border-radius: inherit;
 }
 
-/* ── Subtle grid overlay — purely decorative, non-interactive ───────────
-   Creates the "data space" feel without touching canvas rendering.       */
+/* ── Subtle grid overlay — purely decorative, non-interactive ─────────── */
 .graph-viewer::before {
   content: "";
   position: absolute;
@@ -86,4 +81,23 @@
   pointer-events: none;
   border-radius: inherit;
   z-index: 1;
+}
+
+/* ── Light Mode Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .graph-viewer {
+  background: var(--bg);
+}
+
+html[data-theme='light'] .graph-viewer::after {
+  background: radial-gradient(
+    ellipse 100% 100% at 50% 50%,
+    transparent 55%,
+    rgba(238, 243, 251, 0.55) 100%
+  );
+}
+
+html[data-theme='light'] .graph-viewer::before {
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
 }

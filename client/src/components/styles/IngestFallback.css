@@ -168,3 +168,60 @@
 .ingest-fallback__file-input span {
   pointer-events: none;
 }
+
+/* ── Light Theme Overrides ─────────────────────────────────────────────── */
+html[data-theme='light'] .ingest-fallback__header h3 {
+  color: var(--ws-text);
+}
+
+html[data-theme='light'] .ingest-fallback__description {
+  color: var(--ws-text-dim);
+}
+
+html[data-theme='light'] .ingest-fallback__method-title {
+  color: var(--ws-text);
+}
+
+html[data-theme='light'] .ingest-fallback__step-num {
+  background: rgba(15, 98, 254, 0.08);
+  border-color: rgba(15, 98, 254, 0.2);
+  color: var(--ws-accent);
+}
+
+html[data-theme='light'] .ingest-fallback__step strong {
+  color: var(--ws-text);
+}
+
+html[data-theme='light'] .ingest-fallback__step p {
+  color: var(--ws-text-dim);
+}
+
+html[data-theme='light'] .ingest-fallback__file-input {
+  background: rgba(15, 98, 254, 0.04);
+  border-color: rgba(15, 98, 254, 0.2);
+  color: var(--ws-accent);
+}
+
+html[data-theme='light'] .ingest-fallback__file-input:hover {
+  background: rgba(15, 98, 254, 0.08);
+  border-color: rgba(15, 98, 254, 0.3);
+}
+
+html[data-theme='light'] .ingest-fallback__method {
+  background: rgba(15, 98, 254, 0.04);
+  border-color: rgba(15, 98, 254, 0.12);
+}
+
+html[data-theme='light'] .ingest-fallback__method:hover {
+  background: rgba(15, 98, 254, 0.08);
+  border-color: rgba(15, 98, 254, 0.24);
+}
+
+html[data-theme='light'] .ingest-fallback__method-desc {
+  color: var(--ws-text-mute);
+}
+
+html[data-theme='light'] .ingest-fallback__steps {
+  background: rgba(15, 23, 42, 0.04);
+}
+

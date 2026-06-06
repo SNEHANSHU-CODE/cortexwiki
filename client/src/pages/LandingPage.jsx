@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTheme } from "../hooks/useTheme";
 import "./styles/LandingPage.css";
 
 
@@ -121,13 +122,14 @@ const GRAPH_EDGES = [
 
 function GraphPreview() {
   const [hovered, setHovered] = useState(null);
+  const { theme } = useTheme();
   return (
     <div className="graph-preview-wrap">
       <svg viewBox="0 0 100 100" className="graph-preview-svg" aria-hidden="true">
         <defs>
           <radialGradient id="glow-core" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+            <stop offset="0%" stopColor={theme === "light" ? "#0f62fe" : "#38bdf8"} stopOpacity="0.35" />
+            <stop offset="100%" stopColor={theme === "light" ? "#0f62fe" : "#38bdf8"} stopOpacity="0" />
           </radialGradient>
         </defs>
         {GRAPH_EDGES.map(([a, b], i) => {
@@ -136,7 +138,7 @@ function GraphPreview() {
           return (
             <line key={i}
               x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
-              stroke={active ? "#5eead4" : "rgba(148,163,184,0.2)"}
+              stroke={active ? (theme === "light" ? "#0f766e" : "#5eead4") : (theme === "light" ? "rgba(15,23,42,0.12)" : "rgba(148,163,184,0.2)")}
               strokeWidth={active ? 0.8 : 0.4}
               style={{ transition: "all 0.2s" }}
             />
@@ -144,20 +146,24 @@ function GraphPreview() {
         })}
         {GRAPH_NODES.map((n, i) => {
           const active = hovered === i;
-          const color = n.cat === "core" ? "#38bdf8" : n.cat === "method" ? "#818cf8" : "#5eead4";
+          const color = theme === "light"
+            ? (n.cat === "core" ? "#0f62fe" : n.cat === "method" ? "#0842b3" : "#0f766e")
+            : (n.cat === "core" ? "#38bdf8" : n.cat === "method" ? "#818cf8" : "#5eead4");
           return (
             <g key={i} onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}
               style={{ cursor: "pointer" }}>
               {active && <circle cx={n.x} cy={n.y} r={n.r + 5} fill="url(#glow-core)" />}
               <circle cx={n.x} cy={n.y} r={n.r}
-                fill={active ? color : "rgba(15,118,110,0.6)"}
-                stroke={active ? color : "rgba(56,189,248,0.3)"}
+                fill={active ? color : (theme === "light" ? "rgba(15,98,254,0.08)" : "rgba(15,118,110,0.6)")}
+                stroke={active ? color : (theme === "light" ? "rgba(15,98,254,0.25)" : "rgba(56,189,248,0.3)")}
                 strokeWidth={active ? 0.8 : 0.4}
                 style={{ transition: "all 0.25s" }}
               />
               {(active || n.r > 17) && (
                 <text x={n.x} y={n.y + 1} textAnchor="middle" dominantBaseline="middle"
-                  fontSize={active ? 4.5 : 3.8} fill="#f8fafc" fontWeight="600"
+                  fontSize={active ? 4.5 : 3.8} 
+                  fill={active ? "#ffffff" : (theme === "light" ? "#0f172a" : "#f8fafc")} 
+                  fontWeight="600"
                   style={{ pointerEvents: "none", fontFamily: "IBM Plex Mono, monospace" }}>
                   {n.id}
                 </text>
@@ -172,6 +178,10 @@ function GraphPreview() {
 
 /* ── Main component ────────────────────────────────────────────────────── */
 function LandingPage() {
+  useEffect(() => {
+    window.__hideSplash?.();
+  }, []);
+
   return (
     <main className="lp-root" id="top">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
