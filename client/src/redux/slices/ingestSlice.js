@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { fetchIngestionHistory, ingestWeb, ingestYouTube, submitFallbackIngest } from "../../utils/api";
+import { fetchIngestionHistory, ingestWeb, ingestYouTube, submitFallbackIngest, ingestPDF } from "../../utils/api";
 import { buildErrorMessage } from "../../utils/sliceUtils";
 
 export const loadIngestionHistory = createAsyncThunk(
@@ -12,8 +12,11 @@ export const loadIngestionHistory = createAsyncThunk(
 
 export const submitIngestion = createAsyncThunk(
   "ingest/submit",
-  async ({ sourceType, url, wikiId, content }, { rejectWithValue }) => {
+  async ({ sourceType, url, wikiId, content, file }, { rejectWithValue }) => {
     try {
+      if (sourceType === "pdf") {
+        return await ingestPDF(file, wikiId);
+      }
       if (content) {
         return await submitFallbackIngest({ url, wikiId, content, type: sourceType });
       }

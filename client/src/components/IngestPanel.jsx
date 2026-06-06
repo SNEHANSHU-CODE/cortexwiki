@@ -107,6 +107,8 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
   const [activeTabId, setActiveTabId] = useState(null);
   const [fallbackSource, setFallbackSource] = useState(null);
   const [fallbackOpen, setFallbackOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [localError, setLocalError] = useState(null);
   const prevWikiIdRef = useRef(null);
   const wikiIdRef = useRef(wikiId);
   wikiIdRef.current = wikiId;
@@ -131,6 +133,8 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
       setActiveTabId(null);
       dispatch(resetSubmitStatus());
       dispatch(clearIngestFeedback());
+      setLocalError(null);
+      setSelectedFile(null);
       void dispatch(loadIngestionHistory(wikiId));
       // Clear pending sources when wiki changes
       setPendingSources([]);
@@ -168,6 +172,48 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
     setCurrentUrl("");
   };
 
+  const handleFileChange = (e) => {
+    setLocalError(null);
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate type (must be PDF)
+    const isPDF = file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+    if (!isPDF) {
+      setLocalError("Only PDF files are supported.");
+      setSelectedFile(null);
+      e.target.value = "";
+      return;
+    }
+
+    // Validate size (max 16MB)
+    const maxSize = 16 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setLocalError("File size exceeds the 16MB limit. MongoDB document limit is 16MB.");
+      setSelectedFile(null);
+      e.target.value = "";
+      return;
+    }
+
+    setSelectedFile(file);
+  };
+
+  const handleClearFile = () => {
+    setSelectedFile(null);
+    const input = document.getElementById("pdf-file-input");
+    if (input) input.value = "";
+  };
+
+  const handleAddPDFSource = () => {
+    if (!selectedFile) return;
+    const id = `pdf-${Date.now()}`;
+    setPendingSources([
+      ...pendingSources,
+      { id, type: "pdf", url: `file://${selectedFile.name}`, file: selectedFile, status: "pending", error: null }
+    ]);
+    handleClearFile();
+  };
+
   const handleRemoveSource = (id) => {
     setPendingSources(pendingSources.filter((s) => s.id !== id));
   };
@@ -176,6 +222,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
     if (!wikiId || pendingSources.length === 0 || submitStatus === "loading") return;
     
     dispatch(clearIngestFeedback());
+    setLocalError(null);
     const startWikiId = wikiId;
     
     // Process all sources sequentially
@@ -194,7 +241,8 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
       const action = await dispatch(submitIngestion({
         sourceType: source.type,
         url: source.url,
-        wikiId: startWikiId
+        wikiId: startWikiId,
+        file: source.file
       }));
       
       if (wikiIdRef.current !== startWikiId) {
@@ -209,7 +257,9 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
         }
       } else {
         source.status = "failed";
-        source.error = "Automatic ingest failed. Try fallback method.";
+        source.error = source.type === "pdf"
+          ? (action.payload || "Ingestion failed.")
+          : "Automatic ingest failed. Try fallback method.";
       }
       
       setPendingSources([...updatedSources]);
@@ -263,56 +313,153 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
       <div className="ws-panel__body">
         {/* Source type toggle */}
         <div className="ws-segments" role="tablist" aria-label="Source type">
-          {["youtube", "web"].map((type) => (
+          {["youtube", "web", "pdf"].map((type) => (
             <button
               key={type}
               type="button"
               role="tab"
               aria-selected={sourceType === type}
               className={`ws-segment${sourceType === type ? " ws-segment--active" : ""}`}
-              onClick={() => setSourceType(type)}
+              onClick={() => {
+                setSourceType(type);
+                setLocalError(null);
+              }}
               disabled={isDisabled}
             >
-              {type === "youtube" ? "▶ YouTube" : "🌐 Web"}
+              {type === "youtube" && (
+                <>
+                  <span>▶</span>
+                  <span>YouTube</span>
+                </>
+              )}
+              {type === "web" && (
+                <>
+                  <span>🌐</span>
+                  <span>Web</span>
+                </>
+              )}
+              {type === "pdf" && (
+                <>
+                  <span>📄</span>
+                  <span>PDF</span>
+                </>
+              )}
             </button>
           ))}
         </div>
 
-        {/* URL input + Add button */}
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
-          <div className="ws-field" style={{ flex: 1, marginBottom: 0 }}>
-            <input
-              className="ws-field__input"
-              type="url"
-              inputMode="url"
-              placeholder={
-                sourceType === "youtube"
-                  ? "https://youtube.com/watch?v=…"
-                  : "https://example.com/article"
-              }
-              value={currentUrl}
-              onChange={(e) => setCurrentUrl(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleAddSource()}
-              disabled={isDisabled}
-            />
+        {/* URL or File input + Add button */}
+        {sourceType === "pdf" ? (
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <div className="ws-field" style={{ flex: 1, marginBottom: 0 }}>
+              <input
+                id="pdf-file-input"
+                className="ws-field__input"
+                type="file"
+                accept=".pdf"
+                style={{ display: "none" }}
+                onChange={handleFileChange}
+                disabled={isDisabled}
+              />
+              <label
+                htmlFor="pdf-file-input"
+                className="ws-field__input"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  cursor: isDisabled ? "not-allowed" : "pointer",
+                  color: selectedFile ? "#f8fafc" : "#64748b",
+                  boxSizing: "border-box",
+                  minHeight: "43px",
+                  overflow: "hidden",
+                }}
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>
+                  {selectedFile ? selectedFile.name : "Choose PDF file..."}
+                </span>
+                {selectedFile ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexShrink: 0 }}>
+                    <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                      ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
+                    </span>
+                    <button
+                      type="button"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#94a3b8",
+                        cursor: "pointer",
+                        fontSize: "0.8rem",
+                        padding: "0 0.25rem",
+                        display: "flex",
+                        alignItems: "center",
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleClearFile();
+                      }}
+                      aria-label="Clear file selection"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: "0.75rem", color: "#64748b", flexShrink: 0 }}>
+                    Browse
+                  </span>
+                )}
+              </label>
+            </div>
+            <button
+              type="button"
+              className="ws-btn ws-btn--ghost"
+              style={{ fontSize: "0.8rem", padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}
+              onClick={handleAddPDFSource}
+              disabled={isDisabled || !selectedFile}
+            >
+              + Add
+            </button>
           </div>
-          <button
-            type="button"
-            className="ws-btn ws-btn--ghost"
-            style={{ fontSize: "0.8rem", padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}
-            onClick={handleAddSource}
-            disabled={isDisabled || !currentUrl.trim()}
-            aria-label="Add URL"
-          >
-            + Add
-          </button>
-        </div>
+        ) : (
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <div className="ws-field" style={{ flex: 1, marginBottom: 0 }}>
+              <input
+                className="ws-field__input"
+                type="url"
+                inputMode="url"
+                placeholder={
+                  sourceType === "youtube"
+                    ? "https://youtube.com/watch?v=…"
+                    : "https://example.com/article"
+                }
+                value={currentUrl}
+                onChange={(e) => setCurrentUrl(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleAddSource()}
+                disabled={isDisabled}
+              />
+            </div>
+            <button
+              type="button"
+              className="ws-btn ws-btn--ghost"
+              style={{ fontSize: "0.8rem", padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}
+              onClick={handleAddSource}
+              disabled={isDisabled || !currentUrl.trim()}
+              aria-label="Add URL"
+            >
+              + Add
+            </button>
+          </div>
+        )}
 
         {!isDisabled && (
           <p className="ws-field__hint">
             {sourceType === "youtube"
               ? "Add multiple YouTube links, then click 'Ingest all' to process them together."
-              : "Add multiple web pages, then click 'Ingest all' to process them together."}
+              : sourceType === "web"
+              ? "Add multiple web pages, then click 'Ingest all' to process them together."
+              : "Select a PDF file (max 16MB), add it, and click 'Ingest all' to upload and extract text."}
           </p>
         )}
 
@@ -369,7 +516,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                   )}
                 </div>
                 <div style={{ display: "flex", gap: "0.25rem", flexShrink: 0, alignItems: "center" }}>
-                  {source.status === "failed" && (
+                  {source.status === "failed" && source.type !== "pdf" && (
                     <button
                       type="button"
                       className="ws-btn ws-btn--ghost"
@@ -401,20 +548,22 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
         )}
 
         {/* Error banner */}
-        {error && (
+        {(error || localError) && (
           <div className="ws-banner ws-banner--error" role="alert">
             <div style={{ fontSize: "0.85rem" }}>
               <p style={{ margin: 0, fontWeight: 500 }}>Error during ingestion</p>
-              {/* BUG FIX #24: Show detailed error information */}
               <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", opacity: 0.9 }}>
-                {error}
+                {error || localError}
               </p>
             </div>
             <button
               type="button"
               className="ws-btn ws-btn--ghost"
               style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", marginLeft: "auto", flexShrink: 0 }}
-              onClick={() => dispatch(clearIngestFeedback())}
+              onClick={() => {
+                dispatch(clearIngestFeedback());
+                setLocalError(null);
+              }}
             >
               ✕
             </button>

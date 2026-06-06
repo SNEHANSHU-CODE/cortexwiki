@@ -63,6 +63,18 @@ export async function ingestWeb(url, wikiId) {
   return data;
 }
 
+export async function ingestPDF(file, wikiId) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("wiki_id", wikiId);
+  const { data } = await httpClient.post("/api/ingest/pdf", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  return data;
+}
+
 export async function submitFallbackIngest({ url, wikiId, content, type }) {
   const { data } = await httpClient.post("/api/ingest/fallback", {
     url,

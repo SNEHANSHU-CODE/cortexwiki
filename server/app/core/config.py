@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     # Supadata — YouTube transcript primary (bypasses datacenter IP blocks)
     SUPADATA_API_KEY: str | None = None
 
+    # OCR.space API — for PDF image fallback
+    OCR_SPACE_API_KEY: str | None = None
+
+
     # ScraperAPI — YouTube transcript fallback proxy
     SCRAPERAPI_KEY: str | None = None
     SCRAPERAPI_PROXY_URL: str = "http://proxy.scraperapi.com:8001"

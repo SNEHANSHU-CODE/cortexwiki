@@ -93,17 +93,21 @@
 
 .ws-segment {
   flex: 1;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.5rem;
   border-radius: 8px;
   border: none;
   background: transparent;
   color: var(--ws-text-dim);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
   font-family: 'DM Sans', system-ui, sans-serif;
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
 }
 
 .ws-segment--active {
@@ -256,6 +260,7 @@
 
 .ws-badge--youtube { background: rgba(239,68,68,0.1); color: #f87171; border-color: rgba(239,68,68,0.2); }
 .ws-badge--web     { background: rgba(94,234,212,0.1); color: var(--ws-accent-2); border-color: rgba(94,234,212,0.2); }
+.ws-badge--pdf     { background: rgba(168,85,247,0.1); color: #c084fc; border-color: rgba(168,85,247,0.2); }
 
 /* ── Tags ─────────────────────────────────────────────────────────────── */
 .ws-tag {

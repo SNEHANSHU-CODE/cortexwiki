@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, File, UploadFile, Form
 from bson import ObjectId
 
 from app.api.deps import get_current_user, validate_wiki_id
@@ -195,6 +195,111 @@ async def ingest_fallback(
         source_type=payload.type,
         source_url=str(payload.url),
         raw_content=payload.content,
+    )
+    return _build_ingest_response(result)
+
+
+@router.post("/pdf", response_model=IngestData)
+async def ingest_pdf(
+    file: UploadFile = File(...),
+    wiki_id: str = Form(...),
+    current_user: dict = Depends(get_current_user),
+    response: Response = None,
+):
+    # Validate wiki_id format
+    await validate_wiki_id(wiki_id)
+    
+    # Apply rate limiting
+    allowed, headers = await _check_ingest_rate_limit(current_user["id"], wiki_id)
+    if response:
+        for key, value in headers.items():
+            response.headers[key] = value
+            
+    if not allowed:
+        raise AppError(
+            status_code=429,
+            code="ingest_rate_limited",
+            message="Too many ingestions. Please wait a minute before trying again.",
+        )
+        
+    await _validate_wiki(wiki_id, current_user["id"])
+    
+    # Validate file extension / mime type
+    filename = file.filename or "document.pdf"
+    if not filename.lower().endswith(".pdf"):
+        raise AppError(
+            status_code=400,
+            code="invalid_file_type",
+            message="Only PDF files are supported.",
+        )
+    
+    # Enforce 16MB file size limit
+    pdf_bytes = await file.read()
+    await file.close()
+    if len(pdf_bytes) > 16 * 1024 * 1024:
+        raise AppError(
+            status_code=400,
+            code="file_too_large",
+            message="File size exceeds the 16MB limit.",
+        )
+        
+    if len(pdf_bytes) == 0:
+        raise AppError(
+            status_code=400,
+            code="file_empty",
+            message="The uploaded PDF file is empty.",
+        )
+
+    # Extract text from PDF
+    from app.utils.pdf import extract_text_from_pdf
+    from app.utils.pdfOCRService import OCRError
+    
+    try:
+        extracted_text = extract_text_from_pdf(pdf_bytes, filename=filename)
+    except OCRError as exc:
+        raise AppError(
+            status_code=400,
+            code="ocr_failed",
+            message=f"OCR processing failed: {str(exc)}",
+        )
+    except Exception as exc:
+        raise AppError(
+            status_code=500,
+            code="pdf_extraction_failed",
+            message=f"Could not extract text from PDF: {str(exc)}",
+        )
+
+    # Generate title using LLM
+    llm = get_llm_service()
+    title = ""
+    try:
+        prompt = (
+            "Generate a short, concise, and descriptive title (under 60 characters) "
+            "for the following document. Do not include quotes or markdown. Just the title text.\n\n"
+            f"{extracted_text[:1500]}"
+        )
+        generated_title = await llm.generate_text(prompt=prompt, temperature=0.3, max_output_tokens=30)
+        if generated_title:
+            title = generated_title.strip().replace('"', '')
+    except Exception:
+        pass
+        
+    if not title:
+        title = filename.rsplit(".", 1)[0] if "." in filename else filename
+        
+    # Formulate a unique source_url
+    import urllib.parse
+    encoded_filename = urllib.parse.quote(filename)
+    source_url = f"pdf://{wiki_id}/{encoded_filename}"
+    
+    # Ingest the source text
+    result = await _ingest_source(
+        user_id=current_user["id"],
+        wiki_id=wiki_id,
+        title=title,
+        source_type="pdf",
+        source_url=source_url,
+        raw_content=extracted_text,
     )
     return _build_ingest_response(result)
 
