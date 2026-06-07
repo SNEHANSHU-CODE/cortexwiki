@@ -28,6 +28,62 @@ function CopyCodeButton({ value }) {
   );
 }
 
+function highlightCode(code, language) {
+  if (!code) return "";
+  
+  // 1. Escape HTML entities
+  let escaped = code
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+    
+  const placeholders = [];
+  let placeholderCounter = 0;
+  
+  function addPlaceholder(text, className) {
+    const key = `___TOKEN_PLACEHOLDER_${placeholderCounter++}___`;
+    placeholders.push({
+      key,
+      html: `<span class="${className}">${text}</span>`
+    });
+    return key;
+  }
+  
+  // 2. Extract comments (highest priority to avoid false matches inside comments)
+  escaped = escaped.replace(/(\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*)/g, (match) => {
+    return addPlaceholder(match, "token comment");
+  });
+  
+  // 3. Extract strings
+  escaped = escaped.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/g, (match) => {
+    return addPlaceholder(match, "token string");
+  });
+  
+  // 4. Highlight keywords
+  const keywords = /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|import|export|from|default|class|extends|new|this|typeof|instanceof|in|of|as|async|await|try|catch|finally|throw|def|elif|except|yield|lambda|and|or|not|is|pass|None|True|False|int|str|float|list|dict|set|tuple|print|len|struct|impl|fn|pub|use|mod|let|mut|match|enum|type|where|interface|package|public|private|protected|static|final|void|null|undefined)\b/g;
+  escaped = escaped.replace(keywords, (match) => {
+    return `<span class="token keyword">${match}</span>`;
+  });
+  
+  // 5. Highlight functions
+  escaped = escaped.replace(/\b([a-zA-Z_]\w*)(?=\s*\()/g, (match) => {
+    return `<span class="token function">${match}</span>`;
+  });
+  
+  // 6. Highlight numbers
+  escaped = escaped.replace(/\b(\d+(?:\.\d+)?)\b/g, (match) => {
+    return `<span class="token number">${match}</span>`;
+  });
+  
+  // 7. Restore placeholders
+  for (let i = placeholders.length - 1; i >= 0; i--) {
+    const p = placeholders[i];
+    escaped = escaped.replace(p.key, p.html);
+  }
+  
+  return escaped;
+}
+
 function MarkdownContent({ content }) {
   // Memoized components — critical for streaming performance.
   // Prevents ReactMarkdown from remounting its renderer on every token.
@@ -48,6 +104,7 @@ function MarkdownContent({ content }) {
         }
 
         const language = className?.replace("language-", "") || "text";
+        const highlightedHtml = highlightCode(raw, language);
 
         return (
           <div className="code-block">
@@ -58,7 +115,10 @@ function MarkdownContent({ content }) {
               <CopyCodeButton value={raw} />
             </div>
             <pre>
-              <code className={className} {...props}>{raw}</code>
+              <code
+                className={className}
+                dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+              />
             </pre>
           </div>
         );

@@ -368,29 +368,30 @@ async def _ingest_source(
             code="url_too_long",
             message="URL length exceeds 2048 characters.",
         )
-    if not source_url.startswith(("http://", "https://")):
-        raise AppError(
-            status_code=400,
-            code="invalid_url_protocol",
-            message="URL must start with http:// or https://",
-        )
-    # BUG FIX #6: Check for null bytes and control characters
-    if any(char in source_url for char in ['\x00', '\r', '\n', '\t']):
-        raise AppError(
-            status_code=400,
-            code="url_invalid_characters",
-            message="URL contains invalid characters.",
-        )
-    # BUG FIX #6: SSRF protection - block local IP ranges
-    from urllib.parse import urlparse
-    parsed_url = urlparse(source_url)
-    hostname = parsed_url.hostname or ""
-    if hostname in ["localhost", "127.0.0.1", "0.0.0.0"] or hostname.startswith("192.168.") or hostname.startswith("10."):
-        raise AppError(
-            status_code=400,
-            code="url_blocked_local",
-            message="Local network URLs are not allowed.",
-        )
+    if source_type != "pdf":
+        if not source_url.startswith(("http://", "https://")):
+            raise AppError(
+                status_code=400,
+                code="invalid_url_protocol",
+                message="URL must start with http:// or https://",
+            )
+        # BUG FIX #6: Check for null bytes and control characters
+        if any(char in source_url for char in ['\x00', '\r', '\n', '\t']):
+            raise AppError(
+                status_code=400,
+                code="url_invalid_characters",
+                message="URL contains invalid characters.",
+            )
+        # BUG FIX #6: SSRF protection - block local IP ranges
+        from urllib.parse import urlparse
+        parsed_url = urlparse(source_url)
+        hostname = parsed_url.hostname or ""
+        if hostname in ["localhost", "127.0.0.1", "0.0.0.0"] or hostname.startswith("192.168.") or hostname.startswith("10."):
+            raise AppError(
+                status_code=400,
+                code="url_blocked_local",
+                message="Local network URLs are not allowed.",
+            )
     
     mongo = get_mongo_manager()
     llm = get_llm_service()

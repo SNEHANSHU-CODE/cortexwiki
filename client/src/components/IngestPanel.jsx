@@ -153,6 +153,10 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
   useEffect(() => {
     dispatch(resetSubmitStatus());
     dispatch(clearIngestFeedback());
+    setCurrentUrl("");
+    setSelectedFile(null);
+    const input = document.getElementById("pdf-file-input");
+    if (input) input.value = "";
   }, [sourceType, dispatch]);
 
   // Auto-dismiss success banner after 4s
@@ -350,8 +354,8 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
 
         {/* URL or File input + Add button */}
         {sourceType === "pdf" ? (
-          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
-            <div className="ws-field" style={{ flex: 1, marginBottom: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <div className="ws-field" style={{ flex: 1, minWidth: 0, marginBottom: 0 }}>
               <input
                 id="pdf-file-input"
                 className="ws-field__input"
@@ -361,24 +365,22 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                 onChange={handleFileChange}
                 disabled={isDisabled}
               />
-              <label
-                htmlFor="pdf-file-input"
-                className="ws-field__input"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  cursor: isDisabled ? "not-allowed" : "pointer",
-                  color: selectedFile ? "var(--ws-text)" : "var(--ws-text-dim)",
-                  boxSizing: "border-box",
-                  minHeight: "43px",
-                  overflow: "hidden",
-                }}
-              >
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>
-                  {selectedFile ? selectedFile.name : "Choose PDF file..."}
-                </span>
-                {selectedFile ? (
+              {selectedFile ? (
+                <div
+                  className="ws-field__input"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    color: "var(--ws-text)",
+                    boxSizing: "border-box",
+                    minHeight: "43px",
+                    overflow: "hidden",
+                  }}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>
+                    {selectedFile.name}
+                  </span>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexShrink: 0 }}>
                     <span style={{ fontSize: "0.75rem", color: "var(--ws-text-dim)" }}>
                       ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
@@ -395,22 +397,36 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                         display: "flex",
                         alignItems: "center",
                       }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleClearFile();
-                      }}
+                      onClick={handleClearFile}
                       aria-label="Clear file selection"
                     >
                       ✕
                     </button>
                   </div>
-                ) : (
+                </div>
+              ) : (
+                <label
+                  htmlFor="pdf-file-input"
+                  className="ws-field__input"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: isDisabled ? "not-allowed" : "pointer",
+                    color: "var(--ws-text-dim)",
+                    boxSizing: "border-box",
+                    minHeight: "43px",
+                    overflow: "hidden",
+                  }}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>
+                    Choose PDF file...
+                  </span>
                   <span style={{ fontSize: "0.75rem", color: "var(--ws-text-dim)", flexShrink: 0 }}>
                     Browse
                   </span>
-                )}
-              </label>
+                </label>
+              )}
             </div>
             <button
               type="button"
@@ -423,8 +439,8 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
             </button>
           </div>
         ) : (
-          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
-            <div className="ws-field" style={{ flex: 1, marginBottom: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <div className="ws-field" style={{ flex: 1, minWidth: 0, marginBottom: 0 }}>
               <input
                 className="ws-field__input"
                 type="url"
@@ -530,13 +546,13 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                       💾
                     </button>
                   )}
-                  {source.status === "pending" && (
+                  {(source.status === "pending" || source.status === "failed") && (
                     <button
                       type="button"
                       className="ws-btn ws-btn--ghost"
                       style={{ fontSize: "0.65rem", padding: "0.2rem 0.4rem" }}
                       onClick={() => handleRemoveSource(source.id)}
-                      aria-label="Remove URL"
+                      aria-label="Remove source"
                     >
                       ✕
                     </button>

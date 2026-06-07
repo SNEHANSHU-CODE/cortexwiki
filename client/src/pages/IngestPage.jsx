@@ -132,33 +132,7 @@ export function NoteDrawer({ item, onClose }) {
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "2rem" }}>
-          <section style={{ marginBottom: "2rem" }}>
-            <span
-              style={{
-                fontFamily: "'IBM Plex Mono', monospace",
-                fontSize: "0.65rem",
-                color: "var(--ws-accent)",
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                display: "block",
-                marginBottom: "0.75rem",
-              }}
-            >
-              Summary
-            </span>
-            <p
-              style={{
-                fontFamily: "'DM Sans', system-ui, sans-serif",
-                fontSize: "0.95rem",
-                color: "var(--ws-text-dim)",
-                lineHeight: 1.8,
-                margin: 0,
-                fontWeight: 300,
-              }}
-            >
-              {item.summary || item.description || "No summary available."}
-            </p>
-          </section>
+
 
           {item.content && (
             <section style={{ marginBottom: "2rem" }}>

@@ -6,6 +6,8 @@ from app.utils.errors import AppError
 async def validate_content_type(request: Request):
     # Only enforce for api endpoints that accept JSON when content-length is present and > 0
     if request.url.path.startswith("/api") and request.method in ("POST", "PUT", "PATCH"):
+        if request.url.path.rstrip("/") == "/api/ingest/pdf":
+            return None
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > 0:
             ctype = request.headers.get("content-type", "")
