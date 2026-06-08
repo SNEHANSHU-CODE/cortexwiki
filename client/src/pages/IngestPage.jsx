@@ -30,9 +30,15 @@ export function NoteDrawer({ item, onClose }) {
   const badgeType = item.source_type || "wiki";
   const normalizedContent = (item.content || "")
     .replace(/\r\n/g, "\n")
+    // Ensure numbered sections render as real list lines.
     .replace(/\s+(\d+\.\s+)/g, "\n$1")
+    // Ensure bullet markers break to their own lines.
     .replace(/\s+([*-]\s+)/g, "\n$1")
-    .replace(/\s+(Overview|Key Components|Benefits|Setting Up[^:]*|Define a Note)\s*/gi, "\n\n$1\n")
+    // Promote common section labels to heading-like lines without breaking Markdown headings.
+    .replace(/(?:\r?\n|^)(#*\s*)?(Overview|Key Components|Benefits|Setting Up[^:\n]*|Define a Note)/gi, (match, hashes, title) => {
+      const h = (hashes && hashes.trim()) ? hashes.trim() : "##";
+      return `\n\n${h} ${title}\n`;
+    })
     .trim();
 
   return (

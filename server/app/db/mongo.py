@@ -139,6 +139,8 @@ class MongoManager:
             "created_at": now,
             "updated_at": now,
             "last_login_at": None,
+            "input_tokens_used": 0,
+            "output_tokens_used": 0,
         }
         if self.database is not None:
             result = await self.database.users.insert_one(document)
@@ -191,6 +193,38 @@ class MongoManager:
         if user_id in self._memory["users"]:
             self._memory["users"][user_id]["last_login_at"] = now
             self._memory["users"][user_id]["updated_at"] = now
+
+    async def get_user_token_usage(self, user_id: str) -> tuple[int, int]:
+        """Get (input_tokens_used, output_tokens_used) for a user."""
+        user = await self.get_user_by_id(user_id)
+        if not user:
+            return 0, 0
+        return user.get("input_tokens_used", 0), user.get("output_tokens_used", 0)
+
+    async def increment_user_token_usage(self, user_id: str, input_tokens: int, output_tokens: int) -> None:
+        """Increment input_tokens_used and output_tokens_used for a user."""
+        now = datetime.now(UTC)
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                await self.database.users.update_one(
+                    {"_id": ObjectId(user_id)},
+                    {
+                        "$inc": {
+                            "input_tokens_used": input_tokens,
+                            "output_tokens_used": output_tokens
+                        },
+                        "$set": {"updated_at": now}
+                    }
+                )
+            except Exception:
+                pass
+            return
+        user = self._memory["users"].get(user_id)
+        if user:
+            user["input_tokens_used"] = user.get("input_tokens_used", 0) + input_tokens
+            user["output_tokens_used"] = user.get("output_tokens_used", 0) + output_tokens
+            user["updated_at"] = now
 
     # ── Refresh Tokens ────────────────────────────────────────────────────────
 

@@ -306,6 +306,10 @@ async def handle_query(sid, data):
         logger.warning("Query rejected: invalid user context for sid=%s", sid)
         return
 
+    # Set user context variable for token usage tracking
+    from app.services.llm import user_id_ctx
+    user_id_ctx.set(user["id"])
+
     request_id = (data.get("requestId") or "").strip()
     wiki_id = (data.get("wiki_id") or "").strip()
     question = (data.get("question") or "").strip()
@@ -507,6 +511,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 logger.debug("Bearer token authenticated: user_id=%s", user_id)
                 request.state.user = user
                 request.state.access_token_jti = jti
+                # Set user context variable for token usage tracking
+                from app.services.llm import user_id_ctx
+                user_id_ctx.set(user_id)
 
             except AppError as exc:
                 logger.warning("Bearer token error: %s", exc.message)
@@ -542,6 +549,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 logger.debug("Cookie token authenticated: user_id=%s", user_id)
                 request.state.user = user
                 request.state.access_token_jti = jti
+                # Set user context variable for token usage tracking
+                from app.services.llm import user_id_ctx
+                user_id_ctx.set(user_id)
 
             except AppError as exc:
                 logger.warning("Cookie token error: %s", exc.message)

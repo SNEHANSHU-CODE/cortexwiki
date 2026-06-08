@@ -10,6 +10,7 @@ LLM provider strategy:
 """
 
 import asyncio
+import contextvars
 import hashlib
 import json
 import re
@@ -18,11 +19,13 @@ import time
 import httpx
 
 from app.core.config import settings
+from app.utils.errors import AppError
 from app.utils.logging import get_logger
 from app.utils.text import chunk_words, clean_text, split_sentences
 
 
 logger = get_logger("services.llm")
+user_id_ctx = contextvars.ContextVar("user_id_ctx", default=None)
 
 
 class _ExternalApiCircuitBreaker:
@@ -84,6 +87,33 @@ _GEMINI_EMBED_URL = (
 
 class LLMService:
 
+    @staticmethod
+    def estimate_tokens(text: str) -> int:
+        if not text:
+            return 0
+        # Approx 1 token per 3.8 characters for standard English text
+        return max(1, int(len(text) / 3.8))
+
+    async def check_token_limits(self, user_id: str) -> None:
+        """Check if user has exceeded their token usage limits."""
+        from app.db.mongo import get_mongo_manager
+        mongo = get_mongo_manager()
+        input_used, output_used = await mongo.get_user_token_usage(user_id)
+        
+        # Enforce limits: Input 1 Lakh (100,000) and Output 30K (30,000)
+        if input_used >= 100000:
+            raise AppError(
+                status_code=429,
+                code="input_token_limit_exceeded",
+                message="Your account has exceeded the input token usage limit (100,000 tokens). Please contact support to upgrade.",
+            )
+        if output_used >= 30000:
+            raise AppError(
+                status_code=429,
+                code="output_token_limit_exceeded",
+                message="Your account has exceeded the output token usage limit (30,000 tokens). Please contact support to upgrade.",
+            )
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     async def generate_text(
@@ -94,6 +124,10 @@ class LLMService:
         temperature: float = 0.3,
         max_output_tokens: int = 1024,
     ) -> str:
+        user_id = user_id_ctx.get()
+        if user_id:
+            await self.check_token_limits(user_id)
+
         if settings.GROQ_API_KEY:
             result = await self._groq_generate(
                 prompt=prompt,
@@ -112,7 +146,14 @@ class LLMService:
             )
             if result:
                 return result
-        return self._fallback_generate(prompt)
+
+        result = self._fallback_generate(prompt)
+        if user_id:
+            prompt_tok = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+            completion_tok = self.estimate_tokens(result)
+            from app.db.mongo import get_mongo_manager
+            await get_mongo_manager().increment_user_token_usage(user_id, prompt_tok, completion_tok)
+        return result
 
     async def stream_text(
         self,
@@ -122,32 +163,69 @@ class LLMService:
         temperature: float = 0.3,
         max_output_tokens: int = 1024,
     ):
-        if settings.GROQ_API_KEY:
-            groq_ok = False
-            async for chunk in self._groq_stream(
-                prompt=prompt,
-                system_instruction=system_instruction,
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-            ):
-                groq_ok = True
+        user_id = user_id_ctx.get()
+        if user_id:
+            await self.check_token_limits(user_id)
+
+        accumulated = []
+        try:
+            if settings.GROQ_API_KEY:
+                groq_ok = False
+                async for chunk in self._groq_stream(
+                    prompt=prompt,
+                    system_instruction=system_instruction,
+                    temperature=temperature,
+                    max_output_tokens=max_output_tokens,
+                ):
+                    groq_ok = True
+                    if chunk:
+                        accumulated.append(chunk)
+                    yield chunk
+                if groq_ok:
+                    if user_id:
+                        prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                        completion_tokens = self.estimate_tokens("".join(accumulated))
+                        from app.db.mongo import get_mongo_manager
+                        await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+                    return
+            if settings.GEMINI_API_KEY:
+                gemini_ok = False
+                async for chunk in self._gemini_stream(
+                    prompt=prompt,
+                    system_instruction=system_instruction,
+                    temperature=temperature,
+                    max_output_tokens=max_output_tokens,
+                ):
+                    gemini_ok = True
+                    if chunk:
+                        accumulated.append(chunk)
+                    yield chunk
+                if gemini_ok:
+                    if user_id:
+                        prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                        completion_tokens = self.estimate_tokens("".join(accumulated))
+                        from app.db.mongo import get_mongo_manager
+                        await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+                    return
+            for chunk in chunk_words(self._fallback_generate(prompt)):
+                if chunk:
+                    accumulated.append(chunk)
                 yield chunk
-            if groq_ok:
-                return
-        if settings.GEMINI_API_KEY:
-            gemini_ok = False
-            async for chunk in self._gemini_stream(
-                prompt=prompt,
-                system_instruction=system_instruction,
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-            ):
-                gemini_ok = True
-                yield chunk
-            if gemini_ok:
-                return
-        for chunk in chunk_words(self._fallback_generate(prompt)):
-            yield chunk
+            if user_id:
+                prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                completion_tokens = self.estimate_tokens("".join(accumulated))
+                from app.db.mongo import get_mongo_manager
+                await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+        except Exception as exc:
+            if user_id and accumulated:
+                try:
+                    prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                    completion_tokens = self.estimate_tokens("".join(accumulated))
+                    from app.db.mongo import get_mongo_manager
+                    await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+                except Exception:
+                    pass
+            raise exc
 
     async def embed_text(self, text: str) -> list[float]:
         """
@@ -157,6 +235,10 @@ class LLMService:
         """
         if not text:
             return []
+        
+        user_id = user_id_ctx.get()
+        if user_id:
+            await self.check_token_limits(user_id)
         
         # BUG FIX #22: Check embedding cache in Redis
         redis_store = None
@@ -196,6 +278,10 @@ class LLMService:
                         logger.debug("Cached embedding: %s", cache_key)
                     except Exception as exc:
                         logger.warning("Failed to cache embedding: %s", str(exc))
+                if user_id:
+                    input_tokens = self.estimate_tokens(text)
+                    from app.db.mongo import get_mongo_manager
+                    await get_mongo_manager().increment_user_token_usage(user_id, input_tokens, 0)
                 return result
         
         # Fallback embedding
@@ -210,46 +296,100 @@ class LLMService:
                 )
             except Exception:
                 pass
+        if user_id:
+            input_tokens = self.estimate_tokens(text)
+            from app.db.mongo import get_mongo_manager
+            await get_mongo_manager().increment_user_token_usage(user_id, input_tokens, 0)
         return embedding
 
     async def summarize(self, text: str) -> str:
         if not text:
             return ""
         prompt = (
-            "Summarize the following material for an enterprise knowledge base. "
-            "Keep it grounded, factual, and concise.\n\n"
+            "Summarize the following material for an enterprise knowledge base.\n\n"
+            "=== CRITICAL DIRECTIVES ===\n"
+            "1. STRUCTURE: Organize the summary using appropriate Markdown headers where relevant (e.g. '## Overview', '## Key Components', '## Benefits').\n"
+            "2. LISTS: Format any lists cleanly using standard Markdown bullet points ('- ') or numbered lists ('1. '). Ensure each item starts on a new line.\n"
+            "3. STYLE: Keep it factual, grounded, concise, and professional.\n"
+            "4. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
+            "=== MATERIAL ===\n"
             f"{text[:8000]}"
         )
         return clean_text(
-            await self.generate_text(prompt=prompt, temperature=0.2, max_output_tokens=300)
+            await self.generate_text(prompt=prompt, temperature=0.2, max_output_tokens=400)
         )
 
-    async def merge_notes(self, *, existing_note: str, new_summary: str, new_title: str) -> str:
+    async def merge_notes(
+        self,
+        *,
+        existing_note: str,
+        new_summary: str,
+        new_title: str,
+        raw_content: str = "",
+    ) -> str:
         """
         Compound an existing master note with a new source summary.
-        If no existing note yet, the new summary becomes the first note.
+        If no existing note yet, the new summary is structured into the first master note.
         The result is a single unified note — not a list of separate summaries.
         """
-        if not existing_note.strip():
-            return clean_text(new_summary)
+        # Determine dynamic compression strategy based on the raw content length
+        source_len = len(raw_content) if raw_content else len(new_summary)
+        
+        if source_len < 15000:
+            # Small input -> Bigger, more detailed master note output
+            max_tokens = 1500
+            compression_instruction = (
+                "Since the incoming source is relatively small, write a highly detailed, "
+                "comprehensive, and exhaustive master note. Do not compress or summarize heavily; "
+                "preserve specific examples, key definitions, explanations, and all detailed facts."
+            )
+        elif source_len < 60000:
+            # Medium input -> Balanced note output
+            max_tokens = 1000
+            compression_instruction = (
+                "Since the incoming source is of medium size, write a balanced master note "
+                "with a moderate level of detail. Focus on key structures, core concepts, and major points."
+            )
+        else:
+            # Large input -> Compressed master note output
+            max_tokens = 600
+            compression_instruction = (
+                "Since the incoming source is very large, apply a strong compression strategy. "
+                "Write a highly condensed, synthesized master note focusing only on high-level concepts, "
+                "crucial insights, and overarching themes. Avoid verbose details."
+            )
+
+        existing_note_to_use = existing_note.strip() if existing_note.strip() else "(No existing note. This is the first source.)"
 
         prompt = (
-            "You are maintaining a unified knowledge note for a wiki.\n\n"
-            f"EXISTING NOTE:\n{existing_note}\n\n"
+            "You are maintaining a unified, compounded knowledge note for a wiki.\n\n"
+            "=== INPUTS ===\n"
+            f"EXISTING NOTE:\n{existing_note_to_use}\n\n"
             f"NEW SOURCE TITLE: {new_title}\n"
             f"NEW SOURCE SUMMARY:\n{new_summary}\n\n"
-            "Task: Merge the new source knowledge into the existing note. "
-            "Do NOT list sources separately. "
-            "Write a single cohesive note that compounds both sets of knowledge together. "
-            "Preserve important details from both. "
-            "Remove redundancy. Keep it concise and grounded."
+            "=== STRATEGY ===\n"
+            f"{compression_instruction}\n\n"
+            "=== CRITICAL DIRECTIVES ===\n"
+            "1. KNOWLEDGE PRESERVATION: Do NOT skip, omit, or overlook any details, facts, concepts, or information from the EXISTING NOTE. You must preserve and carry forward all existing knowledge. Reorganize and synthesize to merge and remove duplicates, but ensure absolutely NO information is lost from the EXISTING NOTE.\n"
+            "2. NO SEPARATE LISTING: Do not list sources separately or create a simple list of summaries. Write a single cohesive, structured document that compounds all knowledge together.\n"
+            "3. CLIENT SYNC FORMATTING: To ensure perfect rendering in the client application, you MUST adhere to the following output format:\n"
+            "   - Use clean, standard Markdown structure.\n"
+            "   - Organize content using section headers. Where appropriate, use standard headers like '## Overview', '## Key Components', '## Benefits', and '## Setting Up'.\n"
+            "   - Format all lists cleanly: use '- ' for bullet points and '1. ', '2. ' for numbered lists. Ensure each list item starts on a new line.\n"
+            "   - Separate sections and paragraphs with blank lines.\n"
+            "   - Output ONLY the raw Markdown note. Do not include any introductory or concluding remarks (e.g., 'Here is the note:', 'Hope this helps')."
         )
+        
         merged = await self.generate_text(
             prompt=prompt,
             temperature=0.2,
-            max_output_tokens=600,
+            max_output_tokens=max_tokens,
         )
-        return clean_text(merged) or existing_note
+        
+        cleaned = clean_text(merged)
+        if not cleaned:
+            return existing_note if existing_note.strip() else clean_text(new_summary)
+        return cleaned
 
     # ── Groq ──────────────────────────────────────────────────────────────────
 
@@ -292,6 +432,13 @@ class LLMService:
                 return ""
             await _api_circuit_breaker.record_success("groq")
             logger.info("Groq generate OK (model=%s)", settings.GROQ_MODEL)
+            user_id = user_id_ctx.get()
+            if user_id:
+                usage = data.get("usage", {})
+                prompt_tok = usage.get("prompt_tokens") or self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                completion_tok = usage.get("completion_tokens") or self.estimate_tokens(text)
+                from app.db.mongo import get_mongo_manager
+                await get_mongo_manager().increment_user_token_usage(user_id, prompt_tok, completion_tok)
             return clean_text(text)
         except (httpx.HTTPError, KeyError, IndexError) as exc:
             await _api_circuit_breaker.record_failure("groq")
@@ -381,9 +528,17 @@ class LLMService:
                 timeout=settings.LLM_REQUEST_TIMEOUT,
             )
             response.raise_for_status()
-            text = self._extract_gemini_text(response.json())
+            data = response.json()
+            text = self._extract_gemini_text(data)
             await _api_circuit_breaker.record_success("gemini")
             logger.info("Gemini generate OK (model=%s)", settings.GEMINI_MODEL)
+            user_id = user_id_ctx.get()
+            if user_id:
+                usage = data.get("usageMetadata", {})
+                prompt_tok = usage.get("promptTokenCount") or self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                completion_tok = usage.get("candidatesTokenCount") or self.estimate_tokens(text)
+                from app.db.mongo import get_mongo_manager
+                await get_mongo_manager().increment_user_token_usage(user_id, prompt_tok, completion_tok)
             return text
         except httpx.HTTPError as exc:
             await _api_circuit_breaker.record_failure("gemini")

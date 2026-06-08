@@ -437,6 +437,7 @@ async def _ingest_source(
             existing_note=existing_note,
             new_summary=summary,
             new_title=title,
+            raw_content=raw_content,
         )
 
         # Build graph payload
