@@ -5,8 +5,9 @@
 /* ── Layout ───────────────────────────────────────────────────────────── */
 .cw-dashboard {
   display: flex;
-  min-height: calc(100vh - 64px);
+  height: calc(100vh - 64px);
   background: #0a0f1e;
+  overflow: hidden;
 }
 
 /* ── Left panel ───────────────────────────────────────────────────────── */
@@ -37,7 +38,8 @@
   background: #0a0f1e;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  height: 100%;
+  overflow: hidden;
 }
 
 /* ── Right top bar ────────────────────────────────────────────────────── */
@@ -475,7 +477,11 @@
 
 /* ── Responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .cw-dashboard { flex-direction: column; }
+  .cw-dashboard {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
 
   .cw-dashboard__left {
     width: 100%;
@@ -483,6 +489,11 @@
     position: static;
     border-right: none;
     border-bottom: 1px solid rgba(148, 163, 184, 0.10);
+  }
+
+  .cw-dashboard__right {
+    height: auto;
+    overflow: visible;
   }
 }
 

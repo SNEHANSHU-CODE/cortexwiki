@@ -1,13 +1,20 @@
 import asyncio
 import contextvars
+import os
+import tempfile
 from urllib.parse import parse_qs, urlparse
+import uuid
 
 import httpx
 from bs4 import BeautifulSoup
+import yt_dlp
 
 from app.core.config import settings
 from app.utils.errors import AppError
 from app.utils.text import clean_text
+from app.utils.logging import get_logger
+
+logger = get_logger("utils.web")
 
 
 def extract_youtube_video_id(url: str) -> str | None:
@@ -105,6 +112,78 @@ async def _fetch_transcript_scraperapi(video_id: str) -> str:
     return transcript.strip()
 
 
+# ── Whisper Fallback ─────────────────────────────────────────────────────────
+
+async def _fetch_transcript_whisper_fallback(video_id: str) -> str:
+    """
+    Fallback transcript provider.
+    Downloads the lowest bitrate audio stream using yt-dlp to save bandwidth,
+    uploads it to Groq Whisper API (whisper-large-v3-turbo), and returns the transcription.
+    """
+    if not settings.GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY not configured for Whisper fallback")
+
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    temp_dir = tempfile.gettempdir()
+    # Unique template to avoid conflicts during concurrent runs
+    outtmpl = os.path.join(temp_dir, f"yt_audio_{video_id}_{uuid.uuid4().hex[:8]}.%(ext)s")
+
+    ydl_opts = {
+        "format": "worstaudio",
+        "outtmpl": outtmpl,
+        "quiet": True,
+        "no_warnings": True,
+    }
+
+    def _download():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=True)
+            return ydl.prepare_filename(info)
+
+    downloaded_file = None
+    try:
+        logger.info(f"Downloading lowest bitrate audio for video {video_id} using yt-dlp...")
+        downloaded_file = await asyncio.to_thread(_download)
+        logger.info(f"Audio downloaded to {downloaded_file} (size: {os.path.getsize(downloaded_file)} bytes)")
+
+        # Upload to Groq Whisper API
+        url = f"{settings.GROQ_BASE_URL}/audio/transcriptions"
+        headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}"
+        }
+        
+        filename = os.path.basename(downloaded_file)
+        
+        logger.info(f"Uploading {filename} to Groq Whisper API (whisper-large-v3-turbo)...")
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            with open(downloaded_file, "rb") as f:
+                files = {
+                    "file": (filename, f, "application/octet-stream")
+                }
+                data = {
+                    "model": "whisper-large-v3-turbo",
+                    "response_format": "json"
+                }
+                response = await client.post(url, headers=headers, files=files, data=data)
+                
+        response.raise_for_status()
+        result_json = response.json()
+        transcript = result_json.get("text", "")
+        if not transcript or not transcript.strip():
+            raise ValueError("Groq Whisper API returned empty transcription")
+            
+        logger.info(f"Whisper transcription completed successfully for video {video_id}.")
+        return transcript.strip()
+
+    finally:
+        if downloaded_file and os.path.exists(downloaded_file):
+            try:
+                os.remove(downloaded_file)
+                logger.info(f"Successfully deleted temporary audio file: {downloaded_file}")
+            except Exception as e:
+                logger.warning(f"Failed to delete temporary audio file {downloaded_file}: {e}")
+
+
 # ── Public fetch function ─────────────────────────────────────────────────────
 
 async def fetch_youtube_content(url: str) -> dict:
@@ -122,26 +201,37 @@ async def fetch_youtube_content(url: str) -> dict:
     # 1. Try Supadata (primary)
     if settings.SUPADATA_API_KEY:
         try:
+            logger.info(f"Attempting to fetch transcript for video {video_id} via Supadata...")
             transcript = await _fetch_transcript_supadata(video_id)
-        except AppError:
-            # AppError means "no captions" — no point trying fallback
-            raise
+            logger.info(f"Successfully fetched transcript via Supadata for video {video_id}.")
         except Exception as exc:
+            logger.warning(f"Supadata transcript fetch failed for video {video_id}: {exc}")
             last_error = exc
 
     # 2. Try ScraperAPI proxy fallback
     if transcript is None and settings.SCRAPERAPI_KEY:
         try:
+            logger.info(f"Attempting to fetch transcript for video {video_id} via ScraperAPI...")
             transcript = await _fetch_transcript_scraperapi(video_id)
+            logger.info(f"Successfully fetched transcript via ScraperAPI for video {video_id}.")
         except Exception as exc:
+            logger.warning(f"ScraperAPI transcript fetch failed for video {video_id}: {exc}")
             last_error = exc
 
-    # 3. Both failed
+    # 3. Fallback: yt-dlp + Groq Whisper
+    if transcript is None:
+        logger.info(f"All proxy methods failed or were not configured for video {video_id}. Triggering Whisper fallback...")
+        try:
+            transcript = await _fetch_transcript_whisper_fallback(video_id)
+        except Exception as exc:
+            logger.exception(f"Whisper fallback transcription failed for video {video_id}")
+            last_error = exc
+
     if transcript is None:
         raise AppError(
             status_code=400,
             code="youtube_transcript_unavailable",
-            message="Unable to fetch YouTube transcript. The video may have no captions.",
+            message="Unable to fetch YouTube transcript. Both proxies and Whisper fallback failed.",
         ) from last_error
 
     # Fetch video title from YouTube page (best-effort)

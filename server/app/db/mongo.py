@@ -444,6 +444,88 @@ class MongoManager:
             return True
         return False
 
+    async def get_wiki_page(self, page_id: str, user_id: str) -> dict | None:
+        """Retrieve a wiki page by ID and user_id."""
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                doc = await self.database.wiki_pages.find_one({"_id": ObjectId(page_id), "user_id": user_id})
+                return self._normalize(doc)
+            except Exception:
+                return None
+        page = self._memory["wiki_pages"].get(page_id)
+        if page and page["user_id"] == user_id:
+            return self._copy(page)
+        return None
+
+    async def delete_wiki_page(self, page_id: str, user_id: str) -> dict | None:
+        """Delete a wiki page and its raw data, decrement the wiki source count. Returns deleted page."""
+        page = await self.get_wiki_page(page_id, user_id)
+        if not page:
+            return None
+            
+        wiki_id = page["wiki_id"]
+        source_url = page["source_url"]
+        
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                result = await self.database.wiki_pages.delete_one({"_id": ObjectId(page_id), "user_id": user_id})
+                if result.deleted_count == 0:
+                    return None
+                
+                await self.database.raw_data.delete_one({"wiki_id": wiki_id, "user_id": user_id, "source_url": source_url})
+                
+                await self.database.wikis.update_one(
+                    {"_id": ObjectId(wiki_id), "user_id": user_id},
+                    {"$inc": {"source_count": -1}, "$set": {"updated_at": datetime.now(UTC)}}
+                )
+            except Exception:
+                return None
+            return page
+            
+        if page_id in self._memory["wiki_pages"]:
+            self._memory["wiki_pages"].pop(page_id)
+            raw_id_to_delete = None
+            for rid, rdata in self._memory["raw_data"].items():
+                if rdata.get("wiki_id") == wiki_id and rdata.get("user_id") == user_id and rdata.get("source_url") == source_url:
+                    raw_id_to_delete = rid
+                    break
+            if raw_id_to_delete:
+                self._memory["raw_data"].pop(raw_id_to_delete)
+                
+            if wiki_id in self._memory["wikis"]:
+                wiki = self._memory["wikis"][wiki_id]
+                wiki["source_count"] = max(0, wiki.get("source_count", 0) - 1)
+                wiki["updated_at"] = datetime.now(UTC)
+            return page
+        return None
+
+    async def set_wiki_master_note(self, wiki_id: str, user_id: str, master_note: str) -> None:
+        """Set the compounded master note without changing the source count."""
+        from app.core.config import settings
+        
+        truncated_note = master_note[:settings.MASTER_NOTE_MAX_LENGTH]
+        if len(master_note) > settings.MASTER_NOTE_MAX_LENGTH:
+            truncated_note = truncated_note.rsplit(" ", 1)[0] + "..."
+            
+        now = datetime.now(UTC)
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                await self.database.wikis.update_one(
+                    {"_id": ObjectId(wiki_id), "user_id": user_id},
+                    {"$set": {"master_note": truncated_note, "updated_at": now},
+                     "$inc": {"version": 1}},
+                )
+            except Exception:
+                pass
+            return
+        wiki = self._memory["wikis"].get(wiki_id)
+        if wiki and wiki["user_id"] == user_id:
+            wiki["master_note"] = truncated_note
+            wiki["updated_at"] = now
+
     # ── Raw Data ──────────────────────────────────────────────────────────────
 
     async def store_raw_data(self, payload: dict) -> dict:

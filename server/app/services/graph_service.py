@@ -93,6 +93,9 @@ class GraphService:
     async def delete_wiki_graph(self, *, user_id: str, wiki_id: str) -> None:
         await self._graph.delete_wiki_graph(user_id=user_id, wiki_id=wiki_id)
 
+    async def delete_page_graph(self, *, user_id: str, wiki_id: str, page_id: str) -> None:
+        await self._graph.delete_page_graph(user_id=user_id, wiki_id=wiki_id, page_id=page_id)
+
     def build_graph_payload(
         self,
         *,

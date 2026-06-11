@@ -315,9 +315,8 @@ class LLMService:
             "=== MATERIAL ===\n"
             f"{text[:8000]}"
         )
-        return clean_text(
-            await self.generate_text(prompt=prompt, temperature=0.2, max_output_tokens=400)
-        )
+        summary = await self.generate_text(prompt=prompt, temperature=0.2, max_output_tokens=400)
+        return summary.strip()
 
     async def merge_notes(
         self,
@@ -336,23 +335,17 @@ class LLMService:
         source_len = len(raw_content) if raw_content else len(new_summary)
         
         if source_len < 15000:
-            # Small input -> Bigger, more detailed master note output
-            max_tokens = 1500
             compression_instruction = (
                 "Since the incoming source is relatively small, write a highly detailed, "
                 "comprehensive, and exhaustive master note. Do not compress or summarize heavily; "
                 "preserve specific examples, key definitions, explanations, and all detailed facts."
             )
         elif source_len < 60000:
-            # Medium input -> Balanced note output
-            max_tokens = 1000
             compression_instruction = (
                 "Since the incoming source is of medium size, write a balanced master note "
                 "with a moderate level of detail. Focus on key structures, core concepts, and major points."
             )
         else:
-            # Large input -> Compressed master note output
-            max_tokens = 600
             compression_instruction = (
                 "Since the incoming source is very large, apply a strong compression strategy. "
                 "Write a highly condensed, synthesized master note focusing only on high-level concepts, "
@@ -362,23 +355,27 @@ class LLMService:
         existing_note_to_use = existing_note.strip() if existing_note.strip() else "(No existing note. This is the first source.)"
 
         prompt = (
-            "You are maintaining a unified, compounded knowledge note for a wiki.\n\n"
+            "You are maintaining a unified, compounded, and highly structured knowledge note for a wiki, "
+            "designed in the style of a world-class Google NotebookLM study guide.\n\n"
             "=== INPUTS ===\n"
-            f"EXISTING NOTE:\n{existing_note_to_use}\n\n"
+            f"EXISTING MASTER NOTE:\n{existing_note_to_use}\n\n"
             f"NEW SOURCE TITLE: {new_title}\n"
             f"NEW SOURCE SUMMARY:\n{new_summary}\n\n"
             "=== STRATEGY ===\n"
             f"{compression_instruction}\n\n"
             "=== CRITICAL DIRECTIVES ===\n"
-            "1. KNOWLEDGE PRESERVATION: Do NOT skip, omit, or overlook any details, facts, concepts, or information from the EXISTING NOTE. You must preserve and carry forward all existing knowledge. Reorganize and synthesize to merge and remove duplicates, but ensure absolutely NO information is lost from the EXISTING NOTE.\n"
-            "2. NO SEPARATE LISTING: Do not list sources separately or create a simple list of summaries. Write a single cohesive, structured document that compounds all knowledge together.\n"
-            "3. CLIENT SYNC FORMATTING: To ensure perfect rendering in the client application, you MUST adhere to the following output format:\n"
-            "   - Use clean, standard Markdown structure.\n"
-            "   - Organize content using section headers. Where appropriate, use standard headers like '## Overview', '## Key Components', '## Benefits', and '## Setting Up'.\n"
-            "   - Format all lists cleanly: use '- ' for bullet points and '1. ', '2. ' for numbered lists. Ensure each list item starts on a new line.\n"
-            "   - Separate sections and paragraphs with blank lines.\n"
-            "   - Output ONLY the raw Markdown note. Do not include any introductory or concluding remarks (e.g., 'Here is the note:', 'Hope this helps')."
+            "1. STRUCTURE & FORMATTING: Your output MUST be formatted as a single unified Markdown document with the following specific sections. Use clear headings (h2, i.e., '##') for each section:\n"
+            "   - ## 📌 Document Overview: A cohesive, high-level paragraph summarizing the domain and overall subject matter covered by the wiki. Synthesize the new source details into this overview.\n"
+            "   - ## 🔑 Key Concepts & Definitions: A glossary of critical terms, definitions, acronyms, or concepts from all sources. Update and expand this glossary with any new concepts from the new source. Keep it sorted or neatly organized with bold terms (e.g. '- **Term**: Definition').\n"
+            "   - ## 📑 Core Themes & Detailed Synthesis: Group the knowledge into logical thematic sections. Use a single level-3 heading (e.g. '### Theme Name') for each theme. Deeply synthesize the facts, examples, explanations, and data. Never duplicate section names.\n"
+            "   - ## ❓ Frequently Asked Questions (FAQ): A grounded Q&A section consisting of 3-5 high-value questions and detailed answers directly answered by the source texts. Update or add new questions relevant to the new source.\n\n"
+            "2. KNOWLEDGE PRESERVATION: Do NOT skip, omit, or lose any details, facts, or concepts from the EXISTING MASTER NOTE. Integrate the NEW SOURCE information into this structure by merging matching themes, expanding the concepts glossary, updating the overview, and adding/updating the FAQs.\n"
+            "3. NO SEPARATE LISTING: Do not list sources separately or create a simple concatenation of summaries. Integrate all information into the unified structure above.\n"
+            "4. NO INTRO/OUTRO: Output ONLY the raw Markdown note. Do not include any introductory remarks (e.g., 'Here is the updated note:') or concluding remarks."
         )
+        
+        # Groq and Gemini support up to 8k output tokens, so 2500 is safe and generous for a master note
+        max_tokens = 2500
         
         merged = await self.generate_text(
             prompt=prompt,
@@ -386,10 +383,15 @@ class LLMService:
             max_output_tokens=max_tokens,
         )
         
-        cleaned = clean_text(merged)
-        if not cleaned:
-            return existing_note if existing_note.strip() else clean_text(new_summary)
-        return cleaned
+        # Check if output is the static prompt slice fallback (outage protection)
+        is_fallback = False
+        if merged:
+            if "NO INTRO/OUTRO" in merged or "NO SEPARATE LISTING" in merged:
+                is_fallback = True
+
+        if not merged or not merged.strip() or is_fallback:
+            return existing_note if existing_note.strip() else new_summary.strip()
+        return merged.strip()
 
     # ── Groq ──────────────────────────────────────────────────────────────────
 
@@ -439,7 +441,7 @@ class LLMService:
                 completion_tok = usage.get("completion_tokens") or self.estimate_tokens(text)
                 from app.db.mongo import get_mongo_manager
                 await get_mongo_manager().increment_user_token_usage(user_id, prompt_tok, completion_tok)
-            return clean_text(text)
+            return text.strip()
         except (httpx.HTTPError, KeyError, IndexError) as exc:
             await _api_circuit_breaker.record_failure("groq")
             logger.warning("Groq generate failed: %s — falling back to Gemini", str(exc))
@@ -641,7 +643,7 @@ class LLMService:
         if not candidates:
             return ""
         parts = candidates[0].get("content", {}).get("parts", [])
-        return clean_text(" ".join(p.get("text", "") for p in parts if p.get("text")))
+        return " ".join(p.get("text", "") for p in parts if p.get("text")).strip()
 
     def _fallback_generate(self, prompt: str) -> str:
         sentences = split_sentences(prompt)

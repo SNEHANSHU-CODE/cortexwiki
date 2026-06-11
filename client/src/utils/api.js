@@ -92,6 +92,10 @@ export async function fetchIngestionHistory(wikiId) {
   return data;
 }
 
+export async function fetchDeleteIngestedPage(pageId) {
+  await httpClient.delete(`/api/ingest/pages/${pageId}`);
+}
+
 // ── Query ─────────────────────────────────────────────────────────────────
 export async function queryKnowledge(payload, config = {}) {
   const { data } = await httpClient.post("/api/query", payload, config);

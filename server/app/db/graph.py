@@ -203,6 +203,41 @@ class GraphManager:
         self._nodes.pop(key, None)
         self._edges = [e for e in self._edges if not (e["user_id"] == user_id and e.get("wiki_id") == wiki_id)]
 
+    async def delete_page_graph(self, *, user_id: str, wiki_id: str, page_id: str) -> None:
+        """Delete all relationships belonging to a page, and clean up orphaned concept nodes."""
+        if self.driver is not None:
+            relationship_cypher = """
+            MATCH (s:Concept {user_id: $user_id, wiki_id: $wiki_id})-[r:RELATED_TO {page_id: $page_id}]->(t:Concept {user_id: $user_id, wiki_id: $wiki_id})
+            DELETE r
+            """
+            orphan_cypher = """
+            MATCH (c:Concept {user_id: $user_id, wiki_id: $wiki_id})
+            WHERE NOT (c)-[:RELATED_TO]-()
+            DELETE c
+            """
+            async with self.driver.session() as session:
+                tx = await session.begin_transaction()
+                try:
+                    await tx.run(relationship_cypher, user_id=user_id, wiki_id=wiki_id, page_id=page_id)
+                    await tx.run(orphan_cypher, user_id=user_id, wiki_id=wiki_id)
+                    await tx.commit()
+                except Exception:
+                    try:
+                        await tx.rollback()
+                    except Exception:
+                        pass
+                    raise
+            return
+        key = (user_id, wiki_id)
+        # Remove edges
+        self._edges = [e for e in self._edges if not (e["user_id"] == user_id and e.get("wiki_id") == wiki_id and e.get("page_id") == page_id)]
+        # Clean up orphaned nodes
+        active_sources = {e["source"] for e in self._edges if e["user_id"] == user_id and e.get("wiki_id") == wiki_id}
+        active_targets = {e["target"] for e in self._edges if e["user_id"] == user_id and e.get("wiki_id") == wiki_id}
+        active_names = active_sources.union(active_targets)
+        if key in self._nodes:
+            self._nodes[key] = {name: node for name, node in self._nodes[key].items() if name in active_names}
+
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _transform_subgraph_records(self, records: list[dict]) -> dict:
