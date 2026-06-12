@@ -29,26 +29,11 @@ const NODE_COLORS = {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
+function GraphViewer({ graphData, selectedNodeId, onNodeSelect, wikiId }) {
   const { theme } = useTheme();
   const containerRef  = useRef(null);
   const graphRef      = useRef(null);
   const hasAutoFitRef = useRef(false);
-  // BUG FIX #4: Position cache uses useRef (not useState) to prevent infinite update loops
-  // Positions are NOT a dependency of useMemo, avoiding circular computation
-  const positionCache = useRef((() => {
-    try {
-      const key = "graph:positions:cache";
-      const stored = typeof window !== "undefined" ? localStorage.getItem(key) : null;
-      if (stored) {
-        const data = JSON.parse(stored);
-        return new Map(Object.entries(data));
-      }
-    } catch (err) {
-      console.warn("Failed to load persisted graph positions:", err);
-    }
-    return new Map();
-  })());
 
   const [hoveredNodeId, setHoveredNodeId] = useState("");
   const [size, setSize]                   = useState({ width: 0, height: 0 });
@@ -67,18 +52,30 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
 
   // ── Normalize — only recomputes when source data changes ─────────────────
   const normalizedData = useMemo(() => {
+    let loadedPositions = new Map();
+    try {
+      const key = wikiId ? `graph:positions:cache:${wikiId}` : "graph:positions:cache";
+      const stored = typeof window !== "undefined" ? localStorage.getItem(key) : null;
+      if (stored) {
+        const data = JSON.parse(stored);
+        loadedPositions = new Map(Object.entries(data));
+      }
+    } catch (err) {
+      console.warn("Failed to load persisted graph positions:", err);
+    }
+
     const total = graphData.nodes.length || 1;
     return {
       nodes: graphData.nodes.map((node, i) => ({
         ...node,
-        ...(positionCache.current.get(node.id) ?? seedPosition(node.id, i, total)),
+        ...(loadedPositions.get(node.id) ?? seedPosition(node.id, i, total)),
       })),
       links: graphData.edges.map((edge) => ({
         ...edge,
         id: `${getNodeId(edge.source)}::${getNodeId(edge.target)}::${edge.label ?? ""}`,
       })),
     };
-  }, [graphData.nodes, graphData.edges]);
+  }, [graphData.nodes, graphData.edges, wikiId]);
 
   // ── Adjacency map ────────────────────────────────────────────────────────
   const adjacencyMap = useMemo(() => {
@@ -142,7 +139,7 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     });
   }, [normalizedData.nodes.length, selectedNodeId, size.width, size.height]);
 
-  // ── Forces — configured once on engine stop ──────────────────────────────
+  // ── Forces — configured when normalizedData changes ──────────────────────
   const configureForces = useCallback(() => {
     const g = graphRef.current;
     if (!g) return;
@@ -155,23 +152,26 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
     });
   }, [normalizedData.nodes]);
 
+  useEffect(() => {
+    configureForces();
+  }, [normalizedData, configureForces]);
+
   // ── Persist positions ─────────────────────────────────────────────────────
   const persistPositions = useCallback(() => {
+    const data = {};
     normalizedData.nodes.forEach((node) => {
-      positionCache.current.set(node.id, {
+      data[node.id] = {
         x: node.x ?? 0, y: node.y ?? 0,
         vx: node.vx ?? 0, vy: node.vy ?? 0,
-      });
+      };
     });
-    // BUG FIX #7: Also save positions to localStorage for persistence across refreshes
     try {
-      const key = "graph:positions:cache";
-      const data = Object.fromEntries(positionCache.current);
+      const key = wikiId ? `graph:positions:cache:${wikiId}` : "graph:positions:cache";
       localStorage.setItem(key, JSON.stringify(data));
     } catch (err) {
       console.warn("Failed to persist graph positions:", err);
     }
-  }, [normalizedData.nodes]);
+  }, [normalizedData.nodes, wikiId]);
 
   const handleNodeDragEnd = useCallback((node) => {
     node.fx = node.x;
@@ -261,7 +261,7 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect }) {
           graphData={normalizedData}
           backgroundColor="transparent"
           cooldownTicks={180}
-          onEngineStop={() => { configureForces(); persistPositions(); }}
+          onEngineStop={persistPositions}
           linkWidth={(l)                    => highlightedLinks.has(l.id) ? 2.5 : 0.9}
           linkColor={(l)                    => highlightedLinks.has(l.id) ? (theme === "light" ? "rgba(15, 98, 254, 0.85)" : "rgba(94, 234, 212, 0.85)") : (theme === "light" ? "rgba(15, 23, 42, 0.15)" : "rgba(148, 163, 184, 0.2)")}
           linkDirectionalParticles={(l)     => highlightedLinks.has(l.id) ? 3 : 0}

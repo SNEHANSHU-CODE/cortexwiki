@@ -80,7 +80,14 @@ function ChatPage({ wikiId }) {
       },
     });
     return () => { sessionRef.current?.disconnect(); abortRef.current?.abort(); };
-  }, [accessToken, dispatch]);
+  }, [dispatch]);
+
+  // Update session token dynamically when access token changes, preventing connection teardown
+  useEffect(() => {
+    if (sessionRef.current && accessToken) {
+      sessionRef.current.updateToken(accessToken);
+    }
+  }, [accessToken]);
 
   // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -212,6 +219,7 @@ function ChatPage({ wikiId }) {
             key={msg.id}
             message={msg}
             onRetry={msg.status === "error" ? handleRetry : undefined}
+            wikiId={wikiId}
           />
         ))}
         <div ref={scrollAnchorRef} aria-hidden="true" />

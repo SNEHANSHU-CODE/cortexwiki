@@ -113,8 +113,8 @@ function WikiCard({ wiki, isActive, onSelect, pendingDeleteId, onRequestDelete, 
     "";
   const cleanPreview = rawPreview.replace(/\s+/g, " ").trim();
   const previewLines = cleanPreview
-    ? cleanPreview
-        .split(/(?<=[.!?])\s+/)
+    ? (cleanPreview.match(/[^.!?]+[.!?]+/g) || [cleanPreview])
+        .map((s) => s.trim())
         .filter(Boolean)
         .slice(0, 3)
     : [];

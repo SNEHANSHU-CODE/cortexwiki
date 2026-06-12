@@ -331,4 +331,117 @@ html[data-theme='light'] .meta-badge.is-warning {
 
 html[data-theme='light'] .bubble-user .message-plain {
   color: #ffffff;
+}
+
+/* ── Modal overlay and container ───────────────────────────────────────── */
+.ws-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 15, 30, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+  animation: modal-fade-in 0.25s ease-out;
+}
+
+.ws-modal-container {
+  background: var(--c-ink-2);
+  border: 1px solid var(--c-border-2);
+  border-radius: 18px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  animation: modal-slide-up 0.25s ease-out;
+}
+
+.ws-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ws-modal-title {
+  font-family: var(--c-font-head);
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--c-text);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-modal-close {
+  background: transparent;
+  border: none;
+  font-family: var(--c-font-mono);
+  font-size: 1.25rem;
+  color: var(--c-text-dim);
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.ws-modal-close:hover {
+  color: var(--c-text);
+}
+
+.ws-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  font-family: var(--c-font-body);
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: var(--c-text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ws-modal-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 3rem;
+  color: var(--c-text-dim);
+  font-family: var(--c-font-mono);
+  font-size: 0.8rem;
+}
+
+.ws-modal-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--c-border);
+  border-top-color: var(--c-accent);
+  border-radius: 50%;
+  animation: modal-spin 1s linear infinite;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-slide-up {
+  from { transform: translateY(16px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes modal-spin {
+  to { transform: rotate(360deg); }
 }

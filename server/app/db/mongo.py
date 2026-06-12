@@ -219,33 +219,47 @@ class MongoManager:
         
         if self.database is not None:
             try:
-                # 1. Fetch user to check date
-                user = await self.database.users.find_one({"_id": ObjectId(user_id)})
-                if not user:
-                    return
-                
-                # 2. Determine update payload
-                update_doc = {
-                    "$inc": {
-                        "input_tokens_used": input_tokens,
-                        "output_tokens_used": output_tokens
-                    },
-                    "$set": {"updated_at": now}
-                }
-                
-                # If date matches, increment daily counts. If not, reset daily counts and set new date.
-                if user.get("token_usage_date") == today_str:
-                    update_doc["$inc"]["daily_input_tokens_used"] = input_tokens
-                    update_doc["$inc"]["daily_output_tokens_used"] = output_tokens
-                else:
-                    update_doc["$set"]["token_usage_date"] = today_str
-                    update_doc["$set"]["daily_input_tokens_used"] = input_tokens
-                    update_doc["$set"]["daily_output_tokens_used"] = output_tokens
-                
-                await self.database.users.update_one(
-                    {"_id": ObjectId(user_id)},
-                    update_doc
+                res = await self.database.users.update_one(
+                    {"_id": ObjectId(user_id), "token_usage_date": today_str},
+                    {
+                        "$inc": {
+                            "input_tokens_used": input_tokens,
+                            "output_tokens_used": output_tokens,
+                            "daily_input_tokens_used": input_tokens,
+                            "daily_output_tokens_used": output_tokens,
+                        },
+                        "$set": {"updated_at": now}
+                    }
                 )
+                if res.matched_count == 0:
+                    res_rollover = await self.database.users.update_one(
+                        {"_id": ObjectId(user_id), "token_usage_date": {"$ne": today_str}},
+                        {
+                            "$inc": {
+                                "input_tokens_used": input_tokens,
+                                "output_tokens_used": output_tokens
+                            },
+                            "$set": {
+                                "token_usage_date": today_str,
+                                "daily_input_tokens_used": input_tokens,
+                                "daily_output_tokens_used": output_tokens,
+                                "updated_at": now
+                            }
+                        }
+                    )
+                    if res_rollover.matched_count == 0:
+                        await self.database.users.update_one(
+                            {"_id": ObjectId(user_id), "token_usage_date": today_str},
+                            {
+                                "$inc": {
+                                    "input_tokens_used": input_tokens,
+                                    "output_tokens_used": output_tokens,
+                                    "daily_input_tokens_used": input_tokens,
+                                    "daily_output_tokens_used": output_tokens,
+                                },
+                                "$set": {"updated_at": now}
+                            }
+                        )
             except Exception:
                 pass
             return
@@ -584,18 +598,31 @@ class MongoManager:
 
     async def create_wiki_page(self, payload: dict) -> dict:
         slug = slugify(payload["title"])
-        wiki_id = payload.get("wiki_id")
-        existing_pages = await self.list_wiki_pages(payload["user_id"], wiki_id=wiki_id, limit=200)
+        user_id = payload["user_id"]
+        wiki_id = self._sanitize_id(payload.get("wiki_id"))
         
         import re
-        version_pattern = re.compile(rf"^{re.escape(slug)}-v\d+$")
-        matching_versions = []
-        for page in existing_pages:
-            p_slug = page.get("slug", "")
-            if p_slug == slug or version_pattern.match(p_slug):
-                matching_versions.append(page)
+        version_pattern = re.compile(rf"^{re.escape(slug)}(-v\d+)?$")
+        matching_pages = []
+        
+        if self.database is not None:
+            query = {
+                "user_id": user_id,
+                "slug": {"$regex": rf"^{re.escape(slug)}(-v\d+)?$"}
+            }
+            if wiki_id:
+                query["wiki_id"] = wiki_id
+            cursor = self.database.wiki_pages.find(query)
+            async for doc in cursor:
+                matching_pages.append(self._normalize(doc))
+        else:
+            for page in self._memory["wiki_pages"].values():
+                if (page.get("user_id") == user_id and 
+                    (not wiki_id or page.get("wiki_id") == wiki_id) and 
+                    version_pattern.match(page.get("slug", ""))):
+                    matching_pages.append(self._copy(page))
                 
-        version = max([page.get("version", 1) for page in matching_versions], default=0) + 1
+        version = max([page.get("version", 1) for page in matching_pages], default=0) + 1
         
         if version > 1:
             slug = f"{slug}-v{version}"

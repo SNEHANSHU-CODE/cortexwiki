@@ -64,7 +64,7 @@ class Settings(BaseSettings):
 
     # Gemini — fallback LLM + embeddings
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
     # Supadata — YouTube transcript primary (bypasses datacenter IP blocks)
@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     # Outbound HTTP
     INTERNET_SEARCH_ENDPOINT: str = "https://html.duckduckgo.com/html/"
     USER_AGENT: str = "CortexWiki/1.0 (+https://localhost)"
-    OUTBOUND_VERIFY_SSL: bool = False
+    OUTBOUND_VERIFY_SSL: bool = True
     HTTP_REQUEST_TIMEOUT: int = 20
     HTTP_STREAM_TIMEOUT: int = 30
 

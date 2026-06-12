@@ -126,29 +126,33 @@ class LLMService:
         system_instruction: str | None = None,
         temperature: float = 0.3,
         max_output_tokens: int = 2048,
+        primary_provider: str = "groq",
     ) -> str:
         user_id = user_id_ctx.get()
         if user_id:
             await self.check_token_limits(user_id)
 
-        if settings.GROQ_API_KEY:
-            result = await self._groq_generate(
-                prompt=prompt,
-                system_instruction=system_instruction,
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-            )
-            if result:
-                return result
-        if settings.GEMINI_API_KEY:
-            result = await self._gemini_generate(
-                prompt=prompt,
-                system_instruction=system_instruction,
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-            )
-            if result:
-                return result
+        providers = ["groq", "gemini"] if primary_provider == "groq" else ["gemini", "groq"]
+
+        for provider in providers:
+            if provider == "groq" and settings.GROQ_API_KEY:
+                result = await self._groq_generate(
+                    prompt=prompt,
+                    system_instruction=system_instruction,
+                    temperature=temperature,
+                    max_output_tokens=max_output_tokens,
+                )
+                if result:
+                    return result
+            elif provider == "gemini" and settings.GEMINI_API_KEY:
+                result = await self._gemini_generate(
+                    prompt=prompt,
+                    system_instruction=system_instruction,
+                    temperature=temperature,
+                    max_output_tokens=max_output_tokens,
+                )
+                if result:
+                    return result
 
         result = self._fallback_generate(prompt)
         prompt_tok = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
@@ -175,69 +179,75 @@ class LLMService:
         system_instruction: str | None = None,
         temperature: float = 0.3,
         max_output_tokens: int = 2048,
+        primary_provider: str = "groq",
     ):
         user_id = user_id_ctx.get()
         if user_id:
             await self.check_token_limits(user_id)
 
         accumulated = []
+        providers = ["groq", "gemini"] if primary_provider == "groq" else ["gemini", "groq"]
+
         try:
-            if settings.GROQ_API_KEY:
-                groq_ok = False
-                async for chunk in self._groq_stream(
-                    prompt=prompt,
-                    system_instruction=system_instruction,
-                    temperature=temperature,
-                    max_output_tokens=max_output_tokens,
-                ):
-                    groq_ok = True
-                    if chunk:
-                        accumulated.append(chunk)
-                    yield chunk
-                if groq_ok:
-                    prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                    completion_tokens = self.estimate_tokens("".join(accumulated))
-                    run_tree = get_current_run_tree()
-                    if run_tree:
-                        run_tree.metadata.update({
-                            "token_usage": {
-                                "prompt_tokens": prompt_tokens,
-                                "completion_tokens": completion_tokens,
-                                "total_tokens": prompt_tokens + completion_tokens
-                            }
-                        })
-                    if user_id:
-                        from app.db.mongo import get_mongo_manager
-                        await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
-                    return
-            if settings.GEMINI_API_KEY:
-                gemini_ok = False
-                async for chunk in self._gemini_stream(
-                    prompt=prompt,
-                    system_instruction=system_instruction,
-                    temperature=temperature,
-                    max_output_tokens=max_output_tokens,
-                ):
-                    gemini_ok = True
-                    if chunk:
-                        accumulated.append(chunk)
-                    yield chunk
-                if gemini_ok:
-                    prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                    completion_tokens = self.estimate_tokens("".join(accumulated))
-                    run_tree = get_current_run_tree()
-                    if run_tree:
-                        run_tree.metadata.update({
-                            "token_usage": {
-                                "prompt_tokens": prompt_tokens,
-                                "completion_tokens": completion_tokens,
-                                "total_tokens": prompt_tokens + completion_tokens
-                            }
-                        })
-                    if user_id:
-                        from app.db.mongo import get_mongo_manager
-                        await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
-                    return
+            for provider in providers:
+                if provider == "groq" and settings.GROQ_API_KEY:
+                    groq_ok = False
+                    async for chunk in self._groq_stream(
+                        prompt=prompt,
+                        system_instruction=system_instruction,
+                        temperature=temperature,
+                        max_output_tokens=max_output_tokens,
+                    ):
+                        groq_ok = True
+                        if chunk:
+                            accumulated.append(chunk)
+                        yield chunk
+                    if groq_ok:
+                        prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                        completion_tokens = self.estimate_tokens("".join(accumulated))
+                        run_tree = get_current_run_tree()
+                        if run_tree:
+                            run_tree.metadata.update({
+                                "token_usage": {
+                                    "prompt_tokens": prompt_tokens,
+                                    "completion_tokens": completion_tokens,
+                                    "total_tokens": prompt_tokens + completion_tokens
+                                }
+                            })
+                        if user_id:
+                            from app.db.mongo import get_mongo_manager
+                            await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+                        return
+
+                elif provider == "gemini" and settings.GEMINI_API_KEY:
+                    gemini_ok = False
+                    async for chunk in self._gemini_stream(
+                        prompt=prompt,
+                        system_instruction=system_instruction,
+                        temperature=temperature,
+                        max_output_tokens=max_output_tokens,
+                    ):
+                        gemini_ok = True
+                        if chunk:
+                            accumulated.append(chunk)
+                        yield chunk
+                    if gemini_ok:
+                        prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                        completion_tokens = self.estimate_tokens("".join(accumulated))
+                        run_tree = get_current_run_tree()
+                        if run_tree:
+                            run_tree.metadata.update({
+                                "token_usage": {
+                                    "prompt_tokens": prompt_tokens,
+                                    "completion_tokens": completion_tokens,
+                                    "total_tokens": prompt_tokens + completion_tokens
+                                }
+                            })
+                        if user_id:
+                            from app.db.mongo import get_mongo_manager
+                            await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+                        return
+
             for chunk in chunk_words(self._fallback_generate(prompt)):
                 if chunk:
                     accumulated.append(chunk)
@@ -387,18 +397,79 @@ class LLMService:
     async def summarize(self, text: str) -> str:
         if not text:
             return ""
-        prompt = (
-            "Summarize the following material for an enterprise knowledge base.\n\n"
+
+        # 1. Attempt Gemini first (primary model for ingestion) with the entire untruncated text
+        if settings.GEMINI_API_KEY:
+            if not await _api_circuit_breaker.is_open("gemini"):
+                try:
+                    prompt = (
+                        "Summarize the following material for an enterprise knowledge base.\n\n"
+                        "=== CRITICAL DIRECTIVES ===\n"
+                        "1. STRUCTURE: Organize the summary using appropriate Markdown headers where relevant (e.g. '## Overview', '## Key Components', '## Benefits').\n"
+                        "2. LISTS: Format any lists cleanly using standard Markdown bullet points ('- ') or numbered lists ('1. '). Ensure each item starts on a new line.\n"
+                        "3. STYLE: Keep it factual, grounded, concise, and professional.\n"
+                        "4. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
+                        "=== MATERIAL ===\n"
+                        f"{text}"  # Pass entire raw text (no truncation)
+                    )
+                    logger.info("Attempting Gemini ingestion summarization of full text (len=%d)", len(text))
+                    summary = await self.generate_text(
+                        prompt=prompt,
+                        temperature=0.2,
+                        max_output_tokens=1000,
+                        primary_provider="gemini",
+                    )
+                    # Check if generate_text fell back to static fallback or worked
+                    if summary and not ("=== CRITICAL DIRECTIVES ===" in summary or "NO CHITCHAT" in summary):
+                        return summary.strip()
+                except Exception as e:
+                    logger.warning("Gemini ingestion summarization failed, falling back to Groq: %s", str(e))
+
+        # 2. Fallback: Groq (cannot handle larger sources, so chunk to 4096 characters, then merge)
+        logger.info("Using Groq fallback for ingestion summarization (len=%d)", len(text))
+        chunk_size = 4096
+        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+        
+        chunk_summaries = []
+        for idx, chunk in enumerate(chunks):
+            chunk_prompt = (
+                f"Summarize the following section of a larger document (Part {idx+1}/{len(chunks)}) for an enterprise knowledge base.\n\n"
+                "=== MATERIAL ===\n"
+                f"{chunk}"
+            )
+            # Use Groq for fallback chunk summarization
+            chunk_summary = await self.generate_text(
+                prompt=chunk_prompt,
+                system_instruction="You are a precise summarization assistant.",
+                temperature=0.2,
+                max_output_tokens=300,
+                primary_provider="groq",
+            )
+            if chunk_summary:
+                chunk_summaries.append(chunk_summary.strip())
+        
+        if not chunk_summaries:
+            return "No content available."
+
+        combined_summaries = "\n\n".join(chunk_summaries)
+        merge_prompt = (
+            "Summarize and merge the following section summaries into a single cohesive, highly structured summary for an enterprise knowledge base.\n\n"
             "=== CRITICAL DIRECTIVES ===\n"
             "1. STRUCTURE: Organize the summary using appropriate Markdown headers where relevant (e.g. '## Overview', '## Key Components', '## Benefits').\n"
             "2. LISTS: Format any lists cleanly using standard Markdown bullet points ('- ') or numbered lists ('1. '). Ensure each item starts on a new line.\n"
             "3. STYLE: Keep it factual, grounded, concise, and professional.\n"
             "4. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
-            "=== MATERIAL ===\n"
-            f"{text[:25000]}"
+            "=== SECTION SUMMARIES ===\n"
+            f"{combined_summaries}"
         )
-        summary = await self.generate_text(prompt=prompt, temperature=0.2, max_output_tokens=400)
-        return summary.strip()
+        
+        merged_summary = await self.generate_text(
+            prompt=merge_prompt,
+            temperature=0.2,
+            max_output_tokens=800,
+            primary_provider="groq",
+        )
+        return merged_summary.strip()
 
     @traceable(run_type="chain", name="CortexWiki Merge Notes")
     async def merge_notes(
@@ -414,26 +485,12 @@ class LLMService:
         If no existing note yet, the new summary is structured into the first master note.
         The result is a single unified note — not a list of separate summaries.
         """
-        # Determine dynamic compression strategy based on the raw content length
-        source_len = len(raw_content) if raw_content else len(new_summary)
-        
-        if source_len < 15000:
-            compression_instruction = (
-                "Since the incoming source is relatively small, write a highly detailed, "
-                "comprehensive, and exhaustive master note. Do not compress or summarize heavily; "
-                "preserve specific examples, key definitions, explanations, and all detailed facts."
-            )
-        elif source_len < 60000:
-            compression_instruction = (
-                "Since the incoming source is of medium size, write a balanced master note "
-                "with a moderate level of detail. Focus on key structures, core concepts, and major points."
-            )
-        else:
-            compression_instruction = (
-                "Since the incoming source is very large, apply a strong compression strategy. "
-                "Write a highly condensed, synthesized master note focusing only on high-level concepts, "
-                "crucial insights, and overarching themes. Avoid verbose details."
-            )
+        # Ensure we always write a detailed, comprehensive, and exhaustive master note
+        compression_instruction = (
+            "Write a highly detailed, comprehensive, and exhaustive master note. "
+            "Do not compress or summarize heavily; preserve specific examples, key definitions, "
+            "detailed explanations, and all facts from both the existing note and the new source."
+        )
 
         existing_note_to_use = existing_note.strip() if existing_note.strip() else "(No existing note. This is the first source.)"
 
@@ -454,7 +511,8 @@ class LLMService:
             "   - ## ❓ Frequently Asked Questions (FAQ): A grounded Q&A section consisting of 3-5 high-value questions and detailed answers directly answered by the source texts. Update or add new questions relevant to the new source.\n\n"
             "2. KNOWLEDGE PRESERVATION: Do NOT skip, omit, or lose any details, facts, or concepts from the EXISTING MASTER NOTE. Integrate the NEW SOURCE information into this structure by merging matching themes, expanding the concepts glossary, updating the overview, and adding/updating the FAQs.\n"
             "3. NO SEPARATE LISTING: Do not list sources separately or create a simple concatenation of summaries. Integrate all information into the unified structure above.\n"
-            "4. NO INTRO/OUTRO: Output ONLY the raw Markdown note. Do not include any introductory remarks (e.g., 'Here is the updated note:') or concluding remarks."
+            "4. DETAIL PRESERVATION: Provide an exhaustive, comprehensive synthesis of all details. Expand existing sections with new insights and detailed descriptions, rather than shortening them. Do not write a summarized or condensed version; ensure the output is long, thorough, and highly detailed.\n"
+            "5. NO INTRO/OUTRO: Output ONLY the raw Markdown note. Do not include any introductory remarks (e.g., 'Here is the updated note:') or concluding remarks."
         )
         
         # Groq and Gemini support up to 8k output tokens, so 4096 is safe and generous for a master note
@@ -464,6 +522,7 @@ class LLMService:
             prompt=prompt,
             temperature=0.2,
             max_output_tokens=max_tokens,
+            primary_provider="gemini", # Primary model for ingestion / master note update is Gemini
         )
         
         # Check if output is the static prompt slice fallback (outage protection)

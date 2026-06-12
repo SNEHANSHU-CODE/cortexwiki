@@ -79,7 +79,7 @@ async function streamFallbackResponse({
       };
       
       // Log full error including stack to console for debugging (dev only)
-      if (typeof console !== "undefined" && process.env.NODE_ENV !== "production") {
+      if (typeof console !== "undefined" && import.meta.env.MODE !== "production") {
         console.error("[ChatStream Error]", error);
       }
       
@@ -148,27 +148,15 @@ export function createChatStreamSession({
         clearInterval(deadConnectionCheck);
         deadConnectionCheck = null;
       }
-      // BUG FIX #8: Attempt reconnection after delay
-      setTimeout(() => {
-        if (socket && !socket.connected) {
-          socket.connect();
-        }
-      }, 3000);
     });
     
     socket.on("reconnect_attempt", () => onConnectionChange?.("reconnecting"));
     socket.on("connect_error",     () => {
       onConnectionChange?.("fallback");
-      // BUG FIX #8: Retry socket connection on error
-      setTimeout(() => {
-        if (socket && !socket.connected) {
-          socket.connect();
-        }
-      }, 5000);
     });
     
     // BUG FIX #3: Handle pong responses from server and track connection health
-    socket.on("pong", (data) => {
+    socket.on("pong", () => {
       lastPongTime = Date.now();
       // Socket is healthy, connection state is fresh
     });
@@ -200,6 +188,12 @@ export function createChatStreamSession({
     }
   };
 
+  const updateToken = (newToken) => {
+    if (socket) {
+      socket.auth = newToken ? { token: newToken } : undefined;
+    }
+  };
+
   const send = async ({ requestId, payload, signal }) => {
     if (socket?.connected) {
       socket.emit(OUTBOUND_EVENT, { requestId, ...payload });
@@ -211,7 +205,7 @@ export function createChatStreamSession({
     });
   };
 
-  return { send, disconnect };
+  return { send, disconnect, updateToken };
 }
 
 export default { createChatStreamSession };

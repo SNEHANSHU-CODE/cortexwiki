@@ -73,10 +73,12 @@ class RedisTokenStore:
         if self.client is not None:
             token_key = self._token_key(jti)
             user_key = self._user_key(user_id)
+            existing_ttl = await self.client.ttl(user_key)
+            final_ttl = max(existing_ttl, ttl) if existing_ttl > 0 else ttl
             async with self.client.pipeline(transaction=True) as pipe:
                 pipe.setex(token_key, ttl, json.dumps(payload))
                 pipe.sadd(user_key, jti)
-                pipe.expire(user_key, ttl)
+                pipe.expire(user_key, final_ttl)
                 await pipe.execute()
             logger.info("Stored access token in Redis: jti=%s, user_id=%s, ttl=%s", jti, user_id, ttl)
             return

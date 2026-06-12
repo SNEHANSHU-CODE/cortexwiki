@@ -128,12 +128,13 @@ def build_relationships(concepts: list[str], text: str, limit: int = 20) -> list
     relationships: list[dict] = []
     sentences = split_sentences(text)
     concept_set = {concept.lower(): concept for concept in concepts}
+    concept_regexes = {original: re.compile(rf"\b{re.escape(raw)}\b") for raw, original in concept_set.items()}
 
     for sentence in sentences:
         present = []
         lowered = sentence.lower()
-        for raw, original in concept_set.items():
-            if raw in lowered:
+        for original, pattern in concept_regexes.items():
+            if pattern.search(lowered):
                 present.append(original)
         for source, target in combinations(sorted(set(present)), 2):
             relationships.append(

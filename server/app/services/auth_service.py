@@ -140,14 +140,14 @@ class AuthService:
             "refresh_token_expires_at": refresh_expires_at,
         }
 
-    async def logout_user(self, *, user_id: str | None, access_token_jti: str | None, refresh_token: str | None) -> None:
-        if user_id:
+    async def logout_user(self, *, user_id: str | None, access_token_jti: str | None, refresh_token: str | None, global_logout: bool = False) -> None:
+        if global_logout and user_id:
             await self.redis.revoke_user_tokens(user_id)
             await self.mongo.revoke_user_refresh_tokens(user_id)
             await self.mongo.create_agent_log({
                 "user_id": user_id,
                 "event_type": "auth",
-                "event_name": "logout",
+                "event_name": "global_logout",
                 "details": {},
             })
         else:
@@ -155,6 +155,13 @@ class AuthService:
                 await self.redis.revoke_access_token(access_token_jti)
             if refresh_token:
                 await self.mongo.revoke_refresh_token(hash_refresh_token(refresh_token))
+            if user_id:
+                await self.mongo.create_agent_log({
+                    "user_id": user_id,
+                    "event_type": "auth",
+                    "event_name": "logout",
+                    "details": {},
+                })
 
     def set_refresh_cookie(self, response: Response, refresh_token: str, expires_at: datetime) -> None:
         logger.debug("Setting refresh cookie: expires_at=%s, secure=%s, samesite=%s, domain=%s", 

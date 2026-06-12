@@ -96,6 +96,13 @@ export async function fetchDeleteIngestedPage(pageId) {
   await httpClient.delete(`/api/ingest/pages/${pageId}`);
 }
 
+export async function fetchPageByUrl(wikiId, url) {
+  const { data } = await httpClient.get("/api/ingest/pages", {
+    params: { wiki_id: wikiId, url },
+  });
+  return data;
+}
+
 // ── Query ─────────────────────────────────────────────────────────────────
 export async function queryKnowledge(payload, config = {}) {
   const { data } = await httpClient.post("/api/query", payload, config);

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import MarkdownContent from "./MarkdownContent";
 import { useTheme } from "../hooks/useTheme";
+import { fetchPageByUrl } from "../utils/api";
 import "./styles/MessageBubble.css";
 
 // ── Copy button ────────────────────────────────────────────────────────────
@@ -59,11 +60,41 @@ function ConfidenceBar({ value }) {
 
 // ── Message bubble ─────────────────────────────────────────────────────────
 
-function MessageBubble({ message, onRetry }) {
+function MessageBubble({ message, onRetry, wikiId }) {
   const isUser      = message.role === "user";
   const isStreaming = message.status === "streaming";
   const isError     = message.status === "error";
   const metadata    = message.metadata ?? null;
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalBody, setModalBody] = useState("");
+  const [modalLoading, setModalLoading] = useState(false);
+
+  const handleSourceClick = async (e, src) => {
+    const isCustomProtocol = src.url?.startsWith("pdf://") || src.url?.startsWith("file://");
+    if (isCustomProtocol) {
+      e.preventDefault();
+      if (!wikiId) {
+        setModalTitle(src.title);
+        setModalBody("Unable to fetch document: no active wiki namespace.");
+        setModalOpen(true);
+        return;
+      }
+      setModalOpen(true);
+      setModalLoading(true);
+      setModalTitle(src.title);
+      setModalBody("");
+      try {
+        const pageData = await fetchPageByUrl(wikiId, src.url);
+        setModalBody(pageData.content || pageData.summary || "No document content retrieved.");
+      } catch (err) {
+        setModalBody(`Failed to load document content: ${err?.message || "Unknown error"}`);
+      } finally {
+        setModalLoading(false);
+      }
+    }
+  };
 
   return (
     <article
@@ -146,6 +177,7 @@ function MessageBubble({ message, onRetry }) {
                     target="_blank"
                     rel="noreferrer noopener"
                     className="source-pill"
+                    onClick={(e) => handleSourceClick(e, src)}
                   >
                     {src.title}
                   </a>
@@ -163,6 +195,34 @@ function MessageBubble({ message, onRetry }) {
           </>
         )}
       </div>
+
+      {modalOpen && (
+        <div className="ws-modal-overlay" onClick={() => setModalOpen(false)}>
+          <div className="ws-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="ws-modal-header">
+              <h3 className="ws-modal-title">{modalTitle}</h3>
+              <button
+                type="button"
+                className="ws-modal-close"
+                onClick={() => setModalOpen(false)}
+                aria-label="Close document modal"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="ws-modal-body">
+              {modalLoading ? (
+                <div className="ws-modal-loading">
+                  <div className="ws-modal-spinner" />
+                  <span>Extracting document content…</span>
+                </div>
+              ) : (
+                modalBody
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 }

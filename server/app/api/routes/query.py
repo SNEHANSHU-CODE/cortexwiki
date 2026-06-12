@@ -123,7 +123,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     confidence = round(min(0.96, max(0.18, 0.4 + (0.1 * len(wiki_pages)) + (0.03 * len(related_concepts)))), 2)
     debug = (
         {
-            "wiki_results": [page["title"] for page in wiki_pages],
+            "wiki_results": [page.get("title", "Untitled Source") for page in wiki_pages],
             "related_concepts": graph_context,
             "context_pages": len(context_blocks),
         }

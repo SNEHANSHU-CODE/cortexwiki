@@ -59,6 +59,7 @@ function AppRouter() {
       dispatch(clearIngestFeedback());
       dispatch(clearActiveWiki());
       dispatch(clearSession());
+      setLoggingOut(false);
     }
   };
 

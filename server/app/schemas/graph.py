@@ -5,9 +5,9 @@ class GraphNodeData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    type: str = "concept"
-    description: str = ""
-    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+    type: str | None = "concept"
+    description: str | None = ""
+    importance: float | None = Field(default=0.5, ge=0.0, le=1.0)
     category: str | None = None
 
 
@@ -16,7 +16,7 @@ class GraphEdgeData(BaseModel):
 
     source: str
     target: str
-    label: str
+    label: str | None = "RELATED_TO"
 
 
 class GraphData(BaseModel):

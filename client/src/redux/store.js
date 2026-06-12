@@ -36,11 +36,13 @@ const authPersistConfig = {
 const chatPersistConfig = {
   key: "chat",
   storage,
+  blacklist: ["status", "pendingMessageId", "error"],
 };
 
 const wikiPersistConfig = {
   key: "wiki",
   storage,
+  blacklist: ["listStatus", "detailStatus", "createStatus", "error"],
 };
 
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);

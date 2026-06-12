@@ -167,7 +167,7 @@ async def disconnect(sid):
 
 
 @sio.on("ping")
-async def handle_ping(sid):
+async def handle_ping(sid, data=None):
     """
     BUG FIX #20: Handle heartbeat/ping to keep connection alive and verify token.
     """
@@ -641,16 +641,29 @@ async def _check_api_request_rate_limit(request: Request) -> tuple[bool, dict[st
 
 class RequestRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
-        allowed, headers = await _check_api_request_rate_limit(request)
-        if not allowed:
-            raise AppError(
-                status_code=429,
-                code="rate_limit_exceeded",
-                message="Too many requests. Please slow down.",
+        try:
+            allowed, headers = await _check_api_request_rate_limit(request)
+            if not allowed:
+                raise AppError(
+                    status_code=429,
+                    code="rate_limit_exceeded",
+                    message="Too many requests. Please slow down.",
+                )
+            response = await call_next(request)
+            response.headers.update(headers)
+            return response
+        except AppError as exc:
+            from fastapi.responses import JSONResponse
+            from app.utils.errors import error_payload
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=error_payload(
+                    request=request,
+                    code=exc.code,
+                    message=exc.message,
+                    details=exc.details,
+                ),
             )
-        response = await call_next(request)
-        response.headers.update(headers)
-        return response
 
 
 class ConcurrentRequestLimiterMiddleware(BaseHTTPMiddleware):
@@ -659,27 +672,46 @@ class ConcurrentRequestLimiterMiddleware(BaseHTTPMiddleware):
         self._semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_REQUESTS)
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        # asyncio.Semaphore does not have acquire_nowait(); use locked() to
-        # detect exhaustion, then acquire normally (it will not block because
-        # we only reach acquire() when a slot is free).
-        if self._semaphore.locked():
-            raise AppError(
-                status_code=503,
-                code="server_busy",
-                message="Server is handling too many requests. Please retry later.",
-            )
-        await self._semaphore.acquire()
         try:
-            return await call_next(request)
-        finally:
-            self._semaphore.release()
+            # asyncio.Semaphore does not have acquire_nowait(); use locked() to
+            # detect exhaustion, then acquire normally (it will not block because
+            # we only reach acquire() when a slot is free).
+            if self._semaphore.locked():
+                raise AppError(
+                    status_code=503,
+                    code="server_busy",
+                    message="Server is handling too many requests. Please retry later.",
+                )
+            await self._semaphore.acquire()
+            try:
+                return await call_next(request)
+            finally:
+                self._semaphore.release()
+        except AppError as exc:
+            from fastapi.responses import JSONResponse
+            from app.utils.errors import error_payload
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=error_payload(
+                    request=request,
+                    code=exc.code,
+                    message=exc.message,
+                    details=exc.details,
+                ),
+            )
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await initialize_datastores()
     await initialize_redis()
+    cleanup_task = asyncio.create_task(_cleanup_stale_socket_connections())
     yield
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
     from app.core.http import close_http_client
     await close_http_client()
     await close_redis()

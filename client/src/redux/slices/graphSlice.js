@@ -33,11 +33,11 @@ const graphSlice = createSlice({
       })
       .addCase(requestGraph.fulfilled, (s, a) => {
         const { graph, topic } = a.payload;
-        const topicNode  = graph.nodes.find((n) => n.id.toLowerCase() === topic.trim().toLowerCase());
+        const topicNode  = graph.nodes.find((n) => n.id?.toLowerCase() === (topic ?? "").trim().toLowerCase());
         const existingNode = graph.nodes.find((n) => n.id === s.selectedNodeId);
         s.nodes          = graph.nodes;
         s.edges          = graph.edges;
-        s.topic          = topic;
+        s.topic          = topic ?? "";
         s.status         = "succeeded";
         s.selectedNodeId = topicNode?.id ?? existingNode?.id ?? graph.nodes[0]?.id ?? "";
       })

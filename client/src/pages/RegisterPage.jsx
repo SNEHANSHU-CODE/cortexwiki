@@ -33,10 +33,44 @@ function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submitting) return;
+
+    const trimmedUsername = form.username.trim();
+    if (!trimmedUsername) {
+      dispatch(setAuthError("Username is required."));
+      return;
+    }
+    if (trimmedUsername.length < 3) {
+      dispatch(setAuthError("Username must be at least 3 characters long."));
+      return;
+    }
+    const trimmedEmail = form.email.trim();
+    if (!trimmedEmail) {
+      dispatch(setAuthError("Email address is required."));
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      dispatch(setAuthError("Please enter a valid email address."));
+      return;
+    }
+    if (!form.password) {
+      dispatch(setAuthError("Password is required."));
+      return;
+    }
+    if (form.password.length < 8) {
+      dispatch(setAuthError("Password must be at least 8 characters long."));
+      return;
+    }
+
     setSubmitting(true);
     dispatch(setStatus("loading"));
     try {
-      const session = await registerRequest(form);
+      const session = await registerRequest({
+        full_name: form.full_name.trim(),
+        username: trimmedUsername,
+        email: trimmedEmail,
+        password: form.password,
+      });
       dispatch(setSession({
         user:                   session.user,
         refreshToken:           session.refresh_token,

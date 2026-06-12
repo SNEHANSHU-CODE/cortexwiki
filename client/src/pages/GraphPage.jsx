@@ -281,6 +281,7 @@ function GraphPage({ wikiId }) {
                 graphData={{ nodes, edges }}
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={(node) => handleFocusNode(node.id)}
+                wikiId={wikiId}
               />
             </>
           )}
