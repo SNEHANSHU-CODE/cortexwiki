@@ -13,6 +13,20 @@ from starlette.responses import Response
 
 from app.api.routes import auth, graph, ingest, query, wikis
 from app.core.config import settings
+import os
+
+# Propagate LangSmith configuration to environment variables for SDK instrumentation.
+# Propagates to both LANGCHAIN_* and LANGSMITH_* prefixes to support all SDK versions natively.
+if settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
+    os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
+    os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
+    os.environ["LANGSMITH_TRACING"] = "true"
+    os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
+    os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
+    os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
+
 from app.core.database import close_datastores, initialize_datastores
 from app.core.redis import close_redis, get_redis_store, initialize_redis
 from app.core.security import decode_access_token

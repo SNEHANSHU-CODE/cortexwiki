@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     SCRAPERAPI_KEY: str | None = None
     SCRAPERAPI_PROXY_URL: str = "http://proxy.scraperapi.com:8001"
 
+    # LangSmith Observability Tracing
+    LANGSMITH_TRACING: bool = False
+    LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGSMITH_API_KEY: str | None = None
+    LANGSMITH_PROJECT: str = "cortexwiki"
+
     # Query / ingest
     STREAM_CHUNK_DELAY_MS: int = 30
     QUERY_RESULT_LIMIT: int = 5

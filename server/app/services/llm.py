@@ -22,6 +22,8 @@ from app.core.config import settings
 from app.utils.errors import AppError
 from app.utils.logging import get_logger
 from app.utils.text import chunk_words, clean_text, split_sentences
+from langsmith import traceable
+from langsmith.run_helpers import get_current_run_tree
 
 
 logger = get_logger("services.llm")
@@ -95,34 +97,35 @@ class LLMService:
         return max(1, int(len(text) / 3.8))
 
     async def check_token_limits(self, user_id: str) -> None:
-        """Check if user has exceeded their token usage limits."""
+        """Check if user has exceeded their daily token usage limits."""
         from app.db.mongo import get_mongo_manager
         mongo = get_mongo_manager()
         input_used, output_used = await mongo.get_user_token_usage(user_id)
         
-        # Enforce limits: Input 1 Lakh (100,000) and Output 30K (30,000)
+        # Enforce limits: Input 1 Lakh (100,000) and Output 30K (30,000) daily
         if input_used >= 100000:
             raise AppError(
                 status_code=429,
                 code="input_token_limit_exceeded",
-                message="Your account has exceeded the input token usage limit (100,000 tokens). Please contact support to upgrade.",
+                message="Your account has exceeded the daily input token usage limit (100,000 tokens/day). Please try again tomorrow.",
             )
         if output_used >= 30000:
             raise AppError(
                 status_code=429,
                 code="output_token_limit_exceeded",
-                message="Your account has exceeded the output token usage limit (30,000 tokens). Please contact support to upgrade.",
+                message="Your account has exceeded the daily output token usage limit (30,000 tokens/day). Please try again tomorrow.",
             )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
+    @traceable(run_type="chain", name="CortexWiki Generate Text")
     async def generate_text(
         self,
         *,
         prompt: str,
         system_instruction: str | None = None,
         temperature: float = 0.3,
-        max_output_tokens: int = 1024,
+        max_output_tokens: int = 2048,
     ) -> str:
         user_id = user_id_ctx.get()
         if user_id:
@@ -148,20 +151,30 @@ class LLMService:
                 return result
 
         result = self._fallback_generate(prompt)
+        prompt_tok = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+        completion_tok = self.estimate_tokens(result)
+        run_tree = get_current_run_tree()
+        if run_tree:
+            run_tree.metadata.update({
+                "token_usage": {
+                    "prompt_tokens": prompt_tok,
+                    "completion_tokens": completion_tok,
+                    "total_tokens": prompt_tok + completion_tok
+                }
+            })
         if user_id:
-            prompt_tok = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-            completion_tok = self.estimate_tokens(result)
             from app.db.mongo import get_mongo_manager
             await get_mongo_manager().increment_user_token_usage(user_id, prompt_tok, completion_tok)
         return result
 
+    @traceable(run_type="chain", name="CortexWiki Stream Text")
     async def stream_text(
         self,
         *,
         prompt: str,
         system_instruction: str | None = None,
         temperature: float = 0.3,
-        max_output_tokens: int = 1024,
+        max_output_tokens: int = 2048,
     ):
         user_id = user_id_ctx.get()
         if user_id:
@@ -182,9 +195,18 @@ class LLMService:
                         accumulated.append(chunk)
                     yield chunk
                 if groq_ok:
+                    prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                    completion_tokens = self.estimate_tokens("".join(accumulated))
+                    run_tree = get_current_run_tree()
+                    if run_tree:
+                        run_tree.metadata.update({
+                            "token_usage": {
+                                "prompt_tokens": prompt_tokens,
+                                "completion_tokens": completion_tokens,
+                                "total_tokens": prompt_tokens + completion_tokens
+                            }
+                        })
                     if user_id:
-                        prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                        completion_tokens = self.estimate_tokens("".join(accumulated))
                         from app.db.mongo import get_mongo_manager
                         await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
                     return
@@ -201,9 +223,18 @@ class LLMService:
                         accumulated.append(chunk)
                     yield chunk
                 if gemini_ok:
+                    prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                    completion_tokens = self.estimate_tokens("".join(accumulated))
+                    run_tree = get_current_run_tree()
+                    if run_tree:
+                        run_tree.metadata.update({
+                            "token_usage": {
+                                "prompt_tokens": prompt_tokens,
+                                "completion_tokens": completion_tokens,
+                                "total_tokens": prompt_tokens + completion_tokens
+                            }
+                        })
                     if user_id:
-                        prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                        completion_tokens = self.estimate_tokens("".join(accumulated))
                         from app.db.mongo import get_mongo_manager
                         await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
                     return
@@ -211,22 +242,42 @@ class LLMService:
                 if chunk:
                     accumulated.append(chunk)
                 yield chunk
+            prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+            completion_tokens = self.estimate_tokens("".join(accumulated))
+            run_tree = get_current_run_tree()
+            if run_tree:
+                run_tree.metadata.update({
+                    "token_usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens
+                    }
+                })
             if user_id:
-                prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                completion_tokens = self.estimate_tokens("".join(accumulated))
                 from app.db.mongo import get_mongo_manager
                 await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
         except Exception as exc:
-            if user_id and accumulated:
-                try:
-                    prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                    completion_tokens = self.estimate_tokens("".join(accumulated))
-                    from app.db.mongo import get_mongo_manager
-                    await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
-                except Exception:
-                    pass
+            if accumulated:
+                prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+                completion_tokens = self.estimate_tokens("".join(accumulated))
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.metadata.update({
+                        "token_usage": {
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                            "total_tokens": prompt_tokens + completion_tokens
+                        }
+                    })
+                if user_id:
+                    try:
+                        from app.db.mongo import get_mongo_manager
+                        await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+                    except Exception:
+                        pass
             raise exc
 
+    @traceable(run_type="embedding", name="CortexWiki Embed Text")
     async def embed_text(self, text: str) -> list[float]:
         """
         Generate embedding for text with caching support.
@@ -258,6 +309,16 @@ class LLMService:
                 cached = await redis_store.client.get(cache_key)
                 if cached:
                     logger.debug("Cache hit for embedding: %s", cache_key)
+                    run_tree = get_current_run_tree()
+                    if run_tree:
+                        run_tree.metadata.update({
+                            "cached": True,
+                            "token_usage": {
+                                "prompt_tokens": 0,
+                                "completion_tokens": 0,
+                                "total_tokens": 0
+                            }
+                        })
                     # Cached as JSON string
                     return json.loads(cached)
             except Exception as exc:
@@ -278,8 +339,18 @@ class LLMService:
                         logger.debug("Cached embedding: %s", cache_key)
                     except Exception as exc:
                         logger.warning("Failed to cache embedding: %s", str(exc))
+                input_tokens = self.estimate_tokens(text)
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.metadata.update({
+                        "cached": False,
+                        "token_usage": {
+                            "prompt_tokens": input_tokens,
+                            "completion_tokens": 0,
+                            "total_tokens": input_tokens
+                        }
+                    })
                 if user_id:
-                    input_tokens = self.estimate_tokens(text)
                     from app.db.mongo import get_mongo_manager
                     await get_mongo_manager().increment_user_token_usage(user_id, input_tokens, 0)
                 return result
@@ -296,12 +367,23 @@ class LLMService:
                 )
             except Exception:
                 pass
+        input_tokens = self.estimate_tokens(text)
+        run_tree = get_current_run_tree()
+        if run_tree:
+            run_tree.metadata.update({
+                "cached": False,
+                "token_usage": {
+                    "prompt_tokens": input_tokens,
+                    "completion_tokens": 0,
+                    "total_tokens": input_tokens
+                }
+            })
         if user_id:
-            input_tokens = self.estimate_tokens(text)
             from app.db.mongo import get_mongo_manager
             await get_mongo_manager().increment_user_token_usage(user_id, input_tokens, 0)
         return embedding
 
+    @traceable(run_type="chain", name="CortexWiki Summarize")
     async def summarize(self, text: str) -> str:
         if not text:
             return ""
@@ -313,11 +395,12 @@ class LLMService:
             "3. STYLE: Keep it factual, grounded, concise, and professional.\n"
             "4. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
             "=== MATERIAL ===\n"
-            f"{text[:8000]}"
+            f"{text[:25000]}"
         )
         summary = await self.generate_text(prompt=prompt, temperature=0.2, max_output_tokens=400)
         return summary.strip()
 
+    @traceable(run_type="chain", name="CortexWiki Merge Notes")
     async def merge_notes(
         self,
         *,
@@ -374,8 +457,8 @@ class LLMService:
             "4. NO INTRO/OUTRO: Output ONLY the raw Markdown note. Do not include any introductory remarks (e.g., 'Here is the updated note:') or concluding remarks."
         )
         
-        # Groq and Gemini support up to 8k output tokens, so 2500 is safe and generous for a master note
-        max_tokens = 2500
+        # Groq and Gemini support up to 8k output tokens, so 4096 is safe and generous for a master note
+        max_tokens = 4096
         
         merged = await self.generate_text(
             prompt=prompt,
@@ -395,6 +478,7 @@ class LLMService:
 
     # ── Groq ──────────────────────────────────────────────────────────────────
 
+    @traceable(run_type="llm", name="Groq Llama Generation")
     async def _groq_generate(
         self,
         *,
@@ -434,11 +518,23 @@ class LLMService:
                 return ""
             await _api_circuit_breaker.record_success("groq")
             logger.info("Groq generate OK (model=%s)", settings.GROQ_MODEL)
+            
+            usage = data.get("usage", {})
+            prompt_tok = usage.get("prompt_tokens") or self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+            completion_tok = usage.get("completion_tokens") or self.estimate_tokens(text)
+            
+            run_tree = get_current_run_tree()
+            if run_tree:
+                run_tree.metadata.update({
+                    "token_usage": {
+                        "prompt_tokens": prompt_tok,
+                        "completion_tokens": completion_tok,
+                        "total_tokens": prompt_tok + completion_tok
+                    }
+                })
+
             user_id = user_id_ctx.get()
             if user_id:
-                usage = data.get("usage", {})
-                prompt_tok = usage.get("prompt_tokens") or self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                completion_tok = usage.get("completion_tokens") or self.estimate_tokens(text)
                 from app.db.mongo import get_mongo_manager
                 await get_mongo_manager().increment_user_token_usage(user_id, prompt_tok, completion_tok)
             return text.strip()
@@ -451,6 +547,7 @@ class LLMService:
             logger.exception("Unexpected error in Groq generate")
             return ""
 
+    @traceable(run_type="llm", name="Groq Llama Streaming")
     async def _groq_stream(
         self,
         *,
@@ -504,6 +601,7 @@ class LLMService:
 
     # ── Gemini ────────────────────────────────────────────────────────────────
 
+    @traceable(run_type="llm", name="Gemini Flash Generation")
     async def _gemini_generate(
         self,
         *,
@@ -534,11 +632,23 @@ class LLMService:
             text = self._extract_gemini_text(data)
             await _api_circuit_breaker.record_success("gemini")
             logger.info("Gemini generate OK (model=%s)", settings.GEMINI_MODEL)
+            
+            usage = data.get("usageMetadata", {})
+            prompt_tok = usage.get("promptTokenCount") or self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+            completion_tok = usage.get("candidatesTokenCount") or self.estimate_tokens(text)
+            
+            run_tree = get_current_run_tree()
+            if run_tree:
+                run_tree.metadata.update({
+                    "token_usage": {
+                        "prompt_tokens": prompt_tok,
+                        "completion_tokens": completion_tok,
+                        "total_tokens": prompt_tok + completion_tok
+                    }
+                })
+
             user_id = user_id_ctx.get()
             if user_id:
-                usage = data.get("usageMetadata", {})
-                prompt_tok = usage.get("promptTokenCount") or self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                completion_tok = usage.get("candidatesTokenCount") or self.estimate_tokens(text)
                 from app.db.mongo import get_mongo_manager
                 await get_mongo_manager().increment_user_token_usage(user_id, prompt_tok, completion_tok)
             return text
@@ -547,6 +657,7 @@ class LLMService:
             logger.exception("Gemini generate failed — using static fallback: %s", str(exc))
             return ""
 
+    @traceable(run_type="llm", name="Gemini Flash Streaming")
     async def _gemini_stream(
         self,
         *,

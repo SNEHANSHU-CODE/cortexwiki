@@ -195,27 +195,56 @@ class MongoManager:
             self._memory["users"][user_id]["updated_at"] = now
 
     async def get_user_token_usage(self, user_id: str) -> tuple[int, int]:
-        """Get (input_tokens_used, output_tokens_used) for a user."""
+        """Get (daily_input_tokens_used, daily_output_tokens_used) for a user, resetting if date has changed."""
         user = await self.get_user_by_id(user_id)
         if not user:
             return 0, 0
-        return user.get("input_tokens_used", 0), user.get("output_tokens_used", 0)
+        
+        from datetime import datetime, UTC
+        today_str = datetime.now(UTC).date().isoformat()
+        
+        # If the tracking date is not today, the daily count is effectively 0
+        if user.get("token_usage_date") != today_str:
+            return 0, 0
+            
+        return user.get("daily_input_tokens_used", 0), user.get("daily_output_tokens_used", 0)
 
     async def increment_user_token_usage(self, user_id: str, input_tokens: int, output_tokens: int) -> None:
-        """Increment input_tokens_used and output_tokens_used for a user."""
+        """Increment user token usage, tracking both daily limits and lifetime totals."""
+        from datetime import datetime, UTC
+        from bson import ObjectId
+        
         now = datetime.now(UTC)
+        today_str = now.date().isoformat()
+        
         if self.database is not None:
-            from bson import ObjectId
             try:
+                # 1. Fetch user to check date
+                user = await self.database.users.find_one({"_id": ObjectId(user_id)})
+                if not user:
+                    return
+                
+                # 2. Determine update payload
+                update_doc = {
+                    "$inc": {
+                        "input_tokens_used": input_tokens,
+                        "output_tokens_used": output_tokens
+                    },
+                    "$set": {"updated_at": now}
+                }
+                
+                # If date matches, increment daily counts. If not, reset daily counts and set new date.
+                if user.get("token_usage_date") == today_str:
+                    update_doc["$inc"]["daily_input_tokens_used"] = input_tokens
+                    update_doc["$inc"]["daily_output_tokens_used"] = output_tokens
+                else:
+                    update_doc["$set"]["token_usage_date"] = today_str
+                    update_doc["$set"]["daily_input_tokens_used"] = input_tokens
+                    update_doc["$set"]["daily_output_tokens_used"] = output_tokens
+                
                 await self.database.users.update_one(
                     {"_id": ObjectId(user_id)},
-                    {
-                        "$inc": {
-                            "input_tokens_used": input_tokens,
-                            "output_tokens_used": output_tokens
-                        },
-                        "$set": {"updated_at": now}
-                    }
+                    update_doc
                 )
             except Exception:
                 pass

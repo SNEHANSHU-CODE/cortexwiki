@@ -290,6 +290,10 @@ async def fetch_web_page_content(url: str) -> dict:
         return False
 
     text_body = ""
+    use_scraperapi = False
+    scraperapi_err = None
+
+    # 1. Direct fetch attempt
     try:
         for hop in range(max_redirects + 1):
             if is_blocked_ip(current_url):
@@ -311,6 +315,13 @@ async def fetch_web_page_content(url: str) -> dict:
                     from urllib.parse import urljoin
                     current_url = urljoin(current_url, location)
                     continue
+                
+                # Check for block status codes (e.g. 403 Forbidden, 401 Unauthorized, 429 Rate Limited)
+                if response.status_code in (403, 401, 429):
+                    if settings.scraperapi_proxy_url:
+                        logger.info(f"Direct fetch returned status {response.status_code}. Activating ScraperAPI fallback...")
+                        use_scraperapi = True
+                        break
                 
                 response.raise_for_status()
                 content_length = response.headers.get("Content-Length")
@@ -345,14 +356,49 @@ async def fetch_web_page_content(url: str) -> dict:
                 code="too_many_redirects",
                 message="Too many redirect hops.",
             )
-    except AppError:
-        raise
+    except AppError as e:
+        if e.code == "url_blocked_local":
+            raise
+        if settings.scraperapi_proxy_url:
+            logger.info(f"Direct fetch failed with AppError: {e}. Activating ScraperAPI fallback...")
+            use_scraperapi = True
+        else:
+            raise
     except httpx.HTTPError as exc:
+        if settings.scraperapi_proxy_url:
+            logger.info(f"Direct fetch failed with HTTPError: {exc}. Activating ScraperAPI fallback...")
+            use_scraperapi = True
+        else:
+            raise AppError(
+                status_code=400,
+                code="web_fetch_failed",
+                message="Unable to fetch web page.",
+            ) from exc
+
+    # 2. ScraperAPI fallback attempt
+    if use_scraperapi:
+        try:
+            logger.info(f"Fetching web page via ScraperAPI residential proxy: {url}")
+            async with httpx.AsyncClient(
+                proxy=settings.scraperapi_proxy_url,
+                verify=settings.OUTBOUND_VERIFY_SSL,
+                timeout=settings.HTTP_REQUEST_TIMEOUT,
+            ) as proxy_client:
+                response = await proxy_client.get(url, follow_redirects=True)
+                response.raise_for_status()
+                text_body = response.text
+                logger.info("Successfully fetched web page via ScraperAPI!")
+        except Exception as exc:
+            logger.exception("ScraperAPI web fetch fallback failed")
+            scraperapi_err = exc
+
+    if not text_body.strip():
+        detail_msg = f" Both direct fetch and ScraperAPI failed: {scraperapi_err}" if scraperapi_err else ""
         raise AppError(
             status_code=400,
             code="web_fetch_failed",
-            message="Unable to fetch web page.",
-        ) from exc
+            message=f"Unable to scrape web page content.{detail_msg}",
+        )
 
     try:
         soup = BeautifulSoup(text_body, "html.parser")
@@ -363,6 +409,7 @@ async def fetch_web_page_content(url: str) -> dict:
         text = clean_text(" ".join(soup.stripped_strings))
     except Exception as exc:
         raise AppError(status_code=400, code="web_parse_failed", message="Failed to parse web page content") from exc
+
     if not text:
         raise AppError(
             status_code=400,

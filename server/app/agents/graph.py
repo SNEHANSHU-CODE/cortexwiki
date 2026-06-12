@@ -180,6 +180,14 @@ class QueryAgentGraph:
         debug: bool = False,
         allow_internet: bool = False,
     ) -> QueryData:
+        config = {
+            "metadata": {
+                "user_id": user_id,
+                "wiki_id": wiki_id,
+                "question": question,
+            },
+            "tags": ["query_agent", "cortexwiki"],
+        }
         final_state = await self._graph.ainvoke(
             self._initial_state(
                 user_id=user_id,
@@ -187,7 +195,8 @@ class QueryAgentGraph:
                 question=question,
                 debug=debug,
                 allow_internet=allow_internet,
-            )
+            ),
+            config=config,
         )
         return self._to_query_data(final_state)
 
@@ -208,7 +217,15 @@ class QueryAgentGraph:
             allow_internet=allow_internet,
         )
 
-        async for snapshot in self._graph.astream(accumulated):
+        config = {
+            "metadata": {
+                "user_id": user_id,
+                "wiki_id": wiki_id,
+                "question": question,
+            },
+            "tags": ["query_agent", "cortexwiki"],
+        }
+        async for snapshot in self._graph.astream(accumulated, config=config):
             for node_name, partial in snapshot.items():
                 if node_name in ("__start__", "__end__"):
                     continue
