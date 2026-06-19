@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, File, UploadFile, Form
+from fastapi import APIRouter, Depends, Response, File, UploadFile, Form, BackgroundTasks
 from bson import ObjectId
 
 from app.api.deps import get_current_user, validate_wiki_id
@@ -34,11 +34,12 @@ async def _check_ingest_rate_limit(user_id: str, wiki_id: str, limit: int = 10, 
 
     if redis_store and redis_store.client is not None:
         try:
-            current = await redis_store.client.incr(key)
-            if current == 1:
-                # Set expiration to the remaining seconds in the window
-                expire = (next_reset - now) + 1
-                await redis_store.client.expire(key, int(expire))
+            pipe = redis_store.client.pipeline(transaction=True)
+            pipe.incr(key)
+            expire = (next_reset - now) + 1
+            pipe.expire(key, int(expire), nx=True)
+            res = await pipe.execute()
+            current = res[0]
 
             headers = {
                 "X-RateLimit-Limit": str(limit),
@@ -233,7 +234,14 @@ async def ingest_pdf(
             message="Only PDF files are supported.",
         )
     
-    # Enforce 16MB file size limit
+    # Enforce 16MB file size limit before reading the entire file
+    if getattr(file, "size", 0) > 16 * 1024 * 1024:
+        raise AppError(
+            status_code=400,
+            code="file_too_large",
+            message="File size exceeds the 16MB limit.",
+        )
+    
     pdf_bytes = await file.read()
     await file.close()
     if len(pdf_bytes) > 16 * 1024 * 1024:
@@ -351,9 +359,30 @@ async def get_wiki_page_by_url(
         "source_url": page.get("source_url", ""),
     }
 
+async def _rebuild_master_note(uid: str, wid: str, pid: str):
+    mongo = get_mongo_manager()
+    llm = get_llm_service()
+    try:
+        remaining_pages = await mongo.list_wiki_pages(uid, wiki_id=wid, limit=200)
+        if not remaining_pages:
+            await mongo.set_wiki_master_note(wid, uid, "")
+        else:
+            remaining_pages.sort(key=lambda p: p["created_at"])
+            master_note = ""
+            for p in remaining_pages:
+                master_note = await llm.merge_notes(
+                    existing_note=master_note,
+                    new_summary=p["summary"],
+                    new_title=p["title"],
+                )
+            await mongo.set_wiki_master_note(wid, uid, master_note)
+    except Exception as exc:
+        logger.exception("Failed to rebuild master note after page deletion: page_id=%s", pid)
+
 @router.delete("/pages/{page_id}", status_code=204)
 async def delete_wiki_page(
     page_id: str,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
 ):
     from bson import ObjectId
@@ -388,22 +417,7 @@ async def delete_wiki_page(
         except Exception as exc:
             logger.warning("Failed to delete page graph from Neo4j: page_id=%s, error=%s", page_id, str(exc))
             
-        try:
-            remaining_pages = await mongo.list_wiki_pages(current_user["id"], wiki_id=wiki_id, limit=200)
-            if not remaining_pages:
-                await mongo.set_wiki_master_note(wiki_id, current_user["id"], "")
-            else:
-                remaining_pages.sort(key=lambda p: p["created_at"])
-                master_note = ""
-                for p in remaining_pages:
-                    master_note = await llm.merge_notes(
-                        existing_note=master_note,
-                        new_summary=p["summary"],
-                        new_title=p["title"],
-                    )
-                await mongo.set_wiki_master_note(wiki_id, current_user["id"], master_note)
-        except Exception as exc:
-            logger.exception("Failed to rebuild master note after page deletion: page_id=%s", page_id)
+        background_tasks.add_task(_rebuild_master_note, current_user["id"], wiki_id, page_id)
             
     return Response(status_code=204)
 

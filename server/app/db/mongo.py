@@ -143,8 +143,17 @@ class MongoManager:
             "output_tokens_used": 0,
         }
         if self.database is not None:
-            result = await self.database.users.insert_one(document)
-            return await self.get_user_by_id(str(result.inserted_id))
+            from pymongo.errors import DuplicateKeyError
+            try:
+                result = await self.database.users.insert_one(document)
+                return await self.get_user_by_id(str(result.inserted_id))
+            except DuplicateKeyError as exc:
+                err_msg = str(exc).lower()
+                if "email" in err_msg:
+                    raise ValueError("Email already exists") from exc
+                if "username" in err_msg:
+                    raise ValueError("Username already exists") from exc
+                raise ValueError("User already exists") from exc
         if await self.get_user_by_email(document["email"]):
             raise ValueError("Email already exists")
         if await self.get_user_by_username(document["username"]):
@@ -299,6 +308,22 @@ class MongoManager:
             if token["token_hash"] == token_hash:
                 token["revoked"] = True
                 token["updated_at"] = now
+
+    async def revoke_refresh_token_if_active(self, token_hash: str) -> bool:
+        """Atomically revoke a refresh token only if it is currently active. Returns True if successfully revoked."""
+        now = datetime.now(UTC)
+        if self.database is not None:
+            res = await self.database.refresh_tokens.update_one(
+                {"token_hash": token_hash, "revoked": False},
+                {"$set": {"revoked": True, "updated_at": now}}
+            )
+            return res.modified_count > 0
+        for token in self._memory["refresh_tokens"].values():
+            if token["token_hash"] == token_hash and not token["revoked"]:
+                token["revoked"] = True
+                token["updated_at"] = now
+                return True
+        return False
 
     async def revoke_user_refresh_tokens(self, user_id: str) -> None:
         now = datetime.now(UTC)
@@ -470,6 +495,9 @@ class MongoManager:
                     return False
                 # Delete the page
                 await self.database.wiki_pages.delete_one({"_id": ObjectId(wiki_page_id)})
+                # Delete raw_data to prevent orphans
+                if "raw_data_id" in page:
+                    await self.database.raw_data.delete_one({"_id": ObjectId(page["raw_data_id"])})
                 # Decrement source count
                 await self.database.wikis.update_one(
                     {"_id": ObjectId(page["wiki_id"])},
@@ -481,6 +509,8 @@ class MongoManager:
         # Memory mode rollback
         if wiki_page_id in self._memory["wiki_pages"]:
             page = self._memory["wiki_pages"].pop(wiki_page_id)
+            if "raw_data_id" in page:
+                self._memory["raw_data"].pop(page["raw_data_id"], None)
             if page["wiki_id"] in self._memory["wikis"]:
                 wiki = self._memory["wikis"][page["wiki_id"]]
                 wiki["source_count"] = max(0, wiki.get("source_count", 0) - 1)

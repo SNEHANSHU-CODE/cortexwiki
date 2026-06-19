@@ -80,31 +80,22 @@ class IngestionService:
                     message="Local network URLs are not allowed.",
                 )
         
-        # ── CHECK DUPLICATE SOURCE ──
-        existing_page = await self.mongo.check_source_url_exists(wiki_id, user_id, source_url)
-        if existing_page:
-            logger.info("Source already ingested: source_url=%s, existing_page_id=%s", source_url, existing_page["id"])
-            return {
-                "wiki_page": existing_page,
-                "summary": existing_page.get("summary", ""),
-                "concepts": existing_page.get("concepts", []),
-                "conflicts": [{"type": "duplicate_source", "message": f"This source was already ingested on {existing_page.get('created_at')}"}],
-            }
-
-        # ── CHECK SOURCE COUNT LIMIT ──
-        wiki = await self.mongo.get_wiki(wiki_id, user_id)
-        if wiki and wiki.get("source_count", 0) >= settings.MAX_SOURCES_PER_WIKI:
-            raise AppError(
-                status_code=429,
-                code="wiki_source_limit_exceeded",
-                message=f"This wiki has reached the limit of {settings.MAX_SOURCES_PER_WIKI} sources. Delete some sources to add more.",
-            )
-
         # ── ACQUIRE WIKI LOCK ──
         wiki_lock = await self.redis_store.acquire_wiki_ingest_lock(wiki_id)
         
         async with wiki_lock:
             logger.info("Acquired ingest lock for wiki_id=%s", wiki_id)
+            
+            # ── CHECK DUPLICATE SOURCE (INSIDE LOCK TO AVOID TOCTOU) ──
+            existing_page = await self.mongo.check_source_url_exists(wiki_id, user_id, source_url)
+            if existing_page:
+                logger.info("Source already ingested: source_url=%s, existing_page_id=%s", source_url, existing_page["id"])
+                return {
+                    "wiki_page": existing_page,
+                    "summary": existing_page.get("summary", ""),
+                    "concepts": existing_page.get("concepts", []),
+                    "conflicts": [{"type": "duplicate_source", "message": f"This source was already ingested on {existing_page.get('created_at')}"}],
+                }
 
             # Summarise new source
             summary = await self.llm.summarize(raw_content)

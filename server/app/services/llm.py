@@ -154,7 +154,15 @@ class LLMService:
                 if result:
                     return result
 
-        result = self._fallback_generate(prompt)
+        if not settings.GROQ_API_KEY and not settings.GEMINI_API_KEY:
+            result = self._fallback_generate(prompt)
+        else:
+            raise AppError(
+                status_code=503,
+                code="llm_unavailable",
+                message="All AI providers are currently unavailable or overloaded. Please try again later.",
+            )
+            
         prompt_tok = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
         completion_tok = self.estimate_tokens(result)
         run_tree = get_current_run_tree()
@@ -248,10 +256,18 @@ class LLMService:
                             await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
                         return
 
-            for chunk in chunk_words(self._fallback_generate(prompt)):
-                if chunk:
-                    accumulated.append(chunk)
-                yield chunk
+            if not settings.GROQ_API_KEY and not settings.GEMINI_API_KEY:
+                for chunk in chunk_words(self._fallback_generate(prompt)):
+                    if chunk:
+                        accumulated.append(chunk)
+                    yield chunk
+            else:
+                raise AppError(
+                    status_code=503,
+                    code="llm_unavailable",
+                    message="All AI providers are currently unavailable or overloaded. Please try again later.",
+                )
+                
             prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
             completion_tokens = self.estimate_tokens("".join(accumulated))
             run_tree = get_current_run_tree()
@@ -406,9 +422,10 @@ class LLMService:
                         "Summarize the following material for an enterprise knowledge base.\n\n"
                         "=== CRITICAL DIRECTIVES ===\n"
                         "1. STRUCTURE: Organize the summary using appropriate Markdown headers where relevant (e.g. '## Overview', '## Key Components', '## Benefits').\n"
-                        "2. LISTS: Format any lists cleanly using standard Markdown bullet points ('- ') or numbered lists ('1. '). Ensure each item starts on a new line.\n"
-                        "3. STYLE: Keep it factual, grounded, concise, and professional.\n"
-                        "4. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
+                        "2. LISTS & TABLES: Format any lists cleanly using standard Markdown bullet points ('- ') or numbered lists ('1. '). If there is structured data, use Markdown Tables.\n"
+                        "3. RICH MARKDOWN: Leverage **bolding** for emphasis, `inline code` for technical jargon, and > blockquotes for key quotes.\n"
+                        "4. STYLE: Keep it factual, grounded, concise, and professional.\n"
+                        "5. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
                         "=== MATERIAL ===\n"
                         f"{text}"  # Pass entire raw text (no truncation)
                     )
@@ -456,9 +473,10 @@ class LLMService:
             "Summarize and merge the following section summaries into a single cohesive, highly structured summary for an enterprise knowledge base.\n\n"
             "=== CRITICAL DIRECTIVES ===\n"
             "1. STRUCTURE: Organize the summary using appropriate Markdown headers where relevant (e.g. '## Overview', '## Key Components', '## Benefits').\n"
-            "2. LISTS: Format any lists cleanly using standard Markdown bullet points ('- ') or numbered lists ('1. '). Ensure each item starts on a new line.\n"
-            "3. STYLE: Keep it factual, grounded, concise, and professional.\n"
-            "4. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
+            "2. LISTS & TABLES: Format any lists cleanly using standard Markdown bullet points ('- ') or numbered lists ('1. '). If there is structured data, use Markdown Tables.\n"
+            "3. RICH MARKDOWN: Leverage **bolding** for emphasis, `inline code` for technical jargon, and > blockquotes for key quotes.\n"
+            "4. STYLE: Keep it factual, grounded, concise, and professional.\n"
+            "5. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
             "=== SECTION SUMMARIES ===\n"
             f"{combined_summaries}"
         )
@@ -508,11 +526,13 @@ class LLMService:
             "   - ## 📌 Document Overview: A cohesive, high-level paragraph summarizing the domain and overall subject matter covered by the wiki. Synthesize the new source details into this overview.\n"
             "   - ## 🔑 Key Concepts & Definitions: A glossary of critical terms, definitions, acronyms, or concepts from all sources. Update and expand this glossary with any new concepts from the new source. Keep it sorted or neatly organized with bold terms (e.g. '- **Term**: Definition').\n"
             "   - ## 📑 Core Themes & Detailed Synthesis: Group the knowledge into logical thematic sections. Use a single level-3 heading (e.g. '### Theme Name') for each theme. Deeply synthesize the facts, examples, explanations, and data. Never duplicate section names.\n"
+            "   - ## 📊 Data & Comparisons (If Applicable): If there are structured comparisons, statistics, or metrics, format them cleanly using Markdown Tables.\n"
             "   - ## ❓ Frequently Asked Questions (FAQ): A grounded Q&A section consisting of 3-5 high-value questions and detailed answers directly answered by the source texts. Update or add new questions relevant to the new source.\n\n"
-            "2. KNOWLEDGE PRESERVATION: Do NOT skip, omit, or lose any details, facts, or concepts from the EXISTING MASTER NOTE. Integrate the NEW SOURCE information into this structure by merging matching themes, expanding the concepts glossary, updating the overview, and adding/updating the FAQs.\n"
-            "3. NO SEPARATE LISTING: Do not list sources separately or create a simple concatenation of summaries. Integrate all information into the unified structure above.\n"
-            "4. DETAIL PRESERVATION: Provide an exhaustive, comprehensive synthesis of all details. Expand existing sections with new insights and detailed descriptions, rather than shortening them. Do not write a summarized or condensed version; ensure the output is long, thorough, and highly detailed.\n"
-            "5. NO INTRO/OUTRO: Output ONLY the raw Markdown note. Do not include any introductory remarks (e.g., 'Here is the updated note:') or concluding remarks."
+            "2. RICH MARKDOWN: You MUST leverage rich Markdown effectively (GFM supported). Use **bolding** for emphasis, `inline code` for technical terms, > blockquotes for important excerpts, and Markdown tables for any structured data. Use task lists (- [ ]) for action items.\n"
+            "3. KNOWLEDGE PRESERVATION: Do NOT skip, omit, or lose any details, facts, or concepts from the EXISTING MASTER NOTE. Integrate the NEW SOURCE information into this structure by merging matching themes, expanding the concepts glossary, updating the overview, and adding/updating the FAQs.\n"
+            "4. NO SEPARATE LISTING: Do not list sources separately or create a simple concatenation of summaries. Integrate all information into the unified structure above.\n"
+            "5. DETAIL PRESERVATION: Provide an exhaustive, comprehensive synthesis of all details. Expand existing sections with new insights and detailed descriptions, rather than shortening them. Do not write a summarized or condensed version; ensure the output is long, thorough, and highly detailed.\n"
+            "6. NO INTRO/OUTRO: Output ONLY the raw Markdown note. Do not include any introductory remarks (e.g., 'Here is the updated note:') or concluding remarks."
         )
         
         # Groq and Gemini support up to 8k output tokens, so 4096 is safe and generous for a master note

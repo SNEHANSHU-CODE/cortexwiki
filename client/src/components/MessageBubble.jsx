@@ -71,6 +71,12 @@ function MessageBubble({ message, onRetry, wikiId }) {
   const [modalBody, setModalBody] = useState("");
   const [modalLoading, setModalLoading] = useState(false);
 
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
   const handleSourceClick = async (e, src) => {
     const isCustomProtocol = src.url?.startsWith("pdf://") || src.url?.startsWith("file://");
     if (isCustomProtocol) {
@@ -87,11 +93,17 @@ function MessageBubble({ message, onRetry, wikiId }) {
       setModalBody("");
       try {
         const pageData = await fetchPageByUrl(wikiId, src.url);
-        setModalBody(pageData.content || pageData.summary || "No document content retrieved.");
+        if (isMounted.current) {
+          setModalBody(pageData.content || pageData.summary || "No document content retrieved.");
+        }
       } catch (err) {
-        setModalBody(`Failed to load document content: ${err?.message || "Unknown error"}`);
+        if (isMounted.current) {
+          setModalBody(`Failed to load document content: ${err?.message || "Unknown error"}`);
+        }
       } finally {
-        setModalLoading(false);
+        if (isMounted.current) {
+          setModalLoading(false);
+        }
       }
     }
   };

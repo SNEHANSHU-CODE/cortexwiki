@@ -106,6 +106,26 @@
   font-weight: 600;
 }
 
+/* ── Task Lists ───────────────────────────────────────────────────────── */
+.markdown-content ul.contains-task-list {
+  list-style-type: none;
+  padding-left: 0.2rem;
+}
+
+.markdown-content li.task-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.markdown-content input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--c-accent);
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
 /* ── Links ────────────────────────────────────────────────────────────── */
 .markdown-content a {
   color: var(--c-accent);

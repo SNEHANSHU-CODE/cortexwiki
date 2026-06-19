@@ -125,32 +125,35 @@ async def connect(sid, environ, auth):
             raise socketio.exceptions.ConnectionRefusedError("Server is busy. Try again later.")
         _active_socket_connections += 1
 
-    token = (auth or {}).get("token", "")
-    if not token:
+    try:
+        token = (auth or {}).get("token", "")
+        if not token:
+            raise socketio.exceptions.ConnectionRefusedError("Authentication required.")
+        
+        user = await _authenticate_socket(token)
+        if not user:
+            raise socketio.exceptions.ConnectionRefusedError("Invalid or expired token.")
+        
+        # BUG FIX #1: Track connection with metadata for cleanup
+        import time
+        async with _socket_connection_lock:
+            _socket_connection_map[sid] = {
+                "user_id": user.get("id"),
+                "created_at": time.time(),
+                "last_activity": time.time(),
+            }
+        
+        # Store user AND token for validation on each message
+        await sio.save_session(sid, {
+            "user": user,
+            "token": token,  # BUG FIX #8: Store token for re-validation
+        })
+        logger.info("Socket connected: sid=%s, user_id=%s, active_connections=%d", 
+                    sid, user.get("id"), _active_socket_connections)
+    except Exception:
         async with _socket_connection_lock:
             _active_socket_connections -= 1
-        raise socketio.exceptions.ConnectionRefusedError("Authentication required.")
-    
-    user = await _authenticate_socket(token)
-    if not user:
-        async with _socket_connection_lock:
-            _active_socket_connections -= 1
-        raise socketio.exceptions.ConnectionRefusedError("Invalid or expired token.")
-    
-    # BUG FIX #1: Track connection with metadata for cleanup
-    import time
-    async with _socket_connection_lock:
-        _socket_connection_map[sid] = {
-            "user_id": user.get("id"),
-            "created_at": time.time(),
-            "last_activity": time.time(),
-        }
-    
-    # Store user AND token for validation on each message
-    await sio.save_session(sid, {
-        "user": user,
-        "token": token,  # BUG FIX #8: Store token for re-validation
-    })
+        raise
     logger.info("Socket connected: sid=%s, user_id=%s, active_connections=%d", 
                 sid, user.get("id"), _active_socket_connections)
 
@@ -228,9 +231,11 @@ async def _check_socket_query_rate_limit(user_id: str) -> bool:
     try:
         client = store.client
         if client is not None:
-            val = await client.incr(key)
-            if val == 1:
-                await client.expire(key, int(window))
+            pipe = client.pipeline(transaction=True)
+            pipe.incr(key)
+            pipe.expire(key, int(window), nx=True)
+            res = await pipe.execute()
+            val = res[0]
             return val <= limit
     except Exception:
         logger.debug("Redis rate limiter unavailable, falling back to memory")
@@ -590,10 +595,13 @@ async def _increment_rate_counter(key: str, window: int) -> tuple[int, int]:
     try:
         client = store.client
         if client is not None:
-            value = await client.incr(key)
-            if value == 1:
-                await client.expire(key, int(window))
-            ttl = await client.ttl(key)
+            pipe = client.pipeline(transaction=True)
+            pipe.incr(key)
+            pipe.expire(key, int(window), nx=True)
+            pipe.ttl(key)
+            res = await pipe.execute()
+            value = res[0]
+            ttl = res[2]
             return int(value), int(ttl if ttl is not None and ttl >= 0 else window)
     except Exception:
         logger.debug("Redis rate limiter unavailable, falling back to memory")
@@ -669,13 +677,12 @@ class RequestRateLimitMiddleware(BaseHTTPMiddleware):
 class ConcurrentRequestLimiterMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
-        self._semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_REQUESTS)
+        self._semaphore = None
 
     async def dispatch(self, request: Request, call_next) -> Response:
         try:
-            # asyncio.Semaphore does not have acquire_nowait(); use locked() to
-            # detect exhaustion, then acquire normally (it will not block because
-            # we only reach acquire() when a slot is free).
+            if self._semaphore is None:
+                self._semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_REQUESTS)
             if self._semaphore.locked():
                 raise AppError(
                     status_code=503,

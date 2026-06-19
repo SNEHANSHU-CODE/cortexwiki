@@ -85,9 +85,13 @@ class AuthService:
             await self.mongo.revoke_refresh_token(token_hash)
             raise AppError(status_code=401, code="refresh_token_expired", message="Refresh token expired.")
 
+        # ATOMIC revocation check
+        revoked = await self.mongo.revoke_refresh_token_if_active(token_hash)
+        if not revoked:
+            raise AppError(status_code=401, code="refresh_token_used", message="Refresh token already used or revoked.")
+
         user = await self.mongo.get_user_by_id(record["user_id"])
         if not user:
-            await self.mongo.revoke_refresh_token(token_hash)
             raise AppError(status_code=401, code="user_not_found", message="Authenticated user no longer exists.")
 
         access_token, jti, access_expires_at = create_access_token(user_id=user["id"], email=user["email"])
@@ -114,12 +118,6 @@ class AuthService:
             except Exception:
                 logger.warning("Failed to clean up new access token after refresh failure for user %s", user["id"])
             raise AppError(status_code=500, code="session_refresh_failed", message="Unable to refresh session. Please try again.") from exc
-
-        # Revoke the old refresh token after the new session is safely stored
-        try:
-            await self.mongo.revoke_refresh_token(token_hash)
-        except Exception:
-            logger.warning("Failed to revoke old refresh token for user %s", user["id"])
 
         await self.mongo.create_agent_log({
             "user_id": user["id"],

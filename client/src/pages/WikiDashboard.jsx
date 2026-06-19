@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
+import NotePrintTemplate from "../components/NotePrintTemplate";
 import MarkdownContent from "../components/MarkdownContent";
 import IngestPanel from "../components/IngestPanel";
 import {
@@ -168,6 +171,31 @@ function WikiCard({ wiki, isActive, onSelect, pendingDeleteId, onRequestDelete, 
 }
 
 function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
+  const printRef = useRef(null);
+  const [isNativePrinting, setIsNativePrinting] = useState(false);
+
+  const handlePrint = async () => {
+    const safeTitle = `${wiki?.name || "Wiki"}-Note`.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const orig = document.title;
+    
+    // Set parent title
+    document.title = safeTitle;
+    setIsNativePrinting(true);
+    
+    // Give React time to render the portal, and browser to register title change
+    await new Promise(r => setTimeout(r, 150));
+    
+    try {
+      window.print();
+    } finally {
+      setIsNativePrinting(false);
+      // Give browser time to close dialog before reverting title
+      setTimeout(() => {
+        document.title = orig || "CortexWiki";
+      }, 500);
+    }
+  };
+
   if (detailStatus === "loading" && !wiki?.master_note) {
     return (
       <div className="cw-note-wrap">
@@ -214,11 +242,28 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
           </div>
         </div>
         {hasNote && (
-          <button type="button" className="ws-btn ws-btn--ghost" style={{ fontSize: "0.8rem" }} onClick={onOpenDrawer}>
-            Full screen
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" className="ws-btn ws-btn--ghost" style={{ fontSize: "0.8rem" }} onClick={handlePrint}>
+              Download PDF
+            </button>
+            <button type="button" className="ws-btn ws-btn--ghost" style={{ fontSize: "0.8rem" }} onClick={onOpenDrawer}>
+              Full screen
+            </button>
+          </div>
         )}
       </div>
+
+      {hasNote && isNativePrinting && createPortal(
+        <div className="native-print-overlay">
+          <NotePrintTemplate 
+            ref={printRef} 
+            title={wiki?.name} 
+            content={formattedNote} 
+            date={wiki?.updated_at} 
+          />
+        </div>,
+        document.body
+      )}
 
       <div className="cw-note-content">
         {hasNote ? (

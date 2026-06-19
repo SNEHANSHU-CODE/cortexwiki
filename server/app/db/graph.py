@@ -91,6 +91,10 @@ class GraphManager:
         key = (user_id, wiki_id)
         for node in nodes:
             self._nodes[key][node["id"]] = {**node, "page_id": page_id, "updated_at": datetime.now(UTC)}
+            
+        # Remove old edges for this page to prevent edge accumulation memory leak
+        self._edges = [e for e in self._edges if not (e.get("user_id") == user_id and e.get("wiki_id") == wiki_id and e.get("page_id") == page_id)]
+        
         for rel in relationships:
             self._edges.append({**rel, "user_id": user_id, "wiki_id": wiki_id, "page_id": page_id, "created_at": datetime.now(UTC)})
 

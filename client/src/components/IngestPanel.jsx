@@ -112,6 +112,12 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
   const prevWikiIdRef = useRef(null);
   const wikiIdRef = useRef(wikiId);
   wikiIdRef.current = wikiId;
+
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
   const dispatch = useDispatch();
   const { items, historyStatus, submitStatus, error, successMessage } =
     useSelector((s) => s.ingest);
@@ -229,49 +235,44 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
     setLocalError(null);
     const startWikiId = wikiId;
     
-    // Process all sources sequentially
     let successCount = 0;
-    const updatedSources = [...pendingSources];
+    const sourcesToProcess = [...pendingSources];
     
-    for (let i = 0; i < updatedSources.length; i++) {
-      if (wikiIdRef.current !== startWikiId) {
-        break;
-      }
+    for (let i = 0; i < sourcesToProcess.length; i++) {
+      if (!isMounted.current || wikiIdRef.current !== startWikiId) break;
       
-      const source = updatedSources[i];
-      source.status = "ingesting";
-      setPendingSources([...updatedSources]);
+      const currentSource = sourcesToProcess[i];
+      
+      setPendingSources((prev) => 
+        prev.map(s => s.id === currentSource.id ? { ...s, status: "ingesting" } : s)
+      );
       
       const action = await dispatch(submitIngestion({
-        sourceType: source.type,
-        url: source.url,
+        sourceType: currentSource.type,
+        url: currentSource.url,
         wikiId: startWikiId,
-        file: source.file
+        file: currentSource.file
       }));
       
-      if (wikiIdRef.current !== startWikiId) {
-        break;
-      }
+      if (!isMounted.current || wikiIdRef.current !== startWikiId) break;
       
-      if (submitIngestion.fulfilled.match(action)) {
-        source.status = "success";
+      const isSuccess = submitIngestion.fulfilled.match(action);
+      if (isSuccess) {
         successCount++;
-        if (action.payload?.id) {
-          setActiveTabId(action.payload.id);
-        }
-      } else {
-        source.status = "failed";
-        source.error = source.type === "pdf"
-          ? (action.payload || "Ingestion failed.")
-          : "Automatic ingest failed. Try fallback method.";
+        if (action.payload?.id) setActiveTabId(action.payload.id);
       }
       
-      setPendingSources([...updatedSources]);
+      setPendingSources((prev) => 
+        prev.map(s => s.id === currentSource.id ? {
+          ...s,
+          status: isSuccess ? "success" : "failed",
+          error: isSuccess ? null : (currentSource.type === "pdf" ? (action.payload || "Ingestion failed.") : "Automatic ingest failed. Try fallback method.")
+        } : s)
+      );
     }
     
-    if (wikiIdRef.current === startWikiId) {
-      // Clear successful sources, keep failed ones
-      setPendingSources(updatedSources.filter((s) => s.status === "failed"));
+    if (isMounted.current && wikiIdRef.current === startWikiId) {
+      setPendingSources((prev) => prev.filter((s) => s.status !== "success"));
       
       if (successCount > 0) {
         onIngestSuccess?.({ count: successCount });

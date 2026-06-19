@@ -4,9 +4,9 @@ import { useDispatch, useSelector } from "react-redux";
 
 import { clearMessages } from "./redux/slices/chatSlice";
 import { clearGraphState } from "./redux/slices/graphSlice";
-import { clearIngestFeedback } from "./redux/slices/ingestSlice";
+import { clearIngestionState } from "./redux/slices/ingestSlice";
 import { clearSession } from "./redux/slices/authSlice";
-import { clearActiveWiki } from "./redux/slices/wikiSlice";
+import { resetWikiState } from "./redux/slices/wikiSlice";
 import { logoutRequest } from "./utils/api";
 
 import { useAuthInitialization } from "./hooks/useAuthInitialization";
@@ -15,6 +15,7 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PageSpinner from "./components/PageSpinner";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import "./App.css";
 
@@ -56,8 +57,8 @@ function AppRouter() {
     } finally {
       dispatch(clearMessages());
       dispatch(clearGraphState());
-      dispatch(clearIngestFeedback());
-      dispatch(clearActiveWiki());
+      dispatch(clearIngestionState());
+      dispatch(resetWikiState());
       dispatch(clearSession());
       setLoggingOut(false);
     }
@@ -94,36 +95,38 @@ function AppRouter() {
       <Navbar {...navProps} />
 
       <main className="app-main" id="main-content">
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <Suspense fallback={null}>
-                <LandingPage />
-              </Suspense>
-            }
-          />
-
-          <Route path="/login" element={<Suspense fallback={<PageSpinner label="Loading..." />}><LoginPage /></Suspense>} />
-          <Route path="/register" element={<Suspense fallback={<PageSpinner label="Loading..." />}><RegisterPage /></Suspense>} />
-
-          <Route path="/privacy" element={<Suspense fallback={<PageSpinner />}><PrivacyPolicy /></Suspense>} />
-          <Route path="/terms" element={<Suspense fallback={<PageSpinner />}><TermsOfService /></Suspense>} />
-          <Route path="/contact" element={<Suspense fallback={<PageSpinner />}><ContactPage /></Suspense>} />
-
-          <Route element={<ProtectedRoute />}>
+        <ErrorBoundary>
+          <Routes>
             <Route
-              path="/wiki"
+              path="/"
               element={
-                <Suspense fallback={<PageSpinner label="Loading workspace..." />}>
-                  <WikiDashboard />
+                <Suspense fallback={null}>
+                  <LandingPage />
                 </Suspense>
               }
             />
-          </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route path="/login" element={<Suspense fallback={<PageSpinner label="Loading..." />}><LoginPage /></Suspense>} />
+            <Route path="/register" element={<Suspense fallback={<PageSpinner label="Loading..." />}><RegisterPage /></Suspense>} />
+
+            <Route path="/privacy" element={<Suspense fallback={<PageSpinner />}><PrivacyPolicy /></Suspense>} />
+            <Route path="/terms" element={<Suspense fallback={<PageSpinner />}><TermsOfService /></Suspense>} />
+            <Route path="/contact" element={<Suspense fallback={<PageSpinner />}><ContactPage /></Suspense>} />
+
+            <Route element={<ProtectedRoute />}>
+              <Route
+                path="/wiki"
+                element={
+                  <Suspense fallback={<PageSpinner label="Loading workspace..." />}>
+                    <WikiDashboard />
+                  </Suspense>
+                }
+              />
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
 
       {showFooter && <Footer />}
@@ -144,10 +147,7 @@ function App({ onReady }) {
 
   useEffect(() => {
     if (isInitialized) {
-      const timer = setTimeout(() => {
-        onReady?.();
-      }, 2000);
-      return () => clearTimeout(timer);
+      onReady?.();
     }
   }, [isInitialized, onReady]);
 

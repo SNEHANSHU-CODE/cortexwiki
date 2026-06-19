@@ -30,7 +30,7 @@ const storage =
 const authPersistConfig = {
   key: "auth",
   storage,
-  blacklist: ["initialized", "status", "error"],
+  blacklist: ["initialized", "status", "error", "accessToken", "refreshToken", "accessTokenExpiresAt"],
 };
 
 const chatPersistConfig = {
@@ -62,6 +62,7 @@ export const store = configureStore({
       serializableCheck: {
         ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
         ignoredPaths: ["auth.accessTokenExpiresAt"],
+        ignoredActionPaths: ["meta.arg.file"],
       },
     }),
 });

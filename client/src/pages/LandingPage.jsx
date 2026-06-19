@@ -11,6 +11,8 @@ function Counter({ target, suffix = "" }) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    
+    let rafId;
     const obs = new IntersectionObserver(([entry]) => {
       if (!entry.isIntersecting) return;
       obs.disconnect();
@@ -19,12 +21,19 @@ function Counter({ target, suffix = "" }) {
       const tick = () => {
         start = Math.min(start + step, target);
         setValue(Math.floor(start));
-        if (start < target) requestAnimationFrame(tick);
+        if (start < target) {
+          rafId = requestAnimationFrame(tick);
+        }
       };
-      requestAnimationFrame(tick);
+      rafId = requestAnimationFrame(tick);
     }, { threshold: 0.5 });
+    
     obs.observe(el);
-    return () => obs.disconnect();
+    
+    return () => {
+      obs.disconnect();
+      if (rafId) cancelAnimationFrame(rafId);
+    };
   }, [target]);
   return <span ref={ref}>{value}{suffix}</span>;
 }

@@ -4,11 +4,14 @@ import { buildErrorMessage } from "../../utils/sliceUtils";
 
 export const requestGraph = createAsyncThunk(
   "graph/requestGraph",
-  async ({ wikiId, topic = "" }, { rejectWithValue }) => {
+  async ({ wikiId, topic = "" }, { rejectWithValue, signal }) => {
     try {
-      const graph = await fetchKnowledgeGraph(wikiId, topic);
+      const graph = await fetchKnowledgeGraph(wikiId, topic, { signal });
       return { topic, graph };
-    } catch (e) { return rejectWithValue(buildErrorMessage(e, "Unable to load the knowledge graph.")); }
+    } catch (e) {
+      if (e.name === 'AbortError' || e.code === 'ERR_CANCELED') throw e;
+      return rejectWithValue(buildErrorMessage(e, "Unable to load the knowledge graph.")); 
+    }
   },
 );
 
