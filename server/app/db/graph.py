@@ -58,7 +58,7 @@ class GraphManager:
             UNWIND $nodes AS node
             MERGE (c:Concept {user_id: $user_id, wiki_id: $wiki_id, name: node.id})
             SET c.updated_at = datetime(),
-                c.page_id    = $page_id,
+                c.page_ids    = CASE WHEN $page_id IN coalesce(c.page_ids, []) THEN coalesce(c.page_ids, []) ELSE coalesce(c.page_ids, []) + [$page_id] END,
                 c.type        = node.type,
                 c.description = node.description,
                 c.importance  = node.importance,
@@ -90,7 +90,9 @@ class GraphManager:
 
         key = (user_id, wiki_id)
         for node in nodes:
-            self._nodes[key][node["id"]] = {**node, "page_id": page_id, "updated_at": datetime.now(UTC)}
+            existing_page_ids = self._nodes[key].get(node["id"], {}).get("page_ids", [])
+            page_ids = existing_page_ids if page_id in existing_page_ids else existing_page_ids + [page_id]
+            self._nodes[key][node["id"]] = {**node, "page_ids": page_ids, "updated_at": datetime.now(UTC)}
             
         # Remove old edges for this page to prevent edge accumulation memory leak
         self._edges = [e for e in self._edges if not (e.get("user_id") == user_id and e.get("wiki_id") == wiki_id and e.get("page_id") == page_id)]
@@ -216,7 +218,7 @@ class GraphManager:
             """
             orphan_cypher = """
             MATCH (c:Concept {user_id: $user_id, wiki_id: $wiki_id})
-            WHERE NOT (c)-[:RELATED_TO]-()
+            WHERE NOT (c)-[:RELATED_TO {user_id: $user_id, wiki_id: $wiki_id}]-()
             DELETE c
             """
             async with self.driver.session() as session:

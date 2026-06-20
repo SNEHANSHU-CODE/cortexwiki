@@ -1,7 +1,7 @@
 from functools import cached_property, lru_cache
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     FRONTEND_ORIGINS: str = "http://localhost:5173"
 
     # Auth
-    SECRET_KEY: str = "change-me-in-production-with-at-least-32-characters"
+    SECRET_KEY: str = Field(...)
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
 
     # Gemini — fallback LLM + embeddings
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_MODEL: str = "gemini-1.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
     # Supadata — YouTube transcript primary (bypasses datacenter IP blocks)
@@ -77,6 +77,20 @@ class Settings(BaseSettings):
     # ScraperAPI — YouTube transcript fallback proxy
     SCRAPERAPI_KEY: str | None = None
     SCRAPERAPI_PROXY_URL: str = "http://proxy.scraperapi.com:8001"
+
+    # Dynamic LLM Routing Preferences
+    LLM_PROVIDER_INGESTION: str = "gemini"
+    LLM_PROVIDER_CHAT: str = "groq"
+    LLM_PROVIDER_AUDIO: str = "groq"
+
+    # LLM Token Limits (Safeguards - currently suggestive, not strictly enforced)
+    LLM_MAX_INPUT_TOKENS_INGESTION: int = 40000
+    LLM_MAX_INPUT_TOKENS_CHAT: int = 512
+    LLM_MAX_OUTPUT_TOKENS: int = 8192
+
+    # LLM Fallback Token Limits (When primary fails and routes to secondary)
+    LLM_FALLBACK_MAX_INPUT_TOKENS_INGESTION: int = 3096
+    LLM_FALLBACK_MAX_OUTPUT_TOKENS: int = 1536
 
     # LangSmith Observability Tracing
     LANGSMITH_TRACING: bool = False
@@ -141,25 +155,25 @@ class Settings(BaseSettings):
                 return False
         return bool(value)
 
-    @cached_property
+    @property
     def frontend_origins_list(self) -> list[str]:
         """Parse FRONTEND_ORIGINS string into a list — used by CORS and Socket.io."""
         if not self.FRONTEND_ORIGINS:
             return ["http://localhost:5173"]
         return [o.strip().rstrip("/") for o in self.FRONTEND_ORIGINS.split(",") if o.strip()]
 
-    @cached_property
+    @property
     def scraperapi_proxy_url(self) -> str | None:
         """ScraperAPI residential proxy URL for youtube-transcript-api fallback."""
         if not self.SCRAPERAPI_KEY:
             return None
         return f"http://scraperapi:{self.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001"
 
-    @cached_property
+    @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
 
-    @cached_property
+    @property
     def base_url(self) -> str:
         host = "localhost" if self.HOST == "0.0.0.0" else self.HOST
         return f"http://{host}:{self.PORT}"

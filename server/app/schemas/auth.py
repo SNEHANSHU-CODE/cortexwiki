@@ -19,6 +19,7 @@ class AuthTokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_at: datetime
     refresh_token: str
+    refresh_token_expires_at: datetime
     user: UserResponse
 
 
@@ -41,4 +42,4 @@ class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(max_length=128)

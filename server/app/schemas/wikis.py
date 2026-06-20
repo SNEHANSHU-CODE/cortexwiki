@@ -59,8 +59,22 @@ class WikiResponse(BaseModel):
     last_ingested_at: datetime | None = None
 
 
+class WikiSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    user_id: str
+    name: str
+    description: str
+    master_note_excerpt: str = ""
+    source_count: int
+    created_at: datetime
+    updated_at: datetime
+    last_ingested_at: datetime | None = None
+
+
 class WikiListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    wikis: list[WikiResponse]
+    wikis: list[WikiSummaryResponse]
     total: int

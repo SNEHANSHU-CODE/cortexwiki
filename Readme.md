@@ -83,7 +83,7 @@ Orchestrated by **LangGraph** — typed state graph with conditional edges. The 
 
 **Neo4j** — concept graph. MongoDB stores documents; Neo4j stores relationships. Each database does what it's designed for.
 
-**LLM Strategy** — Groq (`llama-3.1-8b-instant`) as primary for generation and streaming. Gemini (`gemini-1.5-flash`) as fallback for generation and sole provider for embeddings (Groq has no embedding API).
+**LLM Strategy** — Groq (`llama-3.1-8b-instant`) as primary for generation and streaming. Gemini (`gemini-3.5-flash`) as fallback for generation and sole provider for embeddings (Groq has no embedding API).
 
 **Socket.io** — real-time token streaming. Falls back to HTTP `POST /api/query` automatically if WebSocket fails. Auth validated on connect via Bearer token.
 

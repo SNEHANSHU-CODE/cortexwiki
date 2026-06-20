@@ -89,24 +89,29 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         for page in wiki_pages
     ]
     graph_context = [
-        f'{item["source"]} {item["relationship"]} {item["target"]}'
+        f'{item.get("source", "")} {item.get("relationship", "")} {item.get("target", "")}'
         for item in related_concepts
     ]
 
     if settings_has_llm():
+        prompt_content = (
+            f"Question: <user_question>{payload.question}</user_question>\n\n"
+            f"Knowledge base pages:\n{context_blocks}\n\n"
+            f"Graph relationships:\n{graph_context}\n\n"
+            "Write a concise, grounded answer."
+        )
+        # Approximate tokens to characters (1 token ~= 4 chars)
+        char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
+        
         answer = await llm.generate_text(
             system_instruction=(
                 "You are CortexWiki. Answer only from the provided knowledge base context. "
                 "If the context is insufficient, say so plainly. Do not invent facts."
             ),
-            prompt=(
-                f"Question: {payload.question}\n\n"
-                f"Knowledge base pages:\n{context_blocks}\n\n"
-                f"Graph relationships:\n{graph_context}\n\n"
-                "Write a concise, grounded answer."
-            ),
+            prompt=prompt_content[:char_limit],
             temperature=0.2,
-            max_output_tokens=360,
+            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
+            primary_provider=settings.LLM_PROVIDER_CHAT,
         )
     else:
         answer = _build_fallback_answer(wiki_pages=wiki_pages, graph_context=graph_context)
@@ -120,7 +125,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         )
         for page in wiki_pages
     ]
-    confidence = round(min(0.96, max(0.18, 0.4 + (0.1 * len(wiki_pages)) + (0.03 * len(related_concepts)))), 2)
+    confidence = round(min(0.96, max([p.get('score', 0.18) for p in wiki_pages], default=0.18)), 2)
     debug = (
         {
             "wiki_results": [page.get("title", "Untitled Source") for page in wiki_pages],

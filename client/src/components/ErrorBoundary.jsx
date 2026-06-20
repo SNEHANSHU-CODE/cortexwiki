@@ -14,6 +14,10 @@ class ErrorBoundary extends React.Component {
     console.error("ErrorBoundary caught an error", error, errorInfo);
   }
 
+  resetError = () => {
+    this.setState({ hasError: false, error: null });
+  }
+
   render() {
     if (this.state.hasError) {
       return (
@@ -24,8 +28,16 @@ class ErrorBoundary extends React.Component {
             type="button" 
             className="ws-btn ws-btn--primary" 
             onClick={() => window.location.reload()}
+            style={{ marginRight: "0.5rem" }}
           >
             Reload Page
+          </button>
+          <button 
+            type="button" 
+            className="ws-btn ws-btn--ghost" 
+            onClick={this.resetError}
+          >
+            Retry
           </button>
         </div>
       );

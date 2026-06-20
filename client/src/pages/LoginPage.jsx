@@ -51,10 +51,6 @@ function LoginPage() {
       dispatch(setAuthError("Password is required."));
       return;
     }
-    if (form.password.length < 8) {
-      dispatch(setAuthError("Password must be at least 8 characters long."));
-      return;
-    }
 
     setSubmitting(true);
     dispatch(setStatus("loading"));
@@ -167,7 +163,6 @@ function LoginPage() {
                 autoComplete="current-password"
                 placeholder="••••••••"
                 disabled={submitting}
-                minLength={8}
                 required
               />
             </div>

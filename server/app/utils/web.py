@@ -198,8 +198,17 @@ async def fetch_youtube_content(url: str) -> dict:
     transcript: str | None = None
     last_error: Exception | None = None
 
-    # 1. Try Supadata (primary)
-    if settings.SUPADATA_API_KEY:
+    # 1. Try Groq Whisper (primary)
+    try:
+        logger.info(f"Attempting to fetch transcript for video {video_id} via Groq Whisper API...")
+        transcript = await _fetch_transcript_whisper_fallback(video_id)
+        logger.info(f"Successfully fetched transcript via Groq Whisper for video {video_id}.")
+    except Exception as exc:
+        logger.warning(f"Groq Whisper transcription failed for video {video_id}: {exc}")
+        last_error = exc
+
+    # 2. Try Supadata (fallback)
+    if transcript is None and settings.SUPADATA_API_KEY:
         try:
             logger.info(f"Attempting to fetch transcript for video {video_id} via Supadata...")
             transcript = await _fetch_transcript_supadata(video_id)
@@ -208,7 +217,7 @@ async def fetch_youtube_content(url: str) -> dict:
             logger.warning(f"Supadata transcript fetch failed for video {video_id}: {exc}")
             last_error = exc
 
-    # 2. Try ScraperAPI proxy fallback
+    # 3. Fallback: ScraperAPI proxy
     if transcript is None and settings.SCRAPERAPI_KEY:
         try:
             logger.info(f"Attempting to fetch transcript for video {video_id} via ScraperAPI...")
@@ -218,20 +227,11 @@ async def fetch_youtube_content(url: str) -> dict:
             logger.warning(f"ScraperAPI transcript fetch failed for video {video_id}: {exc}")
             last_error = exc
 
-    # 3. Fallback: yt-dlp + Groq Whisper
-    if transcript is None:
-        logger.info(f"All proxy methods failed or were not configured for video {video_id}. Triggering Whisper fallback...")
-        try:
-            transcript = await _fetch_transcript_whisper_fallback(video_id)
-        except Exception as exc:
-            logger.exception(f"Whisper fallback transcription failed for video {video_id}")
-            last_error = exc
-
     if transcript is None:
         raise AppError(
             status_code=400,
             code="youtube_transcript_unavailable",
-            message="Unable to fetch YouTube transcript. Both proxies and Whisper fallback failed.",
+            message="Unable to fetch YouTube transcript. Whisper, Supadata, and ScraperAPI all failed.",
         ) from last_error
 
     # Fetch video title from YouTube page (best-effort)

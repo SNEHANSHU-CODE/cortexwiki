@@ -10,6 +10,21 @@ from app.utils.logging import get_logger
 
 logger = get_logger("core.redis")
 
+class ManagedWikiLock:
+    def __init__(self, parent: "RedisTokenStore", wiki_id: str):
+        self._parent = parent
+        self._wiki_id = wiki_id
+        self._lock = asyncio.Lock()
+        self._waiters = 0
+
+    async def __aenter__(self):
+        await self._lock.acquire()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self._lock.release()
+        await self._parent.release_wiki_ingest_lock(self._wiki_id)
+
 
 class RedisTokenStore:
     def __init__(self) -> None:
@@ -18,7 +33,7 @@ class RedisTokenStore:
         self._memory_tokens: dict[str, tuple[dict, datetime]] = {}
         self._memory_user_index: dict[str, set[str]] = {}
         self._lock = asyncio.Lock()
-        self._wiki_ingest_locks: dict[str, asyncio.Lock] = {}  # per-wiki ingestion lock
+        self._wiki_ingest_locks: dict[str, ManagedWikiLock | asyncio.Lock] = {}  # per-wiki ingestion lock
 
     async def connect(self) -> None:
         if not settings.REDIS_URL:
@@ -145,12 +160,23 @@ class RedisTokenStore:
             for jti in token_ids:
                 self._memory_tokens.pop(jti, None)
 
-    async def acquire_wiki_ingest_lock(self, wiki_id: str) -> asyncio.Lock:
+    async def acquire_wiki_ingest_lock(self, wiki_id: str):
         """Acquire a per-wiki lock to prevent concurrent ingestion race conditions."""
         async with self._lock:
             if wiki_id not in self._wiki_ingest_locks:
-                self._wiki_ingest_locks[wiki_id] = asyncio.Lock()
-            return self._wiki_ingest_locks[wiki_id]
+                self._wiki_ingest_locks[wiki_id] = ManagedWikiLock(self, wiki_id)
+            lock = self._wiki_ingest_locks[wiki_id]
+            if isinstance(lock, ManagedWikiLock):
+                lock._waiters += 1
+            return lock
+
+    async def release_wiki_ingest_lock(self, wiki_id: str) -> None:
+        async with self._lock:
+            lock = self._wiki_ingest_locks.get(wiki_id)
+            if isinstance(lock, ManagedWikiLock):
+                lock._waiters -= 1
+                if lock._waiters <= 0 and not lock._lock.locked():
+                    self._wiki_ingest_locks.pop(wiki_id, None)
 
 
 _redis_store = RedisTokenStore()

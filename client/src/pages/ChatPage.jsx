@@ -89,6 +89,16 @@ function ChatPage({ wikiId }) {
     }
   }, [accessToken]);
 
+  // Stop streams on logout
+  useEffect(() => {
+    const handleLogout = () => {
+      abortRef.current?.abort();
+      sessionRef.current?.disconnect();
+    };
+    window.addEventListener("app-logout", handleLogout);
+    return () => window.removeEventListener("app-logout", handleLogout);
+  }, []);
+
   // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({

@@ -1,7 +1,7 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import GraphViewer from "../components/GraphViewer";
-import { clearGraphError, requestGraph, selectGraphNode } from "../redux/slices/graphSlice";
+import { clearGraphState, clearGraphError, requestGraph, selectGraphNode } from "../redux/slices/graphSlice";
 import "./styles/Graph.css";
 
 function edgeNodeId(ep) {
@@ -74,11 +74,11 @@ function NodeDetails({ node, relationships, connectedNodes, onSelectNode }) {
               Relationships · {relationships.length}
             </span>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              {relationships.map((rel) => {
+              {relationships.map((rel, index) => {
                 const src = edgeNodeId(rel.source);
                 const tgt = edgeNodeId(rel.target);
                 return (
-                  <div key={`${src}→${tgt}:${rel.label ?? ""}`} className="ws-rel-item">
+                  <div key={`${src}→${tgt}:${rel.label ?? ""}-${index}`} className="ws-rel-item">
                     <strong>{rel.label || "related"}</strong>
                     <span>{src} → {tgt}</span>
                   </div>
@@ -130,6 +130,7 @@ function GraphPage({ wikiId }) {
   // Load graph when wikiId changes
   useEffect(() => {
     if (!wikiId) return;
+    dispatch(clearGraphState());
     void dispatch(requestGraph({ wikiId, topic: "" }));
   }, [dispatch, wikiId]);
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, HttpUrl
+from pydantic import BaseModel, ConfigDict, HttpUrl, Field
 
 
 class YouTubeIngestRequest(BaseModel):
@@ -48,5 +48,5 @@ class FallbackIngestRequest(BaseModel):
 
     url: HttpUrl
     wiki_id: str
-    content: str
+    content: str = Field(..., max_length=500000)
     type: str  # "youtube" or "web"

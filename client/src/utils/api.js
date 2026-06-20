@@ -67,11 +67,7 @@ export async function ingestPDF(file, wikiId) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("wiki_id", wikiId);
-  const { data } = await httpClient.post("/api/ingest/pdf", formData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
-  });
+  const { data } = await httpClient.post("/api/ingest/pdf", formData);
   return data;
 }
 

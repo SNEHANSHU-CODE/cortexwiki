@@ -15,6 +15,7 @@ def _auth_token_response(session: dict) -> AuthTokenResponse:
         access_token=session["access_token"],
         expires_at=session["access_token_expires_at"],
         refresh_token=session["refresh_token"],
+        refresh_token_expires_at=session["refresh_token_expires_at"],
         user=UserResponse(**session["user"]),
     )
 
@@ -67,10 +68,10 @@ async def refresh(request: Request, response: Response):
 
 
 @router.post("/logout", response_model=LogoutResponse)
-async def logout(request: Request, response: Response):
+async def logout(request: Request, response: Response, current_user: dict = Depends(get_current_user)):
     auth_service = get_auth_service()
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE_NAME)
-    user = getattr(request.state, "user", None)
+    user = current_user
     await auth_service.logout_user(
         user_id=user["id"] if user else None,
         access_token_jti=getattr(request.state, "access_token_jti", None),

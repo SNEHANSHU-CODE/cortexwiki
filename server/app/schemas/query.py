@@ -11,7 +11,6 @@ class QueryRequest(BaseModel):
     # Restrict length to avoid abuse and injection.
     wiki_id: str = Field(..., pattern=r"^[a-zA-Z0-9_-]{1,64}$", max_length=64)
     debug: bool = False
-    allow_internet: bool = False
 
 
 class QuerySource(BaseModel):

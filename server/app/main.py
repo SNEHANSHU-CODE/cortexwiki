@@ -13,19 +13,9 @@ from starlette.responses import Response
 
 from app.api.routes import auth, graph, ingest, query, wikis
 from app.core.config import settings
-import os
 
-# Propagate LangSmith configuration to environment variables for SDK instrumentation.
-# Propagates to both LANGCHAIN_* and LANGSMITH_* prefixes to support all SDK versions natively.
-if settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY:
-    os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
-    os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
-    os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
-    os.environ["LANGSMITH_TRACING"] = "true"
-    os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
-    os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
-    os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
+
+
 
 from app.core.database import close_datastores, initialize_datastores
 from app.core.redis import close_redis, get_redis_store, initialize_redis
@@ -125,6 +115,7 @@ async def connect(sid, environ, auth):
             raise socketio.exceptions.ConnectionRefusedError("Server is busy. Try again later.")
         _active_socket_connections += 1
 
+    connected = False
     try:
         token = (auth or {}).get("token", "")
         if not token:
@@ -150,12 +141,12 @@ async def connect(sid, environ, auth):
         })
         logger.info("Socket connected: sid=%s, user_id=%s, active_connections=%d", 
                     sid, user.get("id"), _active_socket_connections)
-    except Exception:
-        async with _socket_connection_lock:
-            _active_socket_connections -= 1
-        raise
-    logger.info("Socket connected: sid=%s, user_id=%s, active_connections=%d", 
-                sid, user.get("id"), _active_socket_connections)
+        connected = True
+    finally:
+        if not connected:
+            async with _socket_connection_lock:
+                _active_socket_connections -= 1
+                _socket_connection_map.pop(sid, None)
 
 
 @sio.event
@@ -169,7 +160,7 @@ async def disconnect(sid):
     logger.info("Socket disconnected: sid=%s, active_connections=%d", sid, _active_socket_connections)
 
 
-@sio.on("ping")
+@sio.on("app_ping")
 async def handle_ping(sid, data=None):
     """
     BUG FIX #20: Handle heartbeat/ping to keep connection alive and verify token.
@@ -181,7 +172,7 @@ async def handle_ping(sid, data=None):
         return
     
     # Send pong response
-    await sio.emit("pong", {"timestamp": int(__import__('time').time() * 1000)}, to=sid)
+    await sio.emit("app_pong", {"timestamp": int(__import__('time').time() * 1000)}, to=sid)
 
 
 async def _validate_socket_token(sid: str) -> dict | None:
@@ -208,7 +199,15 @@ async def _validate_socket_token(sid: str) -> dict | None:
         if not token_record:
             logger.warning("Socket validation: token not in Redis (revoked/expired) sid=%s, user_id=%s", sid, user.get("id"))
             return None
-        return user
+            
+        # Ensure user still exists in DB
+        from app.db.mongo import get_mongo_manager
+        db_user = await get_mongo_manager().get_user_by_id(user.get("id"))
+        if not db_user:
+            logger.warning("Socket validation: user not found user_id=%s", user.get("id"))
+            return None
+            
+        return db_user
     except Exception as exc:
         logger.warning("Socket validation failed: %s, sid=%s", str(exc), sid)
         return None
@@ -422,13 +421,13 @@ async def handle_query(sid, data):
                     "If the context is insufficient, say so plainly. Do not invent facts."
                 ),
                 prompt=(
-                    f"Question: {question}\n\n"
-                    f"Knowledge base pages:\n{context_blocks}\n\n"
-                    f"Graph relationships:\n{graph_context}\n\n"
+                    f"<user_question>{question}</user_question>\n\n"
+                    f"<context>\nKnowledge base pages:\n{context_blocks}\n\n"
+                    f"Graph relationships:\n{graph_context}\n</context>\n\n"
                     "Write a concise, grounded answer."
                 ),
                 temperature=0.2,
-                max_output_tokens=420,
+                max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
             ):
                 if chunk:
                     answer_chunks.append(chunk)
@@ -536,7 +535,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
             except AppError as exc:
                 logger.warning("Bearer token error: %s", exc.message)
-                request.state.auth_error = exc
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": {"code": exc.code, "message": exc.message}},
+                )
             return await call_next(request)
 
         # Try access token cookie (for browser requests)
@@ -582,11 +585,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
 
 async def _get_client_ip(request: Request) -> str:
+    if request.client and request.client.host:
+        return request.client.host
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
     return "unknown"
 
 
@@ -677,19 +680,18 @@ class RequestRateLimitMiddleware(BaseHTTPMiddleware):
 class ConcurrentRequestLimiterMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
-        self._semaphore = None
+        self._semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_REQUESTS)
 
     async def dispatch(self, request: Request, call_next) -> Response:
         try:
-            if self._semaphore is None:
-                self._semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_REQUESTS)
-            if self._semaphore.locked():
+            try:
+                await asyncio.wait_for(self._semaphore.acquire(), timeout=0.01)
+            except asyncio.TimeoutError:
                 raise AppError(
                     status_code=503,
                     code="server_busy",
                     message="Server is handling too many requests. Please retry later.",
                 )
-            await self._semaphore.acquire()
             try:
                 return await call_next(request)
             finally:
@@ -734,20 +736,14 @@ def create_fastapi_app() -> FastAPI:
 
     app.middleware("http")(request_context_middleware)
 
-    # Validate JSON content-type for API endpoints
-    from app.middleware.content_type import validate_content_type
-    @app.middleware("http")
-    async def content_type_middleware(request, call_next):
-        res = await validate_content_type(request)
-        if res is not None:
-            return res
-        return await call_next(request)
+    from app.middleware.content_type import ContentTypeMiddleware
 
     # Middleware is applied in reverse-registration order (last added = outermost).
     # Desired runtime order: CORS → ConcurrentRequestLimiter → Authentication → RequestRateLimit → route
     # So we register in the opposite sequence:
     app.add_middleware(RequestRateLimitMiddleware)           # runs last  (needs request.state.user set first)
     app.add_middleware(AuthenticationMiddleware)             # runs 2nd   (sets request.state.user)
+    app.add_middleware(ContentTypeMiddleware)                # runs before Authentication
     app.add_middleware(ConcurrentRequestLimiterMiddleware)   # runs 1st after CORS
     app.add_middleware(
         CORSMiddleware,

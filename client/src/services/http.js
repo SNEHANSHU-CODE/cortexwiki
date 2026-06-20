@@ -40,7 +40,6 @@ const refreshClient = axios.create({
 let boundStore = null;
 let refreshPromise = null;
 let lastRefreshAttempt = 0;  // BUG FIX #2: Track refresh timestamp to prevent loops
-let isRefreshing = false;  // BUG FIX #14: Global flag to prevent concurrent refresh attempts
 const REFRESH_COOLDOWN_MS = 2000;  // BUG FIX #2: Cooldown between refresh attempts
 
 export function initializeHttpClient(store) {
@@ -78,11 +77,8 @@ export function initializeHttpClient(store) {
         
         // BUG FIX #14: Prevent concurrent refresh attempts by multiple requests
         // If already refreshing, wait for the existing refresh to complete
-        if (isRefreshing) {
-          // Wait for current refresh to complete
-          if (refreshPromise) {
-            await refreshPromise;
-          }
+        if (refreshPromise) {
+          await refreshPromise;
           // Retry original request with new token
           return await httpClient(originalRequest);
         }
@@ -94,9 +90,6 @@ export function initializeHttpClient(store) {
           throw error;  // Give up after 2 retries
         }
         originalRequest._retryCount = retryCount;
-        
-        // Mark as refreshing
-        isRefreshing = true;
         
         // BUG FIX #2: Add cooldown between refresh attempts to prevent thundering herd
         const now = Date.now();
@@ -116,9 +109,6 @@ export function initializeHttpClient(store) {
         boundStore.dispatch(clearSession());
         boundStore.dispatch(finishHydration());
         throw refreshError;
-      } finally {
-        // BUG FIX #14: Clear refreshing flag after attempt completes
-        isRefreshing = false;
       }
     },
   );

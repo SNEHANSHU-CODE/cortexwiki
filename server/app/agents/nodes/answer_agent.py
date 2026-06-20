@@ -104,7 +104,7 @@ class AnswerAgent:
             system_instruction=_SYSTEM_INSTRUCTION,
             prompt=self._build_prompt(state),
             temperature=0.2,
-            max_output_tokens=420,
+            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
         )
         return clean_text(answer) or "I found evidence, but not enough clear detail to answer confidently."
 
@@ -119,7 +119,7 @@ class AnswerAgent:
             system_instruction=_SYSTEM_INSTRUCTION,
             prompt=self._build_prompt(state),
             temperature=0.2,
-            max_output_tokens=420,
+            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
         ):
             if chunk:
                 yield chunk
@@ -147,13 +147,17 @@ class AnswerAgent:
             for result in state.get("internet_results", [])
         ]
 
-        return (
+        prompt = (
             f"Question: {state['question']}\n\n"
             f"Internal knowledge base evidence: {wiki_context}\n\n"
             f"Graph relationships: {graph_context}\n\n"
             f"Internet evidence: {internet_context}\n\n"
             "Produce a concise answer with grounded claims only."
         )
+        
+        # Approximate tokens to characters (1 token ~= 4 chars)
+        char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
+        return prompt[:char_limit]
 
     def _derive_strategy(self, state: dict) -> str:
         has_internet = bool(state.get("internet_results"))

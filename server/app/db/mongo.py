@@ -228,47 +228,31 @@ class MongoManager:
         
         if self.database is not None:
             try:
-                res = await self.database.users.update_one(
-                    {"_id": ObjectId(user_id), "token_usage_date": today_str},
-                    {
-                        "$inc": {
-                            "input_tokens_used": input_tokens,
-                            "output_tokens_used": output_tokens,
-                            "daily_input_tokens_used": input_tokens,
-                            "daily_output_tokens_used": output_tokens,
-                        },
-                        "$set": {"updated_at": now}
-                    }
-                )
-                if res.matched_count == 0:
-                    res_rollover = await self.database.users.update_one(
-                        {"_id": ObjectId(user_id), "token_usage_date": {"$ne": today_str}},
+                await self.database.users.update_one(
+                    {"_id": ObjectId(user_id)},
+                    [
                         {
-                            "$inc": {
-                                "input_tokens_used": input_tokens,
-                                "output_tokens_used": output_tokens
-                            },
                             "$set": {
                                 "token_usage_date": today_str,
-                                "daily_input_tokens_used": input_tokens,
-                                "daily_output_tokens_used": output_tokens,
+                                "daily_input_tokens_used": {
+                                    "$add": [
+                                        {"$cond": [{"$ne": ["$token_usage_date", today_str]}, 0, {"$ifNull": ["$daily_input_tokens_used", 0]}]},
+                                        input_tokens
+                                    ]
+                                },
+                                "daily_output_tokens_used": {
+                                    "$add": [
+                                        {"$cond": [{"$ne": ["$token_usage_date", today_str]}, 0, {"$ifNull": ["$daily_output_tokens_used", 0]}]},
+                                        output_tokens
+                                    ]
+                                },
+                                "input_tokens_used": {"$add": [{"$ifNull": ["$input_tokens_used", 0]}, input_tokens]},
+                                "output_tokens_used": {"$add": [{"$ifNull": ["$output_tokens_used", 0]}, output_tokens]},
                                 "updated_at": now
                             }
                         }
-                    )
-                    if res_rollover.matched_count == 0:
-                        await self.database.users.update_one(
-                            {"_id": ObjectId(user_id), "token_usage_date": today_str},
-                            {
-                                "$inc": {
-                                    "input_tokens_used": input_tokens,
-                                    "output_tokens_used": output_tokens,
-                                    "daily_input_tokens_used": input_tokens,
-                                    "daily_output_tokens_used": output_tokens,
-                                },
-                                "$set": {"updated_at": now}
-                            }
-                        )
+                    ]
+                )
             except Exception:
                 pass
             return
@@ -276,12 +260,20 @@ class MongoManager:
         if user:
             user["input_tokens_used"] = user.get("input_tokens_used", 0) + input_tokens
             user["output_tokens_used"] = user.get("output_tokens_used", 0) + output_tokens
+            if user.get("token_usage_date") != today_str:
+                user["token_usage_date"] = today_str
+                user["daily_input_tokens_used"] = input_tokens
+                user["daily_output_tokens_used"] = output_tokens
+            else:
+                user["daily_input_tokens_used"] = user.get("daily_input_tokens_used", 0) + input_tokens
+                user["daily_output_tokens_used"] = user.get("daily_output_tokens_used", 0) + output_tokens
             user["updated_at"] = now
 
     # ── Refresh Tokens ────────────────────────────────────────────────────────
 
     async def save_refresh_token(self, payload: dict) -> dict:
-        document = {**payload, "created_at": datetime.now(UTC), "updated_at": datetime.now(UTC), "revoked": False}
+        now = datetime.now(UTC)
+        document = {**payload, "created_at": now, "updated_at": now, "revoked": False}
         if self.database is not None:
             result = await self.database.refresh_tokens.insert_one(document)
             stored = await self.database.refresh_tokens.find_one({"_id": result.inserted_id})
@@ -310,16 +302,19 @@ class MongoManager:
                 token["updated_at"] = now
 
     async def revoke_refresh_token_if_active(self, token_hash: str) -> bool:
-        """Atomically revoke a refresh token only if it is currently active. Returns True if successfully revoked."""
+        """Atomically revoke a refresh token only if it is currently active and not expired. Returns True if successfully revoked."""
         now = datetime.now(UTC)
         if self.database is not None:
             res = await self.database.refresh_tokens.update_one(
-                {"token_hash": token_hash, "revoked": False},
+                {"token_hash": token_hash, "revoked": False, "expires_at": {"$gt": now}},
                 {"$set": {"revoked": True, "updated_at": now}}
             )
             return res.modified_count > 0
         for token in self._memory["refresh_tokens"].values():
-            if token["token_hash"] == token_hash and not token["revoked"]:
+            expires_at = token["expires_at"]
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if token["token_hash"] == token_hash and not token["revoked"] and expires_at > now:
                 token["revoked"] = True
                 token["updated_at"] = now
                 return True
@@ -388,13 +383,13 @@ class MongoManager:
             return self._copy(wiki)
         return None
 
-    async def list_wikis(self, user_id: str) -> list[dict]:
+    async def list_wikis(self, user_id: str, limit: int = 100) -> list[dict]:
         if self.database is not None:
             cursor = self.database.wikis.find({"user_id": user_id}).sort("created_at", -1)
-            return [self._normalize(w) for w in await cursor.to_list(length=100)]
+            return [self._normalize(w) for w in await cursor.to_list(length=limit)]
         items = [self._copy(w) for w in self._memory["wikis"].values() if w["user_id"] == user_id]
         items.sort(key=lambda x: x["created_at"], reverse=True)
-        return items
+        return items[:limit]
 
     async def update_wiki(self, wiki_id: str, user_id: str, payload: dict) -> dict | None:
         now = datetime.now(UTC)
@@ -408,14 +403,11 @@ class MongoManager:
         update_fields["updated_at"] = now
         if self.database is not None:
             from bson import ObjectId
-            try:
-                # Atomically apply update and increment optimistic `version` counter
-                await self.database.wikis.update_one(
-                    {"_id": ObjectId(wiki_id), "user_id": user_id},
-                    {"$set": update_fields, "$inc": {"version": 1}},
-                )
-            except Exception:
-                return None
+            # Atomically apply update and increment optimistic `version` counter
+            await self.database.wikis.update_one(
+                {"_id": ObjectId(wiki_id), "user_id": user_id},
+                {"$set": update_fields, "$inc": {"version": 1}},
+            )
             return await self.get_wiki(wiki_id, user_id)
         wiki = self._memory["wikis"].get(wiki_id)
         if wiki and wiki["user_id"] == user_id:
@@ -428,18 +420,20 @@ class MongoManager:
         if self.database is not None:
             from bson import ObjectId
             try:
-                result = await self.database.wikis.delete_one({"_id": ObjectId(wiki_id), "user_id": user_id})
-                if result.deleted_count == 0:
-                    return False
-                # Cascade delete all wiki data
-                await self.database.wiki_pages.delete_many({"wiki_id": wiki_id, "user_id": user_id})
-                await self.database.raw_data.delete_many({"wiki_id": wiki_id, "user_id": user_id})
-                # Also remove agent logs and any other wiki-scoped artifacts
-                try:
-                    await self.database.agent_logs.delete_many({"wiki_id": wiki_id, "user_id": user_id})
-                except Exception:
-                    # Non-fatal: continue even if agent_logs removal fails
-                    logger.debug("Failed to remove agent_logs for wiki_id=%s", wiki_id)
+                async with await self.client.start_session() as session:
+                    async with session.start_transaction():
+                        result = await self.database.wikis.delete_one({"_id": ObjectId(wiki_id), "user_id": user_id}, session=session)
+                        if result.deleted_count == 0:
+                            return False
+                        # Cascade delete all wiki data
+                        await self.database.wiki_pages.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
+                        await self.database.raw_data.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
+                        # Also remove agent logs and any other wiki-scoped artifacts
+                        try:
+                            await self.database.agent_logs.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
+                        except Exception:
+                            # Non-fatal: continue even if agent_logs removal fails
+                            logger.debug("Failed to remove agent_logs for wiki_id=%s", wiki_id)
             except Exception:
                 return False
             return True
@@ -460,9 +454,9 @@ class MongoManager:
         from app.core.config import settings
         
         # Truncate master note if it exceeds max length
-        truncated_note = master_note[:settings.MASTER_NOTE_MAX_LENGTH]
+        truncated_note = master_note
         if len(master_note) > settings.MASTER_NOTE_MAX_LENGTH:
-            truncated_note = truncated_note.rsplit(" ", 1)[0] + "..."  # Clean truncation at word boundary
+            truncated_note = master_note[:settings.MASTER_NOTE_MAX_LENGTH - 3].rsplit(" ", 1)[0] + "..."
         
         now = datetime.now(UTC)
         if self.database is not None:
@@ -602,7 +596,8 @@ class MongoManager:
     # ── Raw Data ──────────────────────────────────────────────────────────────
 
     async def store_raw_data(self, payload: dict) -> dict:
-        document = {**payload, "created_at": datetime.now(UTC), "updated_at": datetime.now(UTC)}
+        now = datetime.now(UTC)
+        document = {**payload, "created_at": now, "updated_at": now}
         if self.database is not None:
             result = await self.database.raw_data.insert_one(document)
             stored = await self.database.raw_data.find_one({"_id": result.inserted_id})
@@ -687,20 +682,20 @@ class MongoManager:
         items.sort(key=lambda item: item["created_at"], reverse=True)
         return items[:limit]
 
-    async def list_recent_ingestions(self, user_id: str, *, wiki_id: str | None = None, limit: int = 20) -> list[dict]:
+    async def list_recent_ingestions(self, user_id: str, *, wiki_id: str | None = None, limit: int = 20, offset: int = 0) -> list[dict]:
         query: dict = {"user_id": user_id}
         wiki_id = self._sanitize_id(wiki_id)
         if wiki_id:
             query["wiki_id"] = wiki_id
         if self.database is not None:
-            cursor = self.database.raw_data.find(query).sort("created_at", -1).limit(limit)
+            cursor = self.database.raw_data.find(query).sort("created_at", -1).skip(offset).limit(limit)
             return [self._normalize(item) for item in await cursor.to_list(length=limit)]
         items = [
             self._copy(item) for item in self._memory["raw_data"].values()
             if item["user_id"] == user_id and (not wiki_id or item.get("wiki_id") == wiki_id)
         ]
         items.sort(key=lambda item: item["created_at"], reverse=True)
-        return items[:limit]
+        return items[offset:offset+limit]
 
     async def search_wiki_pages(
         self,
@@ -730,6 +725,7 @@ class MongoManager:
         return scored[:limit]
 
     async def count_wiki_pages(self, user_id: str, wiki_id: str | None = None) -> int:
+        wiki_id = self._sanitize_id(wiki_id)
         query: dict = {"user_id": user_id}
         if wiki_id:
             query["wiki_id"] = wiki_id

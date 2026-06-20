@@ -9,15 +9,25 @@ import "./styles/MessageBubble.css";
 function CopyButton({ content }) {
   const [copied, setCopied] = useState(false);
   const timerRef            = useRef(null);
+  const isMounted           = useRef(true);
 
-  useEffect(() => () => clearTimeout(timerRef.current), []);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content);
+      if (!isMounted.current) return;
       setCopied(true);
       clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => setCopied(false), 1500);
+      timerRef.current = setTimeout(() => {
+        if (isMounted.current) setCopied(false);
+      }, 1500);
     } catch {
       // Clipboard unavailable — fail silently
     }
@@ -182,9 +192,9 @@ function MessageBubble({ message, onRetry, wikiId }) {
             {/* Sources */}
             {metadata.sources?.length > 0 && (
               <nav className="message-sources" aria-label="Response sources">
-                {metadata.sources.map((src) => (
+                {metadata.sources.map((src, idx) => (
                   <a
-                    key={`${src.url}:${src.title}`}
+                    key={`${src.url}:${src.title}:${idx}`}
                     href={src.url}
                     target="_blank"
                     rel="noreferrer noopener"

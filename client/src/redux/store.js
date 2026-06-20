@@ -8,6 +8,7 @@ import {
   PERSIST,
   PURGE,
   REGISTER,
+  createTransform,
 } from "redux-persist";
 import createWebStorage from "redux-persist/es/storage/createWebStorage";
 import authReducer   from "./slices/authSlice";
@@ -33,10 +34,21 @@ const authPersistConfig = {
   blacklist: ["initialized", "status", "error", "accessToken", "refreshToken", "accessTokenExpiresAt"],
 };
 
+const chatTransform = createTransform(
+  (inboundState, key) => {
+    if (key === "messages" && Array.isArray(inboundState)) {
+      return inboundState.slice(-100); // Truncate messages to prevent localStorage quota errors
+    }
+    return inboundState;
+  },
+  (outboundState) => outboundState
+);
+
 const chatPersistConfig = {
   key: "chat",
   storage,
   blacklist: ["status", "pendingMessageId", "error"],
+  transforms: [chatTransform],
 };
 
 const wikiPersistConfig = {

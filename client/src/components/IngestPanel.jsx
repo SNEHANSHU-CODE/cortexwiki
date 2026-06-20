@@ -133,7 +133,6 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
       return;
     }
 
-    if (!wikiId) return;
     if (prevWikiIdRef.current !== wikiId) {
       prevWikiIdRef.current = wikiId;
       setActiveTabId(null);
@@ -153,7 +152,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
     if (items.length > 0 && !activeTabId) {
       setActiveTabId(items[0].id);
     }
-  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [items, activeTabId]);
 
   // Reset form when source type changes
   useEffect(() => {
@@ -292,7 +291,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
     );
 
     if (submitIngestion.fulfilled.match(action)) {
-      setPendingSources(pendingSources.filter((s) => s.id !== fallbackSource?.id));
+      setPendingSources((prev) => prev.filter((s) => s.id !== fallbackSource?.id));
       if (action.payload?.id) {
         setActiveTabId(action.payload.id);
       }
@@ -453,7 +452,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
                 }
                 value={currentUrl}
                 onChange={(e) => setCurrentUrl(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleAddSource()}
+                onKeyDown={(e) => e.key === "Enter" && handleAddSource()}
                 disabled={isDisabled}
               />
             </div>

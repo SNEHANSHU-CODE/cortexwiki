@@ -50,6 +50,10 @@ function AppRouter() {
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
+    
+    // Stop in-flight streams immediately on logout
+    window.dispatchEvent(new Event("app-logout"));
+
     try {
       await logoutRequest();
     } catch {

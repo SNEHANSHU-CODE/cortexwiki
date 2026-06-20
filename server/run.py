@@ -53,5 +53,5 @@ if __name__ == "__main__":
         port=settings.PORT,
         reload=settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower(),
-        workers=1 if settings.DEBUG else None,
+        workers=1,
     )

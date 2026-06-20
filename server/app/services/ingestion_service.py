@@ -73,13 +73,36 @@ class IngestionService:
                 )
             parsed_url = urlparse(source_url)
             hostname = parsed_url.hostname or ""
-            if hostname in ["localhost", "127.0.0.1", "0.0.0.0"] or hostname.startswith("192.168.") or hostname.startswith("10."):
-                raise AppError(
-                    status_code=400,
-                    code="url_blocked_local",
-                    message="Local network URLs are not allowed.",
-                )
+            import socket
+            import ipaddress
+            try:
+                addr_info = socket.getaddrinfo(hostname, None)
+                for info in addr_info:
+                    ip_str = info[4][0]
+                    ip = ipaddress.ip_address(ip_str)
+                    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+                        raise AppError(
+                            status_code=400,
+                            code="url_blocked_local",
+                            message="Local network URLs are not allowed.",
+                        )
+            except socket.gaierror:
+                pass  # Resolution failure will be handled by the downstream HTTP client
+            except AppError:
+                raise
         
+        # Pre-compute context-independent LLM calls before acquiring the lock
+        summary = await self.llm.summarize(raw_content)
+
+        # Build graph payload
+        concept_nodes, relationships = self.graph_service.build_graph_payload(
+            title=title,
+            summary=summary,
+            content=raw_content,
+        )
+        concepts = [node["id"] for node in concept_nodes]
+        embedding = await self.llm.embed_text(f"{title}\n{summary}\n{raw_content[:4000]}")
+
         # ── ACQUIRE WIKI LOCK ──
         wiki_lock = await self.redis_store.acquire_wiki_ingest_lock(wiki_id)
         
@@ -97,9 +120,6 @@ class IngestionService:
                     "conflicts": [{"type": "duplicate_source", "message": f"This source was already ingested on {existing_page.get('created_at')}"}],
                 }
 
-            # Summarise new source
-            summary = await self.llm.summarize(raw_content)
-
             # Compound master note: merge new summary into existing wiki note
             wiki = await self.mongo.get_wiki(wiki_id, user_id)
             existing_note = wiki.get("master_note", "") if wiki else ""
@@ -109,15 +129,6 @@ class IngestionService:
                 new_title=title,
                 raw_content=raw_content,
             )
-
-            # Build graph payload
-            concept_nodes, relationships = self.graph_service.build_graph_payload(
-                title=title,
-                summary=summary,
-                content=raw_content,
-            )
-            concepts = [node["id"] for node in concept_nodes]
-            embedding = await self.llm.embed_text(f"{title}\n{summary}\n{raw_content[:4000]}")
 
             # Store raw source
             raw_record = await self.mongo.store_raw_data({

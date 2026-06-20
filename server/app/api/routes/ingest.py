@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Response, File, UploadFile, Form, BackgroundTasks
 from bson import ObjectId
 
-from app.api.deps import get_current_user, validate_wiki_id
+from app.api.deps import get_current_user, validate_wiki_id, verify_content_length
 from app.core.redis import get_redis_store
 from app.db.mongo import get_mongo_manager
 from app.schemas.ingest import FallbackIngestRequest, IngestData, IngestHistoryItem, WebIngestRequest, YouTubeIngestRequest
@@ -168,26 +168,11 @@ async def ingest_fallback(
         
     await _validate_wiki(payload.wiki_id, current_user["id"])
     
-    # Generate title using LLM from content
-    llm = get_llm_service()
     from urllib.parse import urlparse
     parsed = urlparse(str(payload.url))
     
-    title = ""
-    try:
-        prompt = (
-            "Generate a short, concise, and descriptive title (under 60 characters) "
-            "for the following document. Do not include quotes or markdown. Just the title text.\n\n"
-            f"{payload.content[:1500]}"
-        )
-        generated_title = await llm.generate_text(prompt=prompt, temperature=0.3, max_output_tokens=30)
-        if generated_title:
-            title = generated_title.strip().replace('"', '')
-    except Exception:
-        pass
-        
-    if not title:
-        title = f"Manual Ingest - {parsed.netloc}"
+    # We removed the LLM title generation to save tokens and prevent hallucination risks
+    title = f"Manual Ingest - {parsed.netloc}"
         
     result = await _ingest_source(
         user_id=current_user["id"],
@@ -206,6 +191,7 @@ async def ingest_pdf(
     wiki_id: str = Form(...),
     current_user: dict = Depends(get_current_user),
     response: Response = None,
+    _content_length: None = Depends(verify_content_length),
 ):
     # Validate wiki_id format
     await validate_wiki_id(wiki_id)
@@ -234,22 +220,32 @@ async def ingest_pdf(
             message="Only PDF files are supported.",
         )
     
-    # Enforce 16MB file size limit before reading the entire file
-    if getattr(file, "size", 0) > 16 * 1024 * 1024:
+    # Enforce 16MB file size limit by reading in chunks
+    MAX_SIZE = 16 * 1024 * 1024
+    if getattr(file, "size", 0) > MAX_SIZE:
         raise AppError(
             status_code=400,
             code="file_too_large",
             message="File size exceeds the 16MB limit.",
         )
     
-    pdf_bytes = await file.read()
+    pdf_bytes_list = []
+    total_size = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > MAX_SIZE:
+            await file.close()
+            raise AppError(
+                status_code=400,
+                code="file_too_large",
+                message="File size exceeds the 16MB limit.",
+            )
+        pdf_bytes_list.append(chunk)
     await file.close()
-    if len(pdf_bytes) > 16 * 1024 * 1024:
-        raise AppError(
-            status_code=400,
-            code="file_too_large",
-            message="File size exceeds the 16MB limit.",
-        )
+    pdf_bytes = b"".join(pdf_bytes_list)
         
     if len(pdf_bytes) == 0:
         raise AppError(
@@ -278,28 +274,14 @@ async def ingest_pdf(
             message=f"Could not extract text from PDF: {str(exc)}",
         )
 
-    # Generate title using LLM
-    llm = get_llm_service()
-    title = ""
-    try:
-        prompt = (
-            "Generate a short, concise, and descriptive title (under 60 characters) "
-            "for the following document. Do not include quotes or markdown. Just the title text.\n\n"
-            f"{extracted_text[:1500]}"
-        )
-        generated_title = await llm.generate_text(prompt=prompt, temperature=0.3, max_output_tokens=30)
-        if generated_title:
-            title = generated_title.strip().replace('"', '')
-    except Exception:
-        pass
-        
-    if not title:
-        title = filename.rsplit(".", 1)[0] if "." in filename else filename
+    title = filename.rsplit(".", 1)[0] if "." in filename else filename
         
     # Formulate a unique source_url
     import urllib.parse
+    import uuid
     encoded_filename = urllib.parse.quote(filename)
-    source_url = f"pdf://{wiki_id}/{encoded_filename}"
+    unique_id = uuid.uuid4().hex[:8]
+    source_url = f"pdf://{wiki_id}/{unique_id}/{encoded_filename}"
     
     # Ingest the source text
     result = await _ingest_source(
@@ -316,6 +298,8 @@ async def ingest_pdf(
 @router.get("/history", response_model=list[IngestHistoryItem])
 async def ingest_history(
     wiki_id: str | None = None,
+    limit: int = 25,
+    offset: int = 0,
     current_user: dict = Depends(get_current_user),
 ):
     # BUG FIX #5: Validate wiki_id format if provided (use centralized validator)
@@ -325,7 +309,8 @@ async def ingest_history(
     items = await get_mongo_manager().list_recent_ingestions(
         current_user["id"],
         wiki_id=wiki_id,
-        limit=25,
+        limit=limit,
+        offset=offset,
     )
     return [
         IngestHistoryItem(

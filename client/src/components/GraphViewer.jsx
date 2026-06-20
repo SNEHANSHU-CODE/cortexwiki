@@ -10,7 +10,7 @@ function getNodeId(node) {
 }
 
 function hashString(value) {
-  return [...value].reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  return [...value].reduce((acc, ch, i) => acc + ch.charCodeAt(0) * (i + 1) * 31, 0);
 }
 
 function seedPosition(id, index, total) {
@@ -173,11 +173,16 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect, wikiId }) {
     }
   }, [normalizedData.nodes, wikiId]);
 
+  const persistPositionsRef = useRef(persistPositions);
+  useEffect(() => {
+    persistPositionsRef.current = persistPositions;
+  }, [persistPositions]);
+
   const handleNodeDragEnd = useCallback((node) => {
     node.fx = node.x;
     node.fy = node.y;
-    persistPositions();
-  }, [persistPositions]);
+    persistPositionsRef.current();
+  }, []);
 
   // ── Canvas painter ────────────────────────────────────────────────────────
   const paintNode = useCallback((node, ctx, globalScale) => {
@@ -261,7 +266,7 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect, wikiId }) {
           graphData={normalizedData}
           backgroundColor="transparent"
           cooldownTicks={180}
-          onEngineStop={persistPositions}
+          onEngineStop={() => persistPositionsRef.current()}
           linkWidth={(l)                    => highlightedLinks.has(l.id) ? 2.5 : 0.9}
           linkColor={(l)                    => highlightedLinks.has(l.id) ? (theme === "light" ? "rgba(15, 98, 254, 0.85)" : "rgba(94, 234, 212, 0.85)") : (theme === "light" ? "rgba(15, 23, 42, 0.15)" : "rgba(148, 163, 184, 0.2)")}
           linkDirectionalParticles={(l)     => highlightedLinks.has(l.id) ? 3 : 0}

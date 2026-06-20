@@ -121,7 +121,7 @@ export function createChatStreamSession({
       if (heartbeatInterval) clearInterval(heartbeatInterval);
       heartbeatInterval = setInterval(() => {
         if (socket?.connected) {
-          socket.emit("ping", { timestamp: Date.now() });
+          socket.emit("app_ping", { timestamp: Date.now() });
         }
       }, 30000); // Send ping every 30 seconds
 
@@ -156,7 +156,7 @@ export function createChatStreamSession({
     });
     
     // BUG FIX #3: Handle pong responses from server and track connection health
-    socket.on("pong", () => {
+    socket.on("app_pong", () => {
       lastPongTime = Date.now();
       // Socket is healthy, connection state is fresh
     });

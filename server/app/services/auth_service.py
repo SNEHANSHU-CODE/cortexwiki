@@ -36,10 +36,6 @@ class AuthService:
         return get_redis_store()
 
     async def register_user(self, *, email: str, username: str, password: str, full_name: str = "", user_agent: str = "", ip_address: str = "") -> dict:
-        if await self.mongo.get_user_by_email(email):
-            raise AppError(status_code=409, code="email_in_use", message="Email is already registered.")
-        if await self.mongo.get_user_by_username(username):
-            raise AppError(status_code=409, code="username_in_use", message="Username is already registered.")
         try:
             user = await self.mongo.create_user({
                 "email": email,
@@ -80,14 +76,11 @@ class AuthService:
         if not record:
             raise AppError(status_code=401, code="refresh_token_invalid", message="Refresh token is invalid.")
 
-        # Make sure the refresh token record is timezone-aware before comparison
-        if _ensure_utc(record["expires_at"]) <= datetime.now(UTC):
-            await self.mongo.revoke_refresh_token(token_hash)
-            raise AppError(status_code=401, code="refresh_token_expired", message="Refresh token expired.")
-
         # ATOMIC revocation check
         revoked = await self.mongo.revoke_refresh_token_if_active(token_hash)
         if not revoked:
+            if _ensure_utc(record["expires_at"]) <= datetime.now(UTC):
+                raise AppError(status_code=401, code="refresh_token_expired", message="Refresh token expired.")
             raise AppError(status_code=401, code="refresh_token_used", message="Refresh token already used or revoked.")
 
         user = await self.mongo.get_user_by_id(record["user_id"])
@@ -171,7 +164,7 @@ class AuthService:
             secure=settings.COOKIE_SECURE,
             samesite=settings.COOKIE_SAMESITE,
             expires=expires_at,
-            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            max_age=int((expires_at - datetime.now(UTC)).total_seconds()),
             path="/",
             domain=settings.COOKIE_DOMAIN,
         )
@@ -186,7 +179,7 @@ class AuthService:
             secure=settings.COOKIE_SECURE,
             samesite=settings.COOKIE_SAMESITE,
             expires=expires_at,
-            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            max_age=int((expires_at - datetime.now(UTC)).total_seconds()),
             path="/",
             domain=settings.COOKIE_DOMAIN,
         )

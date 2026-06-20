@@ -30,15 +30,17 @@ logger = get_logger("services.llm")
 user_id_ctx = contextvars.ContextVar("user_id_ctx", default=None)
 
 
+import threading
+
 class _ExternalApiCircuitBreaker:
     def __init__(self, threshold: int, reset_seconds: int) -> None:
         self.threshold = threshold
         self.reset_seconds = reset_seconds
         self._state: dict[str, tuple[int, float]] = {}
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
 
     async def is_open(self, name: str) -> bool:
-        async with self._lock:
+        with self._lock:
             count, last_failure = self._state.get(name, (0, 0.0))
             if count >= self.threshold and time.monotonic() - last_failure < self.reset_seconds:
                 return True
@@ -47,11 +49,11 @@ class _ExternalApiCircuitBreaker:
             return False
 
     async def record_success(self, name: str) -> None:
-        async with self._lock:
+        with self._lock:
             self._state.pop(name, None)
 
     async def record_failure(self, name: str) -> None:
-        async with self._lock:
+        with self._lock:
             count, last_failure = self._state.get(name, (0, time.monotonic()))
             now = time.monotonic()
             if now - last_failure >= self.reset_seconds:
@@ -125,7 +127,7 @@ class LLMService:
         prompt: str,
         system_instruction: str | None = None,
         temperature: float = 0.3,
-        max_output_tokens: int = 2048,
+        max_output_tokens: int = settings.LLM_MAX_OUTPUT_TOKENS,
         primary_provider: str = "groq",
     ) -> str:
         user_id = user_id_ctx.get()
@@ -186,7 +188,7 @@ class LLMService:
         prompt: str,
         system_instruction: str | None = None,
         temperature: float = 0.3,
-        max_output_tokens: int = 2048,
+        max_output_tokens: int = settings.LLM_MAX_OUTPUT_TOKENS,
         primary_provider: str = "groq",
     ):
         user_id = user_id_ctx.get()
@@ -283,24 +285,23 @@ class LLMService:
                 from app.db.mongo import get_mongo_manager
                 await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
         except Exception as exc:
-            if accumulated:
-                prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                completion_tokens = self.estimate_tokens("".join(accumulated))
-                run_tree = get_current_run_tree()
-                if run_tree:
-                    run_tree.metadata.update({
-                        "token_usage": {
-                            "prompt_tokens": prompt_tokens,
-                            "completion_tokens": completion_tokens,
-                            "total_tokens": prompt_tokens + completion_tokens
-                        }
-                    })
-                if user_id:
-                    try:
-                        from app.db.mongo import get_mongo_manager
-                        await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
-                    except Exception:
-                        pass
+            prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
+            completion_tokens = self.estimate_tokens("".join(accumulated))
+            run_tree = get_current_run_tree()
+            if run_tree:
+                run_tree.metadata.update({
+                    "token_usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens
+                    }
+                })
+            if user_id:
+                try:
+                    from app.db.mongo import get_mongo_manager
+                    await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+                except Exception:
+                    pass
             raise exc
 
     @traceable(run_type="embedding", name="CortexWiki Embed Text")
@@ -383,16 +384,6 @@ class LLMService:
         
         # Fallback embedding
         embedding = self._fallback_embedding(text)
-        # Cache fallback embedding too
-        if redis_store and redis_store.client and embedding:
-            try:
-                await redis_store.client.setex(
-                    cache_key,
-                    86400,
-                    json.dumps(embedding),
-                )
-            except Exception:
-                pass
         input_tokens = self.estimate_tokens(text)
         run_tree = get_current_run_tree()
         if run_tree:
@@ -414,7 +405,11 @@ class LLMService:
         if not text:
             return ""
 
-        # 1. Attempt Gemini first (primary model for ingestion) with the entire untruncated text
+        # Approximate tokens to characters (1 token ~= 4 chars)
+        primary_char_limit = settings.LLM_MAX_INPUT_TOKENS_INGESTION * 4
+        primary_text = text[:primary_char_limit]
+
+        # 1. Attempt primary model for ingestion
         if settings.GEMINI_API_KEY:
             if not await _api_circuit_breaker.is_open("gemini"):
                 try:
@@ -427,14 +422,14 @@ class LLMService:
                         "4. STYLE: Keep it factual, grounded, concise, and professional.\n"
                         "5. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
                         "=== MATERIAL ===\n"
-                        f"{text}"  # Pass entire raw text (no truncation)
+                        f"{primary_text}"
                     )
-                    logger.info("Attempting Gemini ingestion summarization of full text (len=%d)", len(text))
+                    logger.info("Attempting ingestion summarization (len=%d chars) via %s", len(primary_text), settings.LLM_PROVIDER_INGESTION)
                     summary = await self.generate_text(
                         prompt=prompt,
                         temperature=0.2,
-                        max_output_tokens=1000,
-                        primary_provider="gemini",
+                        max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
+                        primary_provider=settings.LLM_PROVIDER_INGESTION,
                     )
                     # Check if generate_text fell back to static fallback or worked
                     if summary and not ("=== CRITICAL DIRECTIVES ===" in summary or "NO CHITCHAT" in summary):
@@ -442,10 +437,13 @@ class LLMService:
                 except Exception as e:
                     logger.warning("Gemini ingestion summarization failed, falling back to Groq: %s", str(e))
 
-        # 2. Fallback: Groq (cannot handle larger sources, so chunk to 4096 characters, then merge)
-        logger.info("Using Groq fallback for ingestion summarization (len=%d)", len(text))
+        # 2. Fallback chunk summarization
+        fallback_char_limit = settings.LLM_FALLBACK_MAX_INPUT_TOKENS_INGESTION * 4
+        fallback_text = text[:fallback_char_limit]
+        
+        logger.info("Using fallback for ingestion summarization (truncated len=%d chars)", len(fallback_text))
         chunk_size = 4096
-        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+        chunks = [fallback_text[i:i+chunk_size] for i in range(0, len(fallback_text), chunk_size)]
         
         chunk_summaries = []
         for idx, chunk in enumerate(chunks):
@@ -459,7 +457,7 @@ class LLMService:
                 prompt=chunk_prompt,
                 system_instruction="You are a precise summarization assistant.",
                 temperature=0.2,
-                max_output_tokens=300,
+                max_output_tokens=settings.LLM_FALLBACK_MAX_OUTPUT_TOKENS,
                 primary_provider="groq",
             )
             if chunk_summary:
@@ -484,7 +482,7 @@ class LLMService:
         merged_summary = await self.generate_text(
             prompt=merge_prompt,
             temperature=0.2,
-            max_output_tokens=800,
+            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
             primary_provider="groq",
         )
         return merged_summary.strip()
@@ -535,14 +533,14 @@ class LLMService:
             "6. NO INTRO/OUTRO: Output ONLY the raw Markdown note. Do not include any introductory remarks (e.g., 'Here is the updated note:') or concluding remarks."
         )
         
-        # Groq and Gemini support up to 8k output tokens, so 4096 is safe and generous for a master note
-        max_tokens = 4096
+        # Pull dynamic limits from settings
+        max_tokens = settings.LLM_MAX_OUTPUT_TOKENS
         
         merged = await self.generate_text(
             prompt=prompt,
             temperature=0.2,
             max_output_tokens=max_tokens,
-            primary_provider="gemini", # Primary model for ingestion / master note update is Gemini
+            primary_provider=settings.LLM_PROVIDER_INGESTION, # Dynamic primary model for ingestion
         )
         
         # Check if output is the static prompt slice fallback (outage protection)

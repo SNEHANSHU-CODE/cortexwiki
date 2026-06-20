@@ -14,6 +14,7 @@ import {
   setActiveWiki,
   setRightView,
 } from "../redux/slices/wikiSlice";
+import { clearMessages } from "../redux/slices/chatSlice";
 import ChatPage from "./ChatPage";
 import GraphPage from "./GraphPage";
 import { NoteDrawer } from "./IngestPage";
@@ -22,6 +23,7 @@ import "./styles/WikiDashboard.css";
 function CreateWikiModal({ open, onClose, onSubmit, busy }) {
   const [name, setName] = useState("");
   const [description, setDesc] = useState("");
+  const modalRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
@@ -39,6 +41,35 @@ function CreateWikiModal({ open, onClose, onSubmit, busy }) {
     return () => document.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!open || !modalRef.current) return;
+    const focusableElements = modalRef.current.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusableElements.length) return;
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    const handleTab = (e) => {
+      if (e.key === 'Tab') {
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleTab);
+    return () => document.removeEventListener('keydown', handleTab);
+  }, [open]);
+
   if (!open) return null;
 
   const handleSubmit = async (e) => {
@@ -50,6 +81,7 @@ function CreateWikiModal({ open, onClose, onSubmit, busy }) {
   return (
     <div
       className="cw-modal"
+      ref={modalRef}
       role="dialog"
       aria-modal="true"
       aria-label="Create wiki"
@@ -173,6 +205,12 @@ function WikiCard({ wiki, isActive, onSelect, pendingDeleteId, onRequestDelete, 
 function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
   const printRef = useRef(null);
   const [isNativePrinting, setIsNativePrinting] = useState(false);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   const handlePrint = async () => {
     const safeTitle = `${wiki?.name || "Wiki"}-Note`.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -180,7 +218,7 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
     
     // Set parent title
     document.title = safeTitle;
-    setIsNativePrinting(true);
+    if (isMounted.current) setIsNativePrinting(true);
     
     // Give React time to render the portal, and browser to register title change
     await new Promise(r => setTimeout(r, 150));
@@ -188,7 +226,7 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
     try {
       window.print();
     } finally {
-      setIsNativePrinting(false);
+      if (isMounted.current) setIsNativePrinting(false);
       // Give browser time to close dialog before reverting title
       setTimeout(() => {
         document.title = orig || "CortexWiki";
@@ -324,6 +362,7 @@ function WikiDashboard() {
   };
 
   const handleSelectWiki = (wikiId) => {
+    dispatch(clearMessages());
     dispatch(setActiveWiki(wikiId));
   };
 

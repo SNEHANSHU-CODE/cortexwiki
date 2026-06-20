@@ -112,7 +112,8 @@ class GraphService:
         
         # BUG FIX #5: Extract concepts using multiple patterns
         # 1. Capitalized phrases (proper nouns)
-        content_force = content[:5000]
+        content_sample = content[:2500] + "\n...\n" + content[-2500:] if len(content) > 5000 else content
+        content_force = f"{summary}\n\n{content_sample}"
         capitalized = _CAPITALIZED_PHRASE_RE.findall(content_force)
         hyphenated = _HYPHENATED_TERM_RE.findall(content_force)
         technical = _TECHNICAL_TERM_RE.findall(content_force)

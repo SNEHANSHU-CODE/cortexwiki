@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user, validate_wiki_id
 from app.db.mongo import get_mongo_manager
-from app.schemas.wikis import WikiCreateRequest, WikiListResponse, WikiResponse, WikiUpdateRequest
+from app.schemas.wikis import WikiCreateRequest, WikiListResponse, WikiResponse, WikiSummaryResponse, WikiUpdateRequest
 from app.services.graph_service import get_graph_service
 from app.utils.errors import AppError
 from app.utils.logging import get_logger
@@ -34,6 +34,20 @@ def _to_wiki_response(wiki: dict) -> WikiResponse:
         name=wiki["name"],
         description=wiki.get("description", ""),
         master_note=wiki.get("master_note", ""),
+        source_count=wiki.get("source_count", 0),
+        created_at=wiki["created_at"],
+        updated_at=wiki["updated_at"],
+        last_ingested_at=wiki.get("last_ingested_at"),
+    )
+
+
+def _to_wiki_summary_response(wiki: dict) -> WikiSummaryResponse:
+    return WikiSummaryResponse(
+        id=wiki["id"],
+        user_id=wiki["user_id"],
+        name=wiki["name"],
+        description=wiki.get("description", ""),
+        master_note_excerpt=wiki.get("master_note_excerpt", wiki.get("master_note", "")[:300]),
         source_count=wiki.get("source_count", 0),
         created_at=wiki["created_at"],
         updated_at=wiki["updated_at"],
@@ -58,7 +72,7 @@ async def create_wiki(
 async def list_wikis(current_user: dict = Depends(get_current_user)):
     wikis = await get_mongo_manager().list_wikis(current_user["id"])
     return WikiListResponse(
-        wikis=[_to_wiki_response(w) for w in wikis],
+        wikis=[_to_wiki_summary_response(w) for w in wikis],
         total=len(wikis),
     )
 

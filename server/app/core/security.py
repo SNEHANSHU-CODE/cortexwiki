@@ -96,8 +96,9 @@ def create_refresh_token() -> tuple[str, datetime]:
 
 def hash_refresh_token(token: str) -> str:
     """HMAC-SHA256 of the raw refresh token using SECRET_KEY."""
+    key = hashlib.sha256(b"refresh:" + settings.SECRET_KEY.encode()).digest()
     return hmac.new(
-        settings.SECRET_KEY.encode(),
+        key,
         token.encode(),
         hashlib.sha256,
     ).hexdigest()

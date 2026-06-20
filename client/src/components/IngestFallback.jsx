@@ -121,6 +121,8 @@ export function YouTubeFallback({ sourceUrl, wikiId, onSubmit, onClose, isSubmit
       </div>
     );
   }
+
+  return null;
 }
 
 /* ── Web Fallback ───────────────────────────────────────────────────── */
@@ -373,6 +375,8 @@ export function WebFallback({ sourceUrl, wikiId, onSubmit, onClose, isSubmitting
       </div>
     );
   }
+
+  return null;
 }
 
 /* ── Fallback Modal ──────────────────────────────────────────────────── */
