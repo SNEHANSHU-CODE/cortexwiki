@@ -27,13 +27,13 @@ const baseURL = resolveBaseUrl();
 
 const httpClient = axios.create({
   baseURL,
-  timeout: 30000,
+  timeout: 100000, // 100 seconds (matches Render's max timeout)
   withCredentials: true,
 });
 
 const refreshClient = axios.create({
   baseURL,
-  timeout: 30000,
+  timeout: 100000, // 100 seconds
   withCredentials: true,
 });
 

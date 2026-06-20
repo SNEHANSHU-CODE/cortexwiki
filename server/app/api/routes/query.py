@@ -100,7 +100,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
             f"Graph relationships:\n{graph_context}\n\n"
             "Write a concise, grounded answer."
         )
-        # Approximate tokens to characters (1 token ~= 4 chars)
+
         char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
         
         answer = await llm.generate_text(
