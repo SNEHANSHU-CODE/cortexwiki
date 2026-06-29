@@ -385,7 +385,10 @@ class MongoManager:
 
     async def list_wikis(self, user_id: str, limit: int = 100) -> list[dict]:
         if self.database is not None:
-            cursor = self.database.wikis.find({"user_id": user_id}).sort("created_at", -1)
+            cursor = self.database.wikis.find(
+                {"user_id": user_id},
+                {"master_note": 0}
+            ).sort("created_at", -1)
             return [self._normalize(w) for w in await cursor.to_list(length=limit)]
         items = [self._copy(w) for w in self._memory["wikis"].values() if w["user_id"] == user_id]
         items.sort(key=lambda x: x["created_at"], reverse=True)
@@ -428,12 +431,8 @@ class MongoManager:
                         # Cascade delete all wiki data
                         await self.database.wiki_pages.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
                         await self.database.raw_data.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
-                        # Also remove agent logs and any other wiki-scoped artifacts
-                        try:
-                            await self.database.agent_logs.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
-                        except Exception:
-                            # Non-fatal: continue even if agent_logs removal fails
-                            logger.debug("Failed to remove agent_logs for wiki_id=%s", wiki_id)
+                        # Also remove agent logs \u2014 must succeed or the whole transaction rolls back
+                        await self.database.agent_logs.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
             except Exception:
                 return False
             return True
@@ -707,7 +706,41 @@ class MongoManager:
         limit: int = 5,
     ) -> list[dict]:
         wiki_id = self._sanitize_id(wiki_id)
-        pages = await self.list_wiki_pages(user_id=user_id, wiki_id=wiki_id, limit=200)
+        
+        if self.database is not None:
+            filter_dict = {"user_id": user_id}
+            if wiki_id:
+                filter_dict["wiki_id"] = wiki_id
+                
+            pipeline = [
+                {
+                    "$vectorSearch": {
+                        "index": "vector_index",
+                        "path": "embedding",
+                        "queryVector": query_embedding,
+                        "numCandidates": 100,
+                        "limit": 50,
+                        "filter": filter_dict
+                    }
+                },
+                {
+                    "$set": {
+                        "vector_score": {"$meta": "vectorSearchScore"}
+                    }
+                },
+                {
+                    "$project": {
+                        "embedding": 0
+                    }
+                }
+            ]
+            cursor = self.database.wiki_pages.aggregate(pipeline)
+            pages = [self._normalize(page) for page in await cursor.to_list(length=50)]
+        else:
+            pages = await self.list_wiki_pages(user_id=user_id, wiki_id=wiki_id, limit=200)
+            for page in pages:
+                page["vector_score"] = cosine_similarity(query_embedding, page.get("embedding", []))
+
         scored: list[dict] = []
         for page in pages:
             searchable = " ".join([
@@ -716,7 +749,7 @@ class MongoManager:
                 page.get("content", ""),
                 " ".join(page.get("concepts", [])),
             ])
-            vector_score = cosine_similarity(query_embedding, page.get("embedding", []))
+            vector_score = page.get("vector_score", 0.0)
             lexical_score = keyword_score(query, searchable)
             score = (0.7 * vector_score) + (0.3 * lexical_score)
             if score > 0:

@@ -104,7 +104,7 @@ class AnswerAgent:
             system_instruction=_SYSTEM_INSTRUCTION,
             prompt=self._build_prompt(state),
             temperature=0.2,
-            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
+            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS_CHAT,
         )
         return clean_text(answer) or "I found evidence, but not enough clear detail to answer confidently."
 
@@ -125,7 +125,8 @@ class AnswerAgent:
                 yield chunk
 
     def _build_prompt(self, state: dict) -> str:
-        wiki_context = [
+        char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
+        wiki_context_raw = [
             {
                 "title": page.get("title", "Untitled Source"),
                 "summary": page.get("summary", ""),
@@ -134,11 +135,11 @@ class AnswerAgent:
             }
             for page in state.get("wiki_pages", [])
         ]
-        graph_context = [
+        graph_context_raw = [
             f'{item.get("source", "")} {item.get("relationship", "")} {item.get("target", "")}'
             for item in state.get("related_concepts", [])
         ]
-        internet_context = [
+        internet_context_raw = [
             {
                 "title": result.get("title", "Untitled External Source"),
                 "description": result.get("description", ""),
@@ -146,6 +147,10 @@ class AnswerAgent:
             }
             for result in state.get("internet_results", [])
         ]
+
+        wiki_context = str(wiki_context_raw)[:char_limit]
+        graph_context = str(graph_context_raw)[:char_limit]
+        internet_context = str(internet_context_raw)[:char_limit]
 
         prompt = (
             f"Question: {state['question']}\n\n"
@@ -155,9 +160,7 @@ class AnswerAgent:
             "Produce a concise answer with grounded claims only."
         )
         
-        # Approximate tokens to characters (1 token ~= 4 chars)
-        char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
-        return prompt[:char_limit]
+        return prompt
 
     def _derive_strategy(self, state: dict) -> str:
         has_internet = bool(state.get("internet_results"))

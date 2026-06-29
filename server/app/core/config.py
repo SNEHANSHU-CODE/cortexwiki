@@ -29,6 +29,9 @@ class Settings(BaseSettings):
 
     # Auth
     SECRET_KEY: str = Field(...)
+    # Separate secret for refresh token HMAC — strongly recommended to set independently.
+    # Falls back to a domain-separated derivation of SECRET_KEY for backward compatibility.
+    REFRESH_TOKEN_SECRET: str | None = None
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
@@ -59,7 +62,8 @@ class Settings(BaseSettings):
 
     # Groq — primary LLM
     GROQ_API_KEY: str | None = None
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL_CHAT: str = "openai/gpt-oss-20b"
+    GROQ_MODEL_INGESTION: str = "groq/compound-mini"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
     # Gemini — fallback LLM + embeddings
@@ -85,12 +89,13 @@ class Settings(BaseSettings):
 
     # LLM Token Limits (Safeguards - currently suggestive, not strictly enforced)
     LLM_MAX_INPUT_TOKENS_INGESTION: int = 40000
-    LLM_MAX_INPUT_TOKENS_CHAT: int = 512
+    LLM_MAX_INPUT_TOKENS_CHAT: int = 2048
     LLM_MAX_OUTPUT_TOKENS: int = 8192
+    LLM_MAX_OUTPUT_TOKENS_CHAT: int = 1024
 
     # LLM Fallback Token Limits (When primary fails and routes to secondary)
-    LLM_FALLBACK_MAX_INPUT_TOKENS_INGESTION: int = 3096
-    LLM_FALLBACK_MAX_OUTPUT_TOKENS: int = 1536
+    LLM_FALLBACK_MAX_INPUT_TOKENS_INGESTION: int = 40000
+    LLM_FALLBACK_MAX_OUTPUT_TOKENS: int = 8192
 
     # LangSmith Observability Tracing
     LANGSMITH_TRACING: bool = False

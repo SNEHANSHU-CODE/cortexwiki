@@ -14,7 +14,7 @@ Routes:
   DELETE /api/wikis/:id      → delete wiki + all its data (cascade)
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from app.api.deps import get_current_user, validate_wiki_id
 from app.db.mongo import get_mongo_manager
@@ -116,24 +116,24 @@ async def delete_wiki(
     wiki_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    # BUG FIX #5: Validate wiki_id format using centralized validator
-    await validate_wiki_id(wiki_id)
-    
     """
     Delete wiki and all associated data.
-    
+
     FIX #3: Delete MongoDB first (source of truth), then Neo4j.
     If Neo4j deletion fails, the wiki is already gone from primary store.
     """
+    # BUG FIX #5: Validate wiki_id format using centralized validator
+    await validate_wiki_id(wiki_id)
+
     mongo = get_mongo_manager()
     graph_service = get_graph_service()
     logger = get_logger("api.routes.wikis")
-    
+
     # Verify wiki exists and belongs to user before attempting deletion
     wiki = await mongo.get_wiki(wiki_id, current_user["id"])
     if not wiki:
         raise AppError(status_code=404, code="wiki_not_found", message="Wiki not found.")
-    
+
     # ── DELETE FROM MONGODB FIRST (PRIMARY STORE) ──
     try:
         deleted = await mongo.delete_wiki(wiki_id, current_user["id"])
@@ -147,7 +147,7 @@ async def delete_wiki(
             code="wiki_deletion_failed",
             message="Failed to delete wiki from database.",
         ) from exc
-    
+
     # ── DELETE FROM NEO4J (SECONDARY STORE) ──
     # Failure here doesn't prevent the response since wiki is already deleted from MongoDB
     try:
@@ -159,3 +159,5 @@ async def delete_wiki(
         # Log the error but don't fail the request
         # The wiki is already deleted from MongoDB (source of truth)
         logger.warning("Failed to delete wiki graph from Neo4j: wiki_id=%s, error=%s", wiki_id, str(exc))
+
+    return Response(status_code=204)

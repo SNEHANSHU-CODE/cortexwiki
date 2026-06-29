@@ -138,11 +138,13 @@ class LLMService:
 
         for provider in providers:
             if provider == "groq" and settings.GROQ_API_KEY:
+                model_name = settings.GROQ_MODEL_CHAT if primary_provider == "groq" else settings.GROQ_MODEL_INGESTION
                 result = await self._groq_generate(
                     prompt=prompt,
                     system_instruction=system_instruction,
                     temperature=temperature,
                     max_output_tokens=max_output_tokens,
+                    model_name=model_name,
                 )
                 if result:
                     return result
@@ -164,21 +166,10 @@ class LLMService:
                 code="llm_unavailable",
                 message="All AI providers are currently unavailable or overloaded. Please try again later.",
             )
-            
-        prompt_tok = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-        completion_tok = self.estimate_tokens(result)
-        run_tree = get_current_run_tree()
-        if run_tree:
-            run_tree.metadata.update({
-                "token_usage": {
-                    "prompt_tokens": prompt_tok,
-                    "completion_tokens": completion_tok,
-                    "total_tokens": prompt_tok + completion_tok
-                }
-            })
-        if user_id:
-            from app.db.mongo import get_mongo_manager
-            await get_mongo_manager().increment_user_token_usage(user_id, prompt_tok, completion_tok)
+        # H6 fix: Token tracking for real providers is done inside _groq_generate /
+        # _gemini_generate. The fallback path (_fallback_generate) generates no real
+        # tokens, so no usage tracking is needed here. The dead tracking block that
+        # was here previously has been removed to prevent double-counting.
         return result
 
     @traceable(run_type="chain", name="CortexWiki Stream Text")
@@ -202,11 +193,13 @@ class LLMService:
             for provider in providers:
                 if provider == "groq" and settings.GROQ_API_KEY:
                     groq_ok = False
+                    model_name = settings.GROQ_MODEL_CHAT if primary_provider == "groq" else settings.GROQ_MODEL_INGESTION
                     async for chunk in self._groq_stream(
                         prompt=prompt,
                         system_instruction=system_instruction,
                         temperature=temperature,
                         max_output_tokens=max_output_tokens,
+                        model_name=model_name,
                     ):
                         groq_ok = True
                         if chunk:
@@ -437,55 +430,32 @@ class LLMService:
                 except Exception as e:
                     logger.warning("Gemini ingestion summarization failed, falling back to Groq: %s", str(e))
 
-        # 2. Fallback chunk summarization
+        # 2. Fallback summarization (using Groq)
         fallback_char_limit = settings.LLM_FALLBACK_MAX_INPUT_TOKENS_INGESTION * 4
         fallback_text = text[:fallback_char_limit]
         
         logger.info("Using fallback for ingestion summarization (truncated len=%d chars)", len(fallback_text))
-        chunk_size = 4096
-        chunks = [fallback_text[i:i+chunk_size] for i in range(0, len(fallback_text), chunk_size)]
         
-        chunk_summaries = []
-        for idx, chunk in enumerate(chunks):
-            chunk_prompt = (
-                f"Summarize the following section of a larger document (Part {idx+1}/{len(chunks)}) for an enterprise knowledge base.\n\n"
-                "=== MATERIAL ===\n"
-                f"{chunk}"
-            )
-            # Use Groq for fallback chunk summarization
-            chunk_summary = await self.generate_text(
-                prompt=chunk_prompt,
-                system_instruction="You are a precise summarization assistant.",
-                temperature=0.2,
-                max_output_tokens=settings.LLM_FALLBACK_MAX_OUTPUT_TOKENS,
-                primary_provider="groq",
-            )
-            if chunk_summary:
-                chunk_summaries.append(chunk_summary.strip())
-        
-        if not chunk_summaries:
-            return "No content available."
-
-        combined_summaries = "\n\n".join(chunk_summaries)
-        merge_prompt = (
-            "Summarize and merge the following section summaries into a single cohesive, highly structured summary for an enterprise knowledge base.\n\n"
+        fallback_prompt = (
+            "Summarize the following document into a cohesive, highly structured summary for an enterprise knowledge base.\n\n"
             "=== CRITICAL DIRECTIVES ===\n"
             "1. STRUCTURE: Organize the summary using appropriate Markdown headers where relevant (e.g. '## Overview', '## Key Components', '## Benefits').\n"
             "2. LISTS & TABLES: Format any lists cleanly using standard Markdown bullet points ('- ') or numbered lists ('1. '). If there is structured data, use Markdown Tables.\n"
             "3. RICH MARKDOWN: Leverage **bolding** for emphasis, `inline code` for technical jargon, and > blockquotes for key quotes.\n"
             "4. STYLE: Keep it factual, grounded, concise, and professional.\n"
-            "5. NO CHITCHAT: Output only the raw structured Markdown text.\n\n"
-            "=== SECTION SUMMARIES ===\n"
-            f"{combined_summaries}"
+            "5. NO PREAMBLE: Do not include introductory phrases like 'Here is the summary' or 'This document discusses'. Start directly with the first markdown header.\n\n"
+            "=== MATERIAL ===\n"
+            f"{fallback_text}"
         )
         
-        merged_summary = await self.generate_text(
-            prompt=merge_prompt,
+        merged = await self.generate_text(
+            prompt=fallback_prompt,
+            system_instruction="You are a precise and highly structured summarization assistant.",
             temperature=0.2,
-            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
+            max_output_tokens=settings.LLM_FALLBACK_MAX_OUTPUT_TOKENS,
             primary_provider="groq",
         )
-        return merged_summary.strip()
+        return (merged or "No content available.").strip()
 
     @traceable(run_type="chain", name="CortexWiki Merge Notes")
     async def merge_notes(
@@ -563,10 +533,11 @@ class LLMService:
         system_instruction: str | None,
         temperature: float,
         max_output_tokens: int,
+        model_name: str,
     ) -> str:
         messages = self._build_openai_messages(prompt, system_instruction)
         payload = {
-            "model": settings.GROQ_MODEL,
+            "model": model_name,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_output_tokens,
@@ -594,7 +565,7 @@ class LLMService:
                 await _api_circuit_breaker.record_failure("groq")
                 return ""
             await _api_circuit_breaker.record_success("groq")
-            logger.info("Groq generate OK (model=%s)", settings.GROQ_MODEL)
+            logger.info("Groq generate OK (model=%s)", model_name)
             
             usage = data.get("usage", {})
             prompt_tok = usage.get("prompt_tokens") or self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
@@ -632,10 +603,11 @@ class LLMService:
         system_instruction: str | None,
         temperature: float,
         max_output_tokens: int,
+        model_name: str,
     ):
         messages = self._build_openai_messages(prompt, system_instruction)
         payload = {
-            "model": settings.GROQ_MODEL,
+            "model": model_name,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_output_tokens,
@@ -671,7 +643,7 @@ class LLMService:
                         continue
                     if delta:
                         yield delta
-            logger.info("Groq stream OK (model=%s)", settings.GROQ_MODEL)
+            logger.info("Groq stream OK (model=%s)", model_name)
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
             await _api_circuit_breaker.record_failure("groq")
             logger.exception("Groq stream failed — falling back to Gemini: %s", str(exc))

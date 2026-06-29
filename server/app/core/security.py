@@ -95,8 +95,11 @@ def create_refresh_token() -> tuple[str, datetime]:
 
 
 def hash_refresh_token(token: str) -> str:
-    """HMAC-SHA256 of the raw refresh token using SECRET_KEY."""
-    key = hashlib.sha256(b"refresh:" + settings.SECRET_KEY.encode()).digest()
+    """HMAC-SHA256 of the raw refresh token using a dedicated secret."""
+    # Use a dedicated REFRESH_TOKEN_SECRET when available; otherwise derive
+    # from SECRET_KEY with a domain-separation prefix (not ideal but safe as fallback)
+    secret = settings.REFRESH_TOKEN_SECRET or settings.SECRET_KEY
+    key = hashlib.sha256(b"cortexwiki:refresh_token_hmac:" + secret.encode()).digest()
     return hmac.new(
         key,
         token.encode(),

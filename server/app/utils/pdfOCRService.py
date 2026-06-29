@@ -278,7 +278,11 @@ class PDFOCRService:
             except OCRNetworkError as exc:
                 last_error = exc
                 if attempt < self._config.max_retries:
-                    wait = self._config.retry_backoff_seconds * (2 ** (attempt - 1))
+                    # Cap back-off at 2s to limit thread-pool worker starvation.
+                    # (This runs inside asyncio.to_thread so time.sleep blocks the worker,
+                    # not the event loop — but holding a worker too long still limits
+                    # concurrency. 2s max keeps worst-case at ~6s across 3 retries.)
+                    wait = min(self._config.retry_backoff_seconds * (2 ** (attempt - 1)), 2.0)
                     logger.warning(
                         f"OCR network error (attempt {attempt}/{self._config.max_retries}), "
                         f"retrying in {wait:.1f}s: {exc}"
@@ -291,7 +295,8 @@ class PDFOCRService:
                 if exc.status_code and exc.status_code >= 500:
                     last_error = exc
                     if attempt < self._config.max_retries:
-                        wait = self._config.retry_backoff_seconds * (2 ** (attempt - 1))
+                        # Cap back-off at 2s — same reasoning as OCRNetworkError above
+                        wait = min(self._config.retry_backoff_seconds * (2 ** (attempt - 1)), 2.0)
                         logger.warning(
                             f"OCR server error {exc.status_code} "
                             f"(attempt {attempt}/{self._config.max_retries}), "

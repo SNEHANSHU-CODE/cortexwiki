@@ -73,21 +73,29 @@ class IngestionService:
                 )
             parsed_url = urlparse(source_url)
             hostname = parsed_url.hostname or ""
-            import socket
-            import ipaddress
+            import asyncio as _asyncio
+            import socket as _socket
+            import ipaddress as _ipaddress
             try:
-                addr_info = socket.getaddrinfo(hostname, None)
+                # Offload blocking DNS lookup to a thread to avoid blocking the event loop
+                addr_info = await _asyncio.to_thread(_socket.getaddrinfo, hostname, None)
                 for info in addr_info:
                     ip_str = info[4][0]
-                    ip = ipaddress.ip_address(ip_str)
+                    ip = _ipaddress.ip_address(ip_str)
                     if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
                         raise AppError(
                             status_code=400,
                             code="url_blocked_local",
                             message="Local network URLs are not allowed.",
                         )
-            except socket.gaierror:
-                pass  # Resolution failure will be handled by the downstream HTTP client
+            except _socket.gaierror:
+                # Fail-closed: unresolvable hostnames are rejected early to avoid
+                # wasting LLM tokens on a URL that will fail anyway downstream.
+                raise AppError(
+                    status_code=400,
+                    code="url_unresolvable",
+                    message="Could not resolve the URL's hostname. Please check the URL and try again.",
+                )
             except AppError:
                 raise
         

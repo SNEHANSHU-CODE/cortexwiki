@@ -99,6 +99,10 @@ export function createChatStreamSession({
   let socket = null;
   let heartbeatInterval = null;
   let deadConnectionCheck = null;  // BUG FIX #3: Initialize to null for cleanup in all paths
+  
+  // Tracks in-flight emit watchdogs: requestId → timeoutId
+  const _emitWatchdogs = new Map();
+
 
   if (SOCKET_URL) {
     socket = io(SOCKET_URL, {
@@ -161,7 +165,15 @@ export function createChatStreamSession({
       // Socket is healthy, connection state is fresh
     });
     
-    socket.on(START_EVENT,    (data) => onStart?.(data));
+    socket.on(START_EVENT, (data) => {
+      // Clear watchdog — server acknowledged the request
+      const watchdog = _emitWatchdogs.get(data?.requestId);
+      if (watchdog) {
+        clearTimeout(watchdog);
+        _emitWatchdogs.delete(data?.requestId);
+      }
+      onStart?.(data);
+    });
     socket.on(TOKEN_EVENT,    (data) => onToken?.(data));
     socket.on(COMPLETE_EVENT, (data) => onComplete?.(data));
     socket.on(ERROR_EVENT,    (data) => onError?.(data));
@@ -172,6 +184,8 @@ export function createChatStreamSession({
   }
 
   const disconnect = () => {
+    _emitWatchdogs.forEach((id) => clearTimeout(id));
+    _emitWatchdogs.clear();
     // BUG FIX #3: Properly clean up all intervals and listeners to prevent memory leaks
     if (heartbeatInterval) {
       clearInterval(heartbeatInterval);
@@ -190,13 +204,36 @@ export function createChatStreamSession({
 
   const updateToken = (newToken) => {
     if (socket) {
+      const tokenChanged = socket.auth?.token !== newToken;
       socket.auth = newToken ? { token: newToken } : undefined;
+      if (tokenChanged && !socket.connected) {
+        // Reconnect with updated credentials
+        socket.connect();
+      } else if (tokenChanged && socket.connected) {
+        // Gracefully reconnect to re-authenticate with new token
+        socket.disconnect();
+        socket.connect();
+      }
     }
   };
 
   const send = async ({ requestId, payload, signal }) => {
     if (socket?.connected) {
       socket.emit(OUTBOUND_EVENT, { requestId, ...payload });
+      // Watchdog: if server doesn't acknowledge with query:started within 10s,
+      // fall back to HTTP so the UI doesn't stay stuck.
+      const watchdog = setTimeout(async () => {
+        _emitWatchdogs.delete(requestId);
+        if (signal?.aborted) return;
+        console.warn("[ChatStream] No server ack for requestId=%s — falling back to HTTP", requestId);
+        onError?.({
+          message: "Connection timed out. Retrying over HTTP…",
+          code: "SOCKET_TIMEOUT",
+          timestamp: new Date().toISOString(),
+        });
+        await streamFallbackResponse({ payload, signal, requestId, onStart, onToken, onComplete, onError, onConnectionChange });
+      }, 10_000);
+      _emitWatchdogs.set(requestId, watchdog);
       return;
     }
     await streamFallbackResponse({

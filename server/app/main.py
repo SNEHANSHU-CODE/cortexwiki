@@ -33,6 +33,12 @@ _active_socket_connections = 0
 _socket_connection_lock = asyncio.Lock()
 _socket_connection_map = {}  # sid -> { user_id, created_at, last_activity }
 
+# H2 fix: Module-level in-memory fallbacks for when Redis is unavailable.
+# Initialized here (not lazily on the Redis object) to prevent race conditions
+# when multiple concurrent coroutines all see hasattr(...) == False simultaneously.
+_memory_rate_counters: dict = {}   # user_id -> (window_start, count)
+_memory_request_ids: dict = {}     # key -> expiry_timestamp
+
 
 async def _cleanup_stale_socket_connections():
     """BUG FIX #1: Periodically clean up stale socket connections.
@@ -59,7 +65,15 @@ async def _cleanup_stale_socket_connections():
             for sid in stale_sids:
                 logger.warning(f"Closing stale socket connection: sid={sid}")
                 await sio.disconnect(sid)
-                
+                # Proactively clean up tracking in case the disconnect event doesn't fire
+                # (e.g. due to network drops where the OS-level TCP close never arrives).
+                async with _socket_connection_lock:
+                    global _active_socket_connections
+                    if sid in _socket_connection_map:
+                        _socket_connection_map.pop(sid, None)
+                        if _active_socket_connections > 0:
+                            _active_socket_connections -= 1
+
         except Exception as exc:
             logger.exception("Error in socket cleanup task: %s", exc)
 
@@ -177,20 +191,27 @@ async def handle_ping(sid, data=None):
 
 async def _validate_socket_token(sid: str) -> dict | None:
     """
-    BUG FIX #8: Validate token on each message to detect expired/revoked tokens.
+    Validate token on each message to detect expired/revoked tokens.
+    
+    Only performs a Redis lookup (fast) to check token revocation — the
+    MongoDB user lookup is intentionally omitted here because:
+    1. User existence was already verified at connect time in _authenticate_socket.
+    2. Running a DB query on every socket event (including 25s heartbeats) would
+       cause severe DB pressure under concurrent connections.
+    Token expiry and revocation are fully covered by the Redis check.
     """
     session = await sio.get_session(sid)
     if not session:
         logger.warning("Socket validation: no session for sid=%s", sid)
         return None
-    
+
     token = session.get("token", "")
     user = session.get("user")
-    
+
     if not token or not user:
         logger.warning("Socket validation: missing token/user for sid=%s", sid)
         return None
-    
+
     # Re-validate token against Redis to catch revoked/expired tokens
     try:
         payload = decode_access_token(token)
@@ -199,15 +220,14 @@ async def _validate_socket_token(sid: str) -> dict | None:
         if not token_record:
             logger.warning("Socket validation: token not in Redis (revoked/expired) sid=%s, user_id=%s", sid, user.get("id"))
             return None
-            
-        # Ensure user still exists in DB
-        from app.db.mongo import get_mongo_manager
-        db_user = await get_mongo_manager().get_user_by_id(user.get("id"))
-        if not db_user:
-            logger.warning("Socket validation: user not found user_id=%s", user.get("id"))
+
+        # Verify Redis record belongs to the same user stored in the session
+        if token_record.get("user_id") != user.get("id"):
+            logger.warning("Socket validation: user_id mismatch in token record sid=%s", sid)
             return None
-            
-        return db_user
+
+        # Return the cached session user — no MongoDB query needed per message
+        return user
     except Exception as exc:
         logger.warning("Socket validation failed: %s, sid=%s", str(exc), sid)
         return None
@@ -242,18 +262,16 @@ async def _check_socket_query_rate_limit(user_id: str) -> bool:
     # In-memory fixed-window fallback
     now = int(__import__("time").time())
     window_start = now - (now % int(window))
-    if not hasattr(store, "_memory_rate_counters"):
-        store._memory_rate_counters = {}
 
-    entry = store._memory_rate_counters.get(user_id)
+    entry = _memory_rate_counters.get(user_id)
     if not entry or entry[0] != window_start:
-        store._memory_rate_counters[user_id] = (window_start, 1)
+        _memory_rate_counters[user_id] = (window_start, 1)
         return True
 
     count = entry[1]
     if count >= limit:
         return False
-    store._memory_rate_counters[user_id] = (entry[0], count + 1)
+    _memory_rate_counters[user_id] = (entry[0], count + 1)
     return True
 
 
@@ -279,19 +297,16 @@ async def _reserve_request_id(user_id: str, request_id: str, ttl: int = 300) -> 
         logger.debug("Redis request-id reservation unavailable, falling back to memory")
 
     # In-memory fallback
-    if not hasattr(store, "_memory_request_ids"):
-        store._memory_request_ids = {}
-
     now = int(__import__("time").time())
     expiry = now + int(ttl)
-    existing = store._memory_request_ids.get(key)
+    existing = _memory_request_ids.get(key)
     if existing and existing > now:
         return False
-    store._memory_request_ids[key] = expiry
+    _memory_request_ids[key] = expiry
     # Clean up expired entries opportunistically
-    for k, v in list(store._memory_request_ids.items()):
+    for k, v in list(_memory_request_ids.items()):
         if v <= now:
-            store._memory_request_ids.pop(k, None)
+            _memory_request_ids.pop(k, None)
     return True
 
 
@@ -415,19 +430,25 @@ async def handle_query(sid, data):
             answer = "I do not have enough ingested knowledge to answer that yet. Add a source first, then ask again."
         elif settings.GROQ_API_KEY or settings.GEMINI_API_KEY:
             answer_chunks = []
+            
+            char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
+            truncated_context = str(context_blocks)[:char_limit]
+            
+            prompt_content = (
+                f"<user_question>{question}</user_question>\n\n"
+                f"<context>\nKnowledge base pages:\n{truncated_context}\n\n"
+                f"Graph relationships:\n{graph_context}\n</context>\n\n"
+                "Write a concise, grounded answer."
+            )
+
             async for chunk in llm.stream_text(
                 system_instruction=(
                     "You are CortexWiki. Answer only from the provided knowledge base context. "
                     "If the context is insufficient, say so plainly. Do not invent facts."
                 ),
-                prompt=(
-                    f"<user_question>{question}</user_question>\n\n"
-                    f"<context>\nKnowledge base pages:\n{context_blocks}\n\n"
-                    f"Graph relationships:\n{graph_context}\n</context>\n\n"
-                    "Write a concise, grounded answer."
-                ),
+                prompt=prompt_content,
                 temperature=0.2,
-                max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
+                max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS_CHAT,
             ):
                 if chunk:
                     answer_chunks.append(chunk)

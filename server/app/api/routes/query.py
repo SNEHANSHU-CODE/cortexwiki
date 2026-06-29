@@ -94,23 +94,24 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     ]
 
     if settings_has_llm():
+        char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
+        truncated_context = str(context_blocks)[:char_limit]
+
         prompt_content = (
             f"Question: <user_question>{payload.question}</user_question>\n\n"
-            f"Knowledge base pages:\n{context_blocks}\n\n"
+            f"Knowledge base pages:\n{truncated_context}\n\n"
             f"Graph relationships:\n{graph_context}\n\n"
             "Write a concise, grounded answer."
         )
 
-        char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
-        
         answer = await llm.generate_text(
             system_instruction=(
                 "You are CortexWiki. Answer only from the provided knowledge base context. "
                 "If the context is insufficient, say so plainly. Do not invent facts."
             ),
-            prompt=prompt_content[:char_limit],
+            prompt=prompt_content,
             temperature=0.2,
-            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
+            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS_CHAT,
             primary_provider=settings.LLM_PROVIDER_CHAT,
         )
     else:

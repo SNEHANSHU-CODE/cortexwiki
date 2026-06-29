@@ -208,19 +208,36 @@ class AuthService:
         access_token, jti, access_expires_at = create_access_token(user_id=user["id"], email=user["email"])
         refresh_token, refresh_expires_at = create_refresh_token()
 
-        await self.redis.store_access_token(
-            jti=jti,
-            user_id=user["id"],
-            expires_at=access_expires_at,
-            token=access_token,
-        )
-        await self.mongo.save_refresh_token({
-            "user_id": user["id"],
-            "token_hash": hash_refresh_token(refresh_token),
-            "expires_at": refresh_expires_at,
-            "user_agent": user_agent,
-            "ip_address": ip_address,
-        })
+        # Store both tokens atomically: if Mongo fails after Redis succeeds,
+        # roll back the Redis access token to prevent orphaned tokens.
+        try:
+            await self.redis.store_access_token(
+                jti=jti,
+                user_id=user["id"],
+                expires_at=access_expires_at,
+                token=access_token,
+            )
+            await self.mongo.save_refresh_token({
+                "user_id": user["id"],
+                "token_hash": hash_refresh_token(refresh_token),
+                "expires_at": refresh_expires_at,
+                "user_agent": user_agent,
+                "ip_address": ip_address,
+            })
+        except Exception as exc:
+            logger.exception("Failed to issue session for user %s", user["id"])
+            try:
+                await self.redis.revoke_access_token(jti)
+            except Exception:
+                logger.warning(
+                    "Failed to clean up access token after session issue failure for user %s",
+                    user["id"],
+                )
+            raise AppError(
+                status_code=500,
+                code="session_create_failed",
+                message="Unable to create session. Please try again.",
+            ) from exc
 
         return {
             "user": {

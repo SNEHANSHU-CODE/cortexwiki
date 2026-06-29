@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, File, UploadFile, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, Query, Response, File, UploadFile, Form, BackgroundTasks
 from bson import ObjectId
 
 from app.api.deps import get_current_user, validate_wiki_id, verify_content_length
@@ -231,20 +231,21 @@ async def ingest_pdf(
     
     pdf_bytes_list = []
     total_size = 0
-    while True:
-        chunk = await file.read(1024 * 1024)
-        if not chunk:
-            break
-        total_size += len(chunk)
-        if total_size > MAX_SIZE:
-            await file.close()
-            raise AppError(
-                status_code=400,
-                code="file_too_large",
-                message="File size exceeds the 16MB limit.",
-            )
-        pdf_bytes_list.append(chunk)
-    await file.close()
+    try:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            total_size += len(chunk)
+            if total_size > MAX_SIZE:
+                raise AppError(
+                    status_code=400,
+                    code="file_too_large",
+                    message="File size exceeds the 16MB limit.",
+                )
+            pdf_bytes_list.append(chunk)
+    finally:
+        await file.close()
     pdf_bytes = b"".join(pdf_bytes_list)
         
     if len(pdf_bytes) == 0:
@@ -298,8 +299,8 @@ async def ingest_pdf(
 @router.get("/history", response_model=list[IngestHistoryItem])
 async def ingest_history(
     wiki_id: str | None = None,
-    limit: int = 25,
-    offset: int = 0,
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     current_user: dict = Depends(get_current_user),
 ):
     # BUG FIX #5: Validate wiki_id format if provided (use centralized validator)
@@ -337,7 +338,7 @@ async def get_wiki_page_by_url(
         raise AppError(status_code=404, code="page_not_found", message="Page not found.")
     
     return {
-        "id": str(page["_id"]) if "_id" in page else page.get("id"),
+        "id": page.get("id"),
         "title": page["title"],
         "content": page.get("content", ""),
         "summary": page.get("summary", ""),
