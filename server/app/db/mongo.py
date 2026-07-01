@@ -781,6 +781,95 @@ class MongoManager:
         self._memory["agent_logs"][document["id"]] = document
         return self._copy(document)
 
+    # ── RAG Admin Helpers ─────────────────────────────────────────────────────
+
+    async def rag_status(self, user_id: str | None = None) -> dict:
+        """Return embedding pipeline status: total pages, how many have an embedding, how many are pending."""
+        if self.database is not None:
+            base_filter: dict = {}
+            if user_id:
+                base_filter["user_id"] = user_id
+            total = await self.database.wiki_pages.count_documents(base_filter)
+            processed = await self.database.wiki_pages.count_documents(
+                {**base_filter, "embedding": {"$exists": True, "$not": {"$size": 0}}}
+            )
+            pending = total - processed
+            return {
+                "sources": {
+                    "total": total,
+                    "processed": processed,
+                    "pending": pending,
+                },
+                "embeddings": {
+                    "total_chunks": processed,
+                },
+            }
+        # In-memory fallback
+        pages = list(self._memory["wiki_pages"].values())
+        if user_id:
+            pages = [p for p in pages if p.get("user_id") == user_id]
+        total = len(pages)
+        processed = sum(1 for p in pages if p.get("embedding"))
+        return {
+            "sources": {"total": total, "processed": processed, "pending": total - processed},
+            "embeddings": {"total_chunks": processed},
+        }
+
+    async def rag_clear_embeddings(self, user_id: str | None = None) -> int:
+        """
+        Strip the embedding field from all wiki_pages so they are re-queued for embedding.
+        Returns the count of documents updated.
+        """
+        if self.database is not None:
+            base_filter: dict = {}
+            if user_id:
+                base_filter["user_id"] = user_id
+            result = await self.database.wiki_pages.update_many(
+                base_filter,
+                {"$unset": {"embedding": ""}},
+            )
+            return result.modified_count
+        # In-memory fallback
+        count = 0
+        for page in self._memory["wiki_pages"].values():
+            if user_id and page.get("user_id") != user_id:
+                continue
+            if "embedding" in page:
+                del page["embedding"]
+                count += 1
+        return count
+
+    async def rag_update_page_embedding(self, page_id: str, embedding: list[float]) -> bool:
+        """Update the embedding vector for a single wiki_page after re-generation."""
+        if self.database is not None:
+            from bson import ObjectId
+            if not ObjectId.is_valid(page_id):
+                return False
+            result = await self.database.wiki_pages.update_one(
+                {"_id": ObjectId(page_id)},
+                {"$set": {"embedding": embedding}},
+            )
+            return result.modified_count > 0
+        if page_id in self._memory["wiki_pages"]:
+            self._memory["wiki_pages"][page_id]["embedding"] = embedding
+            return True
+        return False
+
+    async def rag_list_pages_without_embedding(self, limit: int = 200) -> list[dict]:
+        """Return pages that have no embedding (pending re-embedding)."""
+        if self.database is not None:
+            cursor = self.database.wiki_pages.find(
+                {"$or": [{"embedding": {"$exists": False}}, {"embedding": {"$size": 0}}]},
+                {"_id": 1, "title": 1, "summary": 1, "content": 1, "user_id": 1, "wiki_id": 1},
+                limit=limit,
+            )
+            return [self._normalize(p) for p in await cursor.to_list(length=limit)]
+        pages = [
+            p for p in self._memory["wiki_pages"].values()
+            if not p.get("embedding")
+        ]
+        return [self._copy(p) for p in pages[:limit]]
+
 
 mongo_manager = MongoManager()
 

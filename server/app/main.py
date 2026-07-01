@@ -11,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.api.routes import auth, graph, ingest, query, wikis
+from app.api.routes import auth, graph, ingest, query, rag, wikis
 from app.core.config import settings
 
 
@@ -798,6 +798,7 @@ def create_fastapi_app() -> FastAPI:
     app.include_router(query.router, prefix=settings.API_V1_PREFIX)
     app.include_router(graph.router, prefix=settings.API_V1_PREFIX)
     app.include_router(wikis.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(rag.router, prefix=settings.API_V1_PREFIX)
 
     # Keep server alive
     @app.get("/api/ping")

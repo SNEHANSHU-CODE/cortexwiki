@@ -32,12 +32,12 @@ const chatSlice = createSlice({
           metadata: null,
         });
         // Log duplicate prevention for debugging
-        if (typeof console !== "undefined" && process.env.NODE_ENV !== "production") {
+        if (typeof console !== "undefined" && import.meta.env.DEV) {
           console.debug(`[ChatSlice] Created assistant message: ${id}`);
         }
       } else {
         // Duplicate detected - log for debugging socket race conditions
-        if (typeof console !== "undefined" && process.env.NODE_ENV !== "production") {
+        if (typeof console !== "undefined" && import.meta.env.DEV) {
           console.warn(`[ChatSlice] Duplicate assistant message prevented: ${id} (already exists with status: ${existingMessage.status})`);
         }
       }

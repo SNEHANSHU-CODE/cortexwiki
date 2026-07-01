@@ -1,4 +1,5 @@
 import asyncio
+import certifi
 import contextvars
 import os
 import tempfile
@@ -158,7 +159,8 @@ async def _fetch_transcript_whisper_fallback(video_id: str) -> str:
         filename = os.path.basename(downloaded_file)
         
         logger.info(f"Uploading {filename} to Groq Whisper API (whisper-large-v3-turbo)...")
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        verify_ssl = certifi.where() if settings.OUTBOUND_VERIFY_SSL else False
+        async with httpx.AsyncClient(timeout=60.0, verify=verify_ssl) as client:
             with open(downloaded_file, "rb") as f:
                 files = {
                     "file": (filename, f, "application/octet-stream")
@@ -385,7 +387,10 @@ async def fetch_web_page_content(url: str) -> dict:
             logger.info(f"Fetching web page via ScraperAPI residential proxy: {url}")
             async with httpx.AsyncClient(
                 proxy=settings.scraperapi_proxy_url,
-                verify=settings.OUTBOUND_VERIFY_SSL,
+                # Use certifi's bundled CA bundle — Render's Python 3.14 environment
+                # does not bundle system CA certificates, causing CERTIFICATE_VERIFY_FAILED
+                # when TLS-handshaking through the proxy without an explicit CA store.
+                verify=certifi.where(),
                 timeout=settings.HTTP_REQUEST_TIMEOUT,
             ) as proxy_client:
                 response = await proxy_client.get(url, follow_redirects=True)
