@@ -257,10 +257,16 @@ class GraphManager:
             target_id = target.get("name") or target.get("id", "unknown")
             nodes[source_id] = {"id": source_id, "type": source.get("type", "concept"), "description": source.get("description", ""), "importance": float(source.get("importance", 0.5)), "category": source.get("category")}
             nodes[target_id] = {"id": target_id, "type": target.get("type", "concept"), "description": target.get("description", ""), "importance": float(target.get("importance", 0.5)), "category": target.get("category")}
+            # Neo4j Relationship objects expose .type (the Cypher relationship type string)
+            # not .get() — using getattr handles both Relationship objects and plain dicts safely.
+            if isinstance(relationship, tuple):
+                rel_label = relationship[1] if len(relationship) > 1 else "RELATED_TO"
+            else:
+                rel_label = getattr(relationship, "type", None) or relationship.get("label", "RELATED_TO")
             edges.append({
                 "source": source_id,
                 "target": target_id,
-                "label": relationship[1] if isinstance(relationship, tuple) else relationship.get("label", "RELATED_TO"),
+                "label": rel_label,
             })
         return {"nodes": list(nodes.values()), "edges": edges}
 

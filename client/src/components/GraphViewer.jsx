@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { useTheme } from "../hooks/useTheme";
 import "./styles/GraphViewer.css";
@@ -36,9 +36,21 @@ function GraphViewer({ graphData, selectedNodeId, onNodeSelect, wikiId }) {
   const hasAutoFitRef = useRef(false);
 
   const [hoveredNodeId, setHoveredNodeId] = useState("");
-  const [size, setSize]                   = useState({ width: 0, height: 0 });
+  // Bug 2 fix: Read dimensions synchronously on mount via useLayoutEffect so the
+  // graph canvas is never blocked by a late-firing async ResizeObserver.
+  const [size, setSize] = useState({ width: 0, height: 0 });
 
-  // ── ResizeObserver ───────────────────────────────────────────────────────
+  // ── Synchronous size seed on mount ───────────────────────────────────────
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setSize({ width: rect.width, height: rect.height });
+    }
+  }, []);
+
+  // ── ResizeObserver — keeps size in sync on layout changes ────────────────
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;

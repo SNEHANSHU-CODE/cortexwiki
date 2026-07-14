@@ -2,6 +2,7 @@ import "./styles/Navbar.css";
 import { useState, useEffect, useRef } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useTheme } from "../hooks/useTheme";
+import UsageDropdown from "./UsageDropdown";
 
 function Navbar({
   links       = [],
@@ -113,9 +114,7 @@ function Navbar({
 
           {user ? (
             <>
-              <span className="cw-navbar__profile">
-                {user.full_name || user.username}
-              </span>
+              <UsageDropdown user={user} />
               <button
                 type="button"
                 className="cw-btn cw-btn--ghost"

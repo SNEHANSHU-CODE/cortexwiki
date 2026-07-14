@@ -1,0 +1,296 @@
+/* ── UsageDropdown ────────────────────────────────────────────────────────
+   Anchored dropdown showing daily token usage bars.
+   Uses CSS variables so dark / light mode is automatic.
+────────────────────────────────────────────────────────────────────────── */
+
+/* ── Wrapper — positioning context ─────────────────────────────────────── */
+.usage-dropdown {
+  position: relative;
+}
+
+/* ── Trigger chip ────────────────────────────────────────────────────────── */
+.usage-dropdown__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.55rem 0.3rem 0.35rem;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: #cbd5e1;
+}
+
+.usage-dropdown__trigger:hover,
+.usage-dropdown__trigger--active {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+/* Avatar circle — first letter of name */
+.usage-dropdown__avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #38bdf8, #5eead4);
+  color: #0a0f1e;
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.usage-dropdown__name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-dropdown__chevron {
+  width: 13px;
+  height: 13px;
+  color: #64748b;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.usage-dropdown__chevron--up {
+  transform: rotate(180deg);
+}
+
+/* ── Floating panel ─────────────────────────────────────────────────────── */
+.usage-dropdown__panel {
+  position: absolute;
+  top: calc(100% + 16px);
+  right: 0;
+  width: 300px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(10, 15, 30, 0.97);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  z-index: 500;
+  animation: usage-drop-in 0.18s ease;
+  overflow: hidden;
+}
+
+@keyframes usage-drop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.usage-dropdown__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 1rem 1.1rem 0.7rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.usage-dropdown__title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  font-family: 'Syne', system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.usage-dropdown__reset {
+  font-size: 0.68rem;
+  color: #475569;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.usage-dropdown__body {
+  padding: 0.9rem 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── States ─────────────────────────────────────────────────────────────── */
+.usage-dropdown__state {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.usage-dropdown__error {
+  font-size: 0.78rem;
+  color: #f87171;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+/* ── Skeleton loading bars ──────────────────────────────────────────────── */
+.usage-skeleton {
+  height: 48px;
+  border-radius: 8px;
+  background: linear-gradient(90deg,
+    rgba(148, 163, 184, 0.06) 0%,
+    rgba(148, 163, 184, 0.12) 50%,
+    rgba(148, 163, 184, 0.06) 100%);
+  background-size: 200% 100%;
+  animation: usage-shimmer 1.4s ease infinite;
+}
+
+.usage-skeleton--short {
+  height: 36px;
+}
+
+@keyframes usage-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Usage bar ──────────────────────────────────────────────────────────── */
+.usage-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.usage-bar__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.usage-bar__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.usage-bar__value {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.usage-bar__sep {
+  color: #334155;
+}
+
+.usage-bar__track {
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(148, 163, 184, 0.1);
+  overflow: hidden;
+}
+
+.usage-bar__fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.usage-bar__fill--ok     { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.usage-bar__fill--warn   { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.usage-bar__fill--danger { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+.usage-bar__pct {
+  font-size: 0.67rem;
+  color: #475569;
+  font-family: 'IBM Plex Mono', monospace;
+  text-align: right;
+}
+
+/* ── Light mode overrides ──────────────────────────────────────────────── */
+html[data-theme='light'] .usage-dropdown__trigger {
+  color: #516075;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme='light'] .usage-dropdown__trigger:hover,
+html[data-theme='light'] .usage-dropdown__trigger--active {
+  background: rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 23, 42, 0.24);
+}
+
+html[data-theme='light'] .usage-dropdown__panel {
+  background: rgba(248, 250, 252, 0.98);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.15);
+}
+
+html[data-theme='light'] .usage-dropdown__header {
+  border-bottom-color: rgba(15, 23, 42, 0.07);
+}
+
+html[data-theme='light'] .usage-dropdown__title {
+  color: #0f172a;
+}
+
+html[data-theme='light'] .usage-dropdown__reset {
+  color: #94a3b8;
+}
+
+html[data-theme='light'] .usage-bar__label {
+  color: #475569;
+}
+
+html[data-theme='light'] .usage-bar__value {
+  color: #94a3b8;
+}
+
+html[data-theme='light'] .usage-bar__track {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme='light'] .usage-bar__pct {
+  color: #94a3b8;
+}
+
+html[data-theme='light'] .usage-skeleton {
+  background: linear-gradient(90deg,
+    rgba(15, 23, 42, 0.04) 0%,
+    rgba(15, 23, 42, 0.09) 50%,
+    rgba(15, 23, 42, 0.04) 100%);
+  background-size: 200% 100%;
+  animation: usage-shimmer 1.4s ease infinite;
+}
+
+/* ── Mobile ─────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .usage-dropdown__panel {
+    /* Stretch to near full viewport width, offset from right edge */
+    position: fixed;
+    top: 74px;          /* below the 58px-tall mobile navbar + breathing room */
+    right: 1rem;
+    left: 1rem;
+    width: auto;
+    border-radius: 16px;
+  }
+
+  .usage-dropdown__header {
+    padding: 1rem 1.25rem 0.75rem;
+  }
+
+  .usage-dropdown__body {
+    padding: 1rem 1.25rem 1.25rem;
+    gap: 1.1rem;
+  }
+
+  .usage-bar__track {
+    height: 9px;
+  }
+
+  .usage-bar__label {
+    font-size: 0.82rem;
+  }
+
+  .usage-bar__value {
+    font-size: 0.78rem;
+  }
+}

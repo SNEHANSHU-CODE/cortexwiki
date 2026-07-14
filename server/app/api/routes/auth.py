@@ -90,3 +90,16 @@ async def me(current_user: dict = Depends(get_current_user)):
         username=current_user["username"],
         full_name=current_user.get("full_name", ""),
     )
+
+
+@router.get("/me/usage")
+async def me_usage(current_user: dict = Depends(get_current_user)):
+    """Return the authenticated user's daily token usage vs enforced limits."""
+    from app.db.mongo import get_mongo_manager
+    input_used, output_used = await get_mongo_manager().get_user_token_usage(current_user["id"])
+    return {
+        "daily_input_tokens_used":  input_used,
+        "daily_output_tokens_used": output_used,
+        "daily_input_limit":        100_000,
+        "daily_output_limit":        30_000,
+    }

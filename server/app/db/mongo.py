@@ -385,13 +385,33 @@ class MongoManager:
 
     async def list_wikis(self, user_id: str, limit: int = 100) -> list[dict]:
         if self.database is not None:
-            cursor = self.database.wikis.find(
-                {"user_id": user_id},
-                {"master_note": 0}
-            ).sort("created_at", -1)
+            pipeline = [
+                {"$match": {"user_id": user_id}},
+                {"$sort": {"created_at": -1}},
+                {"$limit": limit},
+                {
+                    "$addFields": {
+                        # Slice first 200 chars of master_note for the card preview
+                        "master_note_excerpt": {
+                            "$cond": {
+                                "if": {"$gt": [{"$strLenCP": {"$ifNull": ["$master_note", ""]}}, 0]},
+                                "then": {"$substrCP": ["$master_note", 0, 200]},
+                                "else": "",
+                            }
+                        }
+                    }
+                },
+                # Exclude the full master_note from the list response — use the excerpt only
+                {"$project": {"master_note": 0}},
+            ]
+            cursor = self.database.wikis.aggregate(pipeline)
             return [self._normalize(w) for w in await cursor.to_list(length=limit)]
         items = [self._copy(w) for w in self._memory["wikis"].values() if w["user_id"] == user_id]
         items.sort(key=lambda x: x["created_at"], reverse=True)
+        # Inject excerpt for in-memory fallback
+        for item in items:
+            note = item.get("master_note") or ""
+            item["master_note_excerpt"] = note[:200]
         return items[:limit]
 
     async def update_wiki(self, wiki_id: str, user_id: str, payload: dict) -> dict | None:
