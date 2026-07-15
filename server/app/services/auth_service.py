@@ -204,6 +204,29 @@ class AuthService:
             domain=settings.COOKIE_DOMAIN,
         )
 
+    async def delete_account(self, user_id: str) -> None:
+        """
+        GDPR compliance: Deletes all user data from Redis, MongoDB, and Neo4j.
+        """
+        logger.info("Starting account deletion for user: %s", user_id)
+        try:
+            # 1. Revoke all active tokens from Redis
+            await self.redis.revoke_user_tokens(user_id)
+            
+            # 2. Delete the user's graph data from Neo4j
+            from app.services.graph_service import get_graph_service
+            graph_service = get_graph_service()
+            await graph_service.delete_user_graph(user_id=user_id)
+
+            # 3. Delete all data from MongoDB (user, wikis, pages, vectors, tokens, logs)
+            await self.mongo.delete_user_data(user_id)
+            
+            logger.info("Account deletion completed for user: %s", user_id)
+        except Exception as e:
+            logger.exception("Failed to fully delete account for user %s: %s", user_id, str(e))
+            raise AppError(status_code=500, code="delete_account_failed", message="Failed to delete account.") from e
+
+
     async def _issue_session(self, *, user: dict, user_agent: str, ip_address: str) -> dict:
         access_token, jti, access_expires_at = create_access_token(user_id=user["id"], email=user["email"])
         refresh_token, refresh_expires_at = create_refresh_token()

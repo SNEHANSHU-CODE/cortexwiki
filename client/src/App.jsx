@@ -22,12 +22,13 @@ import "./App.css";
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const WikiDashboard = lazy(() => import("./pages/WikiDashboard"));
 const PrivacyPolicy = lazy(() => import("./components/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./components/TermsOfService"));
 const ContactPage = lazy(() => import("./components/ContactPage"));
 
-const FOOTER_ROUTES = new Set(["/", "/login", "/register", "/privacy", "/terms", "/contact"]);
+const FOOTER_ROUTES = new Set(["/", "/login", "/register", "/forgot-password", "/privacy", "/terms", "/contact"]);
 const WORKSPACE_LINKS = [{ to: "/wiki", label: "Wiki" }];
 
 const LANDING_LINKS = [
@@ -44,7 +45,7 @@ function AppRouter() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   const isLanding = location.pathname === "/";
-  const isAuthPage = location.pathname === "/login" || location.pathname === "/register";
+  const isAuthPage = location.pathname === "/login" || location.pathname === "/register" || location.pathname === "/forgot-password";
   const showFooter = FOOTER_ROUTES.has(location.pathname);
 
   const handleLogout = async () => {
@@ -112,6 +113,7 @@ function AppRouter() {
 
             <Route path="/login" element={<Suspense fallback={<PageSpinner label="Loading..." />}><LoginPage /></Suspense>} />
             <Route path="/register" element={<Suspense fallback={<PageSpinner label="Loading..." />}><RegisterPage /></Suspense>} />
+            <Route path="/forgot-password" element={<Suspense fallback={<PageSpinner label="Loading..." />}><ForgotPasswordPage /></Suspense>} />
 
             <Route path="/privacy" element={<Suspense fallback={<PageSpinner />}><PrivacyPolicy /></Suspense>} />
             <Route path="/terms" element={<Suspense fallback={<PageSpinner />}><TermsOfService /></Suspense>} />

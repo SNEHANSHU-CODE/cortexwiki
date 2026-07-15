@@ -40,8 +40,9 @@ export function useAuthInitialization() {
         console.error("Auth initialization failed:", error);
         dispatch(clearSession());
       } finally {
-        if (!active) return;
-        dispatch(finishHydration());
+        if (active) {
+          dispatch(finishHydration());
+        }
       }
     };
 

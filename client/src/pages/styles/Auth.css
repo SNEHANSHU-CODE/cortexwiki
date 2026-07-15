@@ -262,6 +262,23 @@
   font-weight: 600;
   color: #94a3b8;
   letter-spacing: 0.01em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.auth-field__forgot {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #38bdf8;
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+
+.auth-field__forgot:hover {
+  opacity: 1;
+  text-decoration: underline;
 }
 
 .auth-field__input {
@@ -285,6 +302,48 @@
   border-color: #38bdf8;
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
   background: rgba(15, 23, 42, 0.8);
+}
+
+/* ── Password eye-toggle ────────────────────────────────────────────────── */
+.auth-field--pw {
+  position: relative;
+}
+
+.auth-field--pw .auth-field__input {
+  padding-right: 2.8rem;
+}
+
+.auth-field__eye {
+  position: absolute;
+  right: 0.85rem;
+  bottom: 0.78rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.auth-field__eye:hover {
+  color: #94a3b8;
+}
+
+.auth-field__eye svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+html[data-theme='light'] .auth-field__eye {
+  color: #94a3b8;
+}
+
+html[data-theme='light'] .auth-field__eye:hover {
+  color: #475569;
 }
 
 /* ── Error banner ─────────────────────────────────────────────────────── */
@@ -563,3 +622,19 @@ html[data-theme='light'] .auth-divider span {
     border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   }
 }
+
+/* ── Forgot password page — narrow single-column layout ──────────────────── */
+.auth-layout--narrow {
+  max-width: 480px;
+  grid-template-columns: 1fr;
+}
+
+.auth-form-side--centered {
+  align-items: stretch;
+  border-radius: 24px;
+}
+
+/* Light mode forgot link */
+html[data-theme='light'] .auth-field__forgot {
+  color: #0f62fe;
+}

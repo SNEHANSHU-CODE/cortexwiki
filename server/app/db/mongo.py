@@ -890,6 +890,23 @@ class MongoManager:
         ]
         return [self._copy(p) for p in pages[:limit]]
 
+    async def delete_user_data(self, user_id: str) -> None:
+        """Hard delete all data associated with a user across all collections."""
+        if self.database is not None:
+            from bson import ObjectId
+            await self.database.users.delete_one({"_id": ObjectId(user_id)})
+            await self.database.refresh_tokens.delete_many({"user_id": user_id})
+            await self.database.wikis.delete_many({"user_id": user_id})
+            await self.database.wiki_pages.delete_many({"user_id": user_id})
+            await self.database.raw_data.delete_many({"user_id": user_id})
+            await self.database.agent_logs.delete_many({"user_id": user_id})
+            return
+
+        # Memory fallback deletion
+        self._memory["users"].pop(user_id, None)
+        for coll in ["refresh_tokens", "wikis", "wiki_pages", "raw_data", "agent_logs"]:
+            self._memory[coll] = {k: v for k, v in self._memory[coll].items() if v.get("user_id") != user_id}
+
 
 mongo_manager = MongoManager()
 

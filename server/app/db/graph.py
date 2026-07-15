@@ -270,6 +270,21 @@ class GraphManager:
             })
         return {"nodes": list(nodes.values()), "edges": edges}
 
+    async def delete_user_graph(self, user_id: str) -> None:
+        """Delete all nodes and edges belonging to a user."""
+        if self.driver is not None:
+            cypher = """
+            MATCH (c:Concept {user_id: $user_id})
+            DETACH DELETE c
+            """
+            async with self.driver.session() as session:
+                await session.run(cypher, user_id=user_id)
+            return
+        
+        # memory fallback
+        self._nodes = {k: v for k, v in self._nodes.items() if k[0] != user_id}
+        self._edges = [e for e in self._edges if e.get("user_id") != user_id]
+
 
 graph_manager = GraphManager()
 

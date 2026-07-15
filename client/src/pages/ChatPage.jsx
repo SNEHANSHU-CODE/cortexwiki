@@ -80,7 +80,9 @@ function ChatPage({ wikiId }) {
       },
     });
     return () => { sessionRef.current?.disconnect(); abortRef.current?.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
+
 
   // Update session token dynamically when access token changes, preventing connection teardown
   useEffect(() => {

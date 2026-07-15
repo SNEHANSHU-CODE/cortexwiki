@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import DeleteAccountModal from "./DeleteAccountModal";
 import httpClient from "../services/http";
 import "./styles/UsageDropdown.css";
 
@@ -43,24 +44,31 @@ function UsageBar({ label, used, limit }) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-function UsageDropdown({ user }) {
-  const [open, setOpen]       = useState(false);
-  const [data, setData]       = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState(null);
-  const dropdownRef           = useRef(null);
+function UsageDropdown({ user, onLogout }) {
+  const [open, setOpen]             = useState(false);
+  const [data, setData]             = useState(null);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const dropdownRef                 = useRef(null);
 
   // Fetch usage when dropdown opens
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    httpClient
-      .get("/api/auth/me/usage")
-      .then(({ data: d }) => { if (!cancelled) setData(d); })
-      .catch(() => { if (!cancelled) setError("Could not load usage."); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    const fetchUsage = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { data: d } = await httpClient.get("/api/auth/me/usage");
+        if (!cancelled) setData(d);
+      } catch {
+        if (!cancelled) setError("Could not load usage.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchUsage();
     return () => { cancelled = true; };
   }, [open]);
 
@@ -87,7 +95,15 @@ function UsageDropdown({ user }) {
   const displayName = user?.full_name || user?.username || "Account";
 
   return (
-    <div className="usage-dropdown" ref={dropdownRef}>
+    <>
+      {showDeleteModal && (
+        <DeleteAccountModal
+          onClose={() => setShowDeleteModal(false)}
+          onLogout={onLogout}
+        />
+      )}
+
+      <div className="usage-dropdown" ref={dropdownRef}>
       {/* Trigger — clickable username chip */}
       <button
         type="button"
@@ -120,21 +136,21 @@ function UsageDropdown({ user }) {
           </div>
 
           <div className="usage-dropdown__body">
-            {loading && (
+            {loading && !data && (
               <div className="usage-dropdown__state">
                 <div className="usage-skeleton" />
                 <div className="usage-skeleton usage-skeleton--short" />
               </div>
             )}
 
-            {error && !loading && (
+            {error && !data && (
               <div className="usage-dropdown__state usage-dropdown__error">
                 {error}
               </div>
             )}
 
-            {data && !loading && (
-              <>
+            {data && (
+              <div style={{ opacity: loading ? 0.6 : 1 }}>
                 <UsageBar
                   label="Input Tokens"
                   used={data.daily_input_tokens_used}
@@ -145,12 +161,22 @@ function UsageDropdown({ user }) {
                   used={data.daily_output_tokens_used}
                   limit={data.daily_output_limit}
                 />
-              </>
+              </div>
             )}
+          </div>
+          <div className="usage-dropdown__footer">
+            <button
+              type="button"
+              className="usage-dropdown__delete-btn"
+              onClick={() => { setOpen(false); setShowDeleteModal(true); }}
+            >
+              Delete Account
+            </button>
           </div>
         </div>
       )}
     </div>
+    </>
   );
 }
 

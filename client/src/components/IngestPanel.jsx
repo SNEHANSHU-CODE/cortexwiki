@@ -111,7 +111,9 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
   const [localError, setLocalError] = useState(null);
   const prevWikiIdRef = useRef(null);
   const wikiIdRef = useRef(wikiId);
-  wikiIdRef.current = wikiId;
+  useEffect(() => {
+    wikiIdRef.current = wikiId;
+  }, [wikiId]);
 
   const isMounted = useRef(true);
   useEffect(() => {
@@ -126,9 +128,11 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
   useEffect(() => {
     if (!wikiId) {
       prevWikiIdRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveTabId(null);
       setPendingSources([]);
       setCurrentUrl("");
+
       dispatch(clearIngestionState());
       return;
     }
@@ -150,6 +154,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
   // Auto-select first item when items arrive for a new wiki
   useEffect(() => {
     if (items.length > 0 && !activeTabId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveTabId(items[0].id);
     }
   }, [items, activeTabId]);
@@ -158,6 +163,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
   useEffect(() => {
     dispatch(resetSubmitStatus());
     dispatch(clearIngestFeedback());
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentUrl("");
     setSelectedFile(null);
     const input = document.getElementById("pdf-file-input");
@@ -300,7 +306,7 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
 
   const isSubmitting = submitStatus === "loading";
   const isDisabled = !wikiId;
-  const hasFailedSources = pendingSources.some((s) => s.status === "failed");
+
 
   return (
     <>

@@ -19,7 +19,9 @@ function Navbar({
   const { theme, toggleTheme } = useTheme();
 
   // Close drawer on route change
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+
 
   // Transparent → solid on scroll (landing only)
   useEffect(() => {
@@ -114,7 +116,7 @@ function Navbar({
 
           {user ? (
             <>
-              <UsageDropdown user={user} />
+              <UsageDropdown user={user} onLogout={onLogout} />
               <button
                 type="button"
                 className="cw-btn cw-btn--ghost"

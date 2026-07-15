@@ -82,6 +82,13 @@ class Settings(BaseSettings):
     SCRAPERAPI_KEY: str | None = None
     SCRAPERAPI_PROXY_URL: str = "http://proxy.scraperapi.com:8001"
 
+    # EmailJS — server-side OTP email delivery
+    # Get credentials from https://emailjs.com → account → API keys
+    # Template must expose: {{to_email}}, {{to_name}}, {{otp}}
+    EMAILJS_SERVICE_ID: str | None = None
+    EMAILJS_TEMPLATE_ID: str | None = None
+    EMAILJS_PUBLIC_KEY: str | None = None
+
     # Dynamic LLM Routing Preferences
     LLM_PROVIDER_INGESTION: str = "gemini"
     LLM_PROVIDER_CHAT: str = "groq"

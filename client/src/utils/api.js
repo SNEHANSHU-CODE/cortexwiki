@@ -16,6 +16,26 @@ export async function logoutRequest() {
   return data;
 }
 
+export async function sendOtpRequest(payload) {
+  const { data } = await httpClient.post("/api/auth/otp/send", payload);
+  return data;
+}
+
+export async function checkOtpRequest(payload) {
+  const { data } = await httpClient.post("/api/auth/otp/check", payload);
+  return data;
+}
+
+export async function verifyOtpRequest(payload) {
+  const { data } = await httpClient.post("/api/auth/otp/verify", payload);
+  return data;
+}
+
+export async function resetPasswordRequest(payload) {
+  const { data } = await httpClient.post("/api/auth/password-reset", payload);
+  return data;
+}
+
 export async function getSessionFromRefresh() {
   return refreshSession();
 }

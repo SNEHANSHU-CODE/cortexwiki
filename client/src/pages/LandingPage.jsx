@@ -56,8 +56,10 @@ function DemoChat() {
 
   useEffect(() => {
     const msg = DEMO_MESSAGES[msgIdx];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDisplayQ(""); setDisplayA(""); setPhase("typing-q");
     qRef.current = 0; aRef.current = 0;
+
 
     const typeQ = () => {
       qRef.current++;

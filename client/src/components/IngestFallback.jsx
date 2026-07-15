@@ -2,7 +2,8 @@ import { useState } from "react";
 import "./styles/IngestFallback.css";
 
 /* ── YouTube Fallback ───────────────────────────────────────────────── */
-export function YouTubeFallback({ sourceUrl, wikiId, onSubmit, onClose, isSubmitting }) {
+export function YouTubeFallback({ sourceUrl, onSubmit, onClose, isSubmitting }) {
+
   const [method, setMethod] = useState(null);
   const [transcript, setTranscript] = useState("");
 
@@ -126,7 +127,8 @@ export function YouTubeFallback({ sourceUrl, wikiId, onSubmit, onClose, isSubmit
 }
 
 /* ── Web Fallback ───────────────────────────────────────────────────── */
-export function WebFallback({ sourceUrl, wikiId, onSubmit, onClose, isSubmitting }) {
+export function WebFallback({ sourceUrl, onSubmit, onClose, isSubmitting }) {
+
   const [method, setMethod] = useState(null);
   const [content, setContent] = useState("");
   const [fileError, setFileError] = useState(null);

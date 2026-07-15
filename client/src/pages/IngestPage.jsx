@@ -98,7 +98,7 @@ export function NoteDrawer({ item, onClose }) {
                 }}
                 dateTime={item.created_at || item.updated_at}
               >
-                {new Date(item.updated_at || item.created_at || Date.now()).toLocaleString()}
+                {item.updated_at || item.created_at ? new Date(item.updated_at || item.created_at).toLocaleString() : "Unknown Date"}
               </time>
             </div>
             <h2

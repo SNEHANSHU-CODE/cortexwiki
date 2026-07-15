@@ -88,6 +88,56 @@ def decode_access_token(token: str) -> dict[str, Any]:
     return payload
 
 
+def create_reset_token(*, user_id: str) -> str:
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(minutes=15)
+    jti = secrets.token_urlsafe(16)
+    payload = {
+        "sub": user_id,
+        "type": "reset",
+        "jti": jti,
+        "exp": expires_at,
+        "iat": now,
+    }
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return token
+
+
+def decode_reset_token(token: str) -> dict[str, Any]:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+    except jwt.ExpiredSignatureError as exc:
+        raise AppError(
+            status_code=401,
+            code="reset_token_expired",
+            message="Reset token expired. Please request a new verification code.",
+        ) from exc
+    except jwt.PyJWTError as exc:
+        raise AppError(
+            status_code=401,
+            code="reset_token_invalid",
+            message="Invalid reset token.",
+        ) from exc
+
+    if payload.get("type") != "reset":
+        raise AppError(
+            status_code=401,
+            code="reset_token_invalid",
+            message="Invalid token type for password reset.",
+        )
+    if not payload.get("sub") or not payload.get("jti"):
+        raise AppError(
+            status_code=401,
+            code="reset_token_invalid",
+            message="Malformed reset token.",
+        )
+    return payload
+
+
 def create_refresh_token() -> tuple[str, datetime]:
     token = secrets.token_urlsafe(48)
     expires_at = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)

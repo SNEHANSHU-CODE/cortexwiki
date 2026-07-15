@@ -117,6 +117,37 @@
   gap: 1rem;
 }
 
+.usage-dropdown__footer {
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+  padding: 0.8rem 1.1rem;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(10, 15, 30, 0.4);
+}
+
+.usage-dropdown__delete-btn {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.usage-dropdown__delete-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.usage-dropdown__delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── States ─────────────────────────────────────────────────────────────── */
 .usage-dropdown__state {
   display: flex;
@@ -259,6 +290,22 @@ html[data-theme='light'] .usage-skeleton {
     rgba(15, 23, 42, 0.04) 100%);
   background-size: 200% 100%;
   animation: usage-shimmer 1.4s ease infinite;
+}
+
+html[data-theme='light'] .usage-dropdown__footer {
+  border-top-color: rgba(15, 23, 42, 0.07);
+  background: rgba(248, 250, 252, 0.5);
+}
+
+html[data-theme='light'] .usage-dropdown__delete-btn {
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.15);
+  color: #dc2626;
+}
+
+html[data-theme='light'] .usage-dropdown__delete-btn:hover {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
 }
 
 /* ── Mobile ─────────────────────────────────────────────────────────────── */

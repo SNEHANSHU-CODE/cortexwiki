@@ -28,7 +28,7 @@ function CopyCodeButton({ value }) {
   );
 }
 
-function highlightCode(code, language) {
+function highlightCode(code) {
   if (!code) return "";
   
   // 1. Escape HTML entities
@@ -94,7 +94,7 @@ function MarkdownContent({ content }) {
           {children}
         </a>
       ),
-      code({ node, className, children, ...props }) {
+      code({ className, children, ...props }) {
         const raw      = String(children).replace(/\n$/, "");
         // A code node is inline when it has no language class and no newlines
         const isInline = !className && !raw.includes("\n");
@@ -104,7 +104,8 @@ function MarkdownContent({ content }) {
         }
 
         const language = className?.replace("language-", "") || "text";
-        const highlightedHtml = highlightCode(raw, language);
+        const highlightedHtml = highlightCode(raw);
+
 
         return (
           <div className="code-block">

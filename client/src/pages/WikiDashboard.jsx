@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+// Removed unused router imports
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import NotePrintTemplate from "../components/NotePrintTemplate";
@@ -27,6 +27,7 @@ function CreateWikiModal({ open, onClose, onSubmit, busy }) {
 
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName("");
       setDesc("");
     }

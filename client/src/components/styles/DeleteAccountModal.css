@@ -1,0 +1,293 @@
+/* ── Delete Account Modal ─────────────────────────────────────────────────
+   Centered overlay — matches the dark/light Auth palette exactly.
+────────────────────────────────────────────────────────────────────────── */
+
+/* ── Backdrop ───────────────────────────────────────────────────────────── */
+.dam-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(5, 8, 20, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  animation: dam-fade-in 0.18s ease;
+}
+
+@keyframes dam-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Modal panel ────────────────────────────────────────────────────────── */
+.dam-modal {
+  width: 100%;
+  max-width: 440px;
+  background: #0d1424;
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  border-radius: 20px;
+  padding: 2rem;
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(239, 68, 68, 0.06);
+  animation: dam-slide-up 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+@keyframes dam-slide-up {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Header row ─────────────────────────────────────────────────────────── */
+.dam-header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.dam-icon {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f87171;
+}
+
+.dam-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.dam-title {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #f8fafc;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+/* ── Warning text ───────────────────────────────────────────────────────── */
+.dam-desc {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  color: #64748b;
+  line-height: 1.65;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.1);
+  border-radius: 10px;
+}
+
+.dam-desc strong {
+  color: #f87171;
+  font-weight: 600;
+}
+
+/* ── Form ───────────────────────────────────────────────────────────────── */
+.dam-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dam-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.dam-field__label {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.dam-field__wrap {
+  position: relative;
+}
+
+.dam-field__input {
+  width: 100%;
+  padding: 0.75rem 2.8rem 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.dam-field__input::placeholder {
+  color: #334155;
+}
+
+.dam-field__input:focus {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.dam-field__input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dam-field__eye {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.dam-field__eye:hover {
+  color: #94a3b8;
+}
+
+.dam-field__eye svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* ── Error ──────────────────────────────────────────────────────────────── */
+.dam-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  padding: 0.55rem 0.875rem;
+  color: #f87171;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.82rem;
+}
+
+/* ── Action buttons ─────────────────────────────────────────────────────── */
+.dam-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.dam-btn {
+  flex: 1;
+  padding: 0.65rem 1rem;
+  border-radius: 10px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+}
+
+.dam-btn--cancel {
+  background: rgba(148, 163, 184, 0.08);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.dam-btn--cancel:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.14);
+  color: #e2e8f0;
+}
+
+.dam-btn--delete {
+  background: #ef4444;
+  color: #fff;
+}
+
+.dam-btn--delete:hover:not(:disabled):not([aria-busy="true"]) {
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35);
+}
+
+.dam-btn--delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dam-btn:disabled {
+  cursor: not-allowed;
+}
+
+/* ── Light mode ──────────────────────────────────────────────────────────── */
+html[data-theme='light'] .dam-modal {
+  background: #f7fafe;
+  border-color: rgba(220, 38, 38, 0.15);
+  box-shadow: 0 32px 80px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(220, 38, 38, 0.06);
+}
+
+html[data-theme='light'] .dam-title {
+  color: #0f172a;
+}
+
+html[data-theme='light'] .dam-desc {
+  color: #516075;
+  background: rgba(220, 38, 38, 0.04);
+  border-color: rgba(220, 38, 38, 0.1);
+}
+
+html[data-theme='light'] .dam-desc strong {
+  color: #dc2626;
+}
+
+html[data-theme='light'] .dam-field__input {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+html[data-theme='light'] .dam-field__input:focus {
+  border-color: rgba(220, 38, 38, 0.5);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.08);
+}
+
+html[data-theme='light'] .dam-field__eye {
+  color: #94a3b8;
+}
+
+html[data-theme='light'] .dam-btn--cancel {
+  background: rgba(15, 23, 42, 0.05);
+  color: #516075;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme='light'] .dam-btn--cancel:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.09);
+  color: #0f172a;
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .dam-modal {
+    padding: 1.5rem;
+    border-radius: 16px;
+  }
+
+  .dam-actions {
+    flex-direction: column-reverse;
+  }
+}
