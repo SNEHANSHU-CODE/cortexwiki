@@ -451,7 +451,8 @@ async def handle_query(sid, data):
             async for chunk in llm.stream_text(
                 system_instruction=(
                     "You are CortexWiki. Answer only from the provided knowledge base context. "
-                    "If the context is insufficient, say so plainly. Do not invent facts."
+                    "If the context is insufficient, say so plainly. Do not invent facts.\n"
+                    "At the very end of your response, output exactly 3 suggested follow-up questions formatted like this: [SUGGEST: question 1 | question 2 | question 3]"
                 ),
                 prompt=prompt_content,
                 temperature=0.2,

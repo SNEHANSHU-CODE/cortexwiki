@@ -49,6 +49,8 @@ function ConnPill({ state }) {
 function ChatPage({ wikiId }) {
   const [input, setInput] = useState("");
   const [debug, setDebug] = useState(false);
+  const [showConfirmClear, setShowConfirmClear] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const dispatch          = useDispatch();
   const { accessToken }  = useSelector((s) => s.auth);
   const { messages, pendingMessageId, status, error, connectionState } =
@@ -115,14 +117,21 @@ function ChatPage({ wikiId }) {
       .catch((err) => console.error("Failed to load chat history:", err));
   }, [wikiId, dispatch]);
 
-  const handleClearHistory = async () => {
-    if (!window.confirm("Are you sure you want to delete all chat history for this wiki?")) return;
+  const handleClearHistory = () => {
+    setShowConfirmClear(true);
+  };
+
+  const executeClearHistory = async () => {
     try {
+      setIsClearing(true);
       await deleteChatHistory(wikiId);
       dispatch(clearMessages());
+      setShowConfirmClear(false);
     } catch (err) {
       console.error("Failed to delete history:", err);
       alert("Failed to delete chat history.");
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -257,6 +266,7 @@ function ChatPage({ wikiId }) {
             message={msg}
             onRetry={msg.status === "error" ? handleRetry : undefined}
             wikiId={wikiId}
+            onSuggest={(q) => submitPrompt(q).catch(err => console.error("Suggest failed:", err))}
           />
         ))}
         <div ref={scrollAnchorRef} aria-hidden="true" />
@@ -317,6 +327,45 @@ function ChatPage({ wikiId }) {
         </form>
       </div>
 
+      {showConfirmClear && (
+        <div className="ws-modal-overlay" onClick={() => setShowConfirmClear(false)}>
+          <div className="ws-modal-container ws-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "400px" }}>
+            <div className="ws-modal-header" style={{ borderBottom: "none" }}>
+              <h3 className="ws-modal-title" style={{ color: "var(--ws-text-danger)" }}>Clear Chat History?</h3>
+              <button
+                type="button"
+                className="ws-btn ws-btn--ghost ws-modal-close"
+                onClick={() => setShowConfirmClear(false)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="ws-modal-body" style={{ paddingTop: 0 }}>
+              <p>Are you sure you want to permanently delete all chat history for this wiki? This action cannot be undone.</p>
+              <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "1.5rem" }}>
+                <button 
+                  type="button" 
+                  className="ws-btn ws-btn--ghost" 
+                  onClick={() => setShowConfirmClear(false)}
+                  disabled={isClearing}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button" 
+                  className="ws-btn ws-btn--primary" 
+                  style={{ background: "var(--ws-text-danger)", borderColor: "var(--ws-text-danger)", color: "#fff" }}
+                  onClick={executeClearHistory}
+                  disabled={isClearing}
+                >
+                  {isClearing ? "Deleting..." : "Delete History"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

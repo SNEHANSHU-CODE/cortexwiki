@@ -18,6 +18,12 @@ from fastapi import APIRouter, Depends, Response
 
 from app.api.deps import get_current_user, validate_wiki_id
 from app.db.mongo import get_mongo_manager
+from app.services.llm import get_llm_service
+from app.core.config import settings
+import json
+import re
+import httpx
+import asyncio
 from app.schemas.wikis import WikiCreateRequest, WikiListResponse, WikiResponse, WikiSummaryResponse, WikiUpdateRequest
 from app.services.graph_service import get_graph_service
 from app.utils.errors import AppError
@@ -160,4 +166,94 @@ async def delete_wiki(
         # The wiki is already deleted from MongoDB (source of truth)
         logger.warning("Failed to delete wiki graph from Neo4j: wiki_id=%s, error=%s", wiki_id, str(exc))
 
-    return Response(status_code=204)
+    return Response(status_code=204)
+
+@router.post("/{wiki_id}/mcq")
+async def generate_mcq(
+    wiki_id: str,
+    current_user: dict = Depends(get_current_user),
+    mongo=Depends(get_mongo_manager),
+):
+    wiki = await mongo.get_wiki(wiki_id, current_user["id"])
+    if not wiki:
+        raise AppError(status_code=404, code="wiki_not_found", message="Wiki not found.")
+
+    text = wiki.get("master_note") or wiki.get("summary") or wiki.get("description") or ""
+    if not text:
+        raise AppError(status_code=400, code="no_content", message="Wiki has no content to quiz.")
+
+    char_limit = settings.QUIZ_MAX_INPUT_TOKENS * 4
+    truncated_text = text[:char_limit]
+
+    prompt = (
+        f"Generate 5 high-quality Multiple Choice Questions based on this text:\n\n{truncated_text}\n\n"
+        "Return the output as a strict JSON array of objects EXACTLY in this format, with no markdown code blocks:\n"
+        '[\n'
+        '  {\n'
+        '    "q": "Question text here?",\n'
+        '    "options": ["Option A", "Option B", "Option C", "Option D"],\n'
+        '    "answer": 2\n'
+        '  }\n'
+        ']\n'
+        '"answer" must be the integer index (0, 1, 2, or 3) of the correct option.'
+    )
+
+    api_key = settings.QUIZ_API_KEY or settings.GROQ_API_KEY
+    if not api_key:
+        raise AppError(status_code=500, code="config_error", message="No Quiz API key configured.")
+
+    payload = {
+        "model": settings.QUIZ_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a JSON-only API. Output raw JSON array and nothing else."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2,
+        "max_tokens": settings.QUIZ_TOKEN_LIMIT
+    }
+
+    max_retries = 3
+    base_delay = 1.0
+
+    result = ""
+    last_exception = None
+
+    async with httpx.AsyncClient() as client:
+        for attempt in range(max_retries):
+            try:
+                response = await client.post(
+                    f"{settings.GROQ_BASE_URL}/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json=payload,
+                    timeout=settings.LLM_REQUEST_TIMEOUT
+                )
+                response.raise_for_status()
+                data = response.json()
+                result = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                break  # Success, exit the retry loop
+            except httpx.HTTPStatusError as exc:
+                last_exception = exc
+                # Only retry on 429 Too Many Requests or 5xx Server Errors
+                if exc.response.status_code not in (429, 500, 502, 503, 504):
+                    raise AppError(status_code=500, code="llm_error", message=f"Quiz API failed: {str(exc)}")
+                
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(base_delay * (2 ** attempt))  # Exponential backoff: 1s, 2s
+            except Exception as exc:
+                last_exception = exc
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(base_delay * (2 ** attempt))
+        else:
+            # If the loop finishes without breaking, all retries failed
+            raise AppError(status_code=500, code="llm_error", message=f"Quiz API failed after {max_retries} attempts: {str(last_exception)}")
+    
+    match = re.search(r'\[.*\]', result, re.DOTALL)
+    if match:
+        result = match.group(0)
+    
+    try:
+        mcqs = json.loads(result.strip())
+        return {"mcqs": mcqs}
+    except json.JSONDecodeError:
+        raise AppError(status_code=500, code="llm_error", message="Failed to generate multiple choice questions.")
+

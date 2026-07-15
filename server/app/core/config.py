@@ -3,6 +3,10 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+
+# Force .env to override any stale system environment variables
+load_dotenv(override=True)
 
 
 class Settings(BaseSettings):
@@ -66,9 +70,15 @@ class Settings(BaseSettings):
     GROQ_MODEL_INGESTION: str = "groq/compound-mini"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
+    # Quiz Configuration
+    QUIZ_API_KEY: str | None = None
+    QUIZ_MODEL: str = "openai/gpt-oss-20b"
+    QUIZ_MAX_INPUT_TOKENS: int = 2000
+    QUIZ_TOKEN_LIMIT: int = 1024
+
     # Gemini — fallback LLM + embeddings
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
     # Supadata — YouTube transcript primary (bypasses datacenter IP blocks)
@@ -102,7 +112,7 @@ class Settings(BaseSettings):
     LLM_MAX_OUTPUT_TOKENS_CHAT: int = 1024
 
     # LLM Fallback Token Limits (When primary fails and routes to secondary)
-    LLM_FALLBACK_MAX_INPUT_TOKENS_INGESTION: int = 40000
+    LLM_FALLBACK_MAX_INPUT_TOKENS_INGESTION: int = 6000
     LLM_FALLBACK_MAX_OUTPUT_TOKENS: int = 8192
 
     # LangSmith Observability Tracing
@@ -129,7 +139,7 @@ class Settings(BaseSettings):
     HTTP_STREAM_TIMEOUT: int = 30
 
     # LLM timeouts
-    LLM_REQUEST_TIMEOUT: int = 40
+    LLM_REQUEST_TIMEOUT: int = 90
     LLM_STREAM_TIMEOUT: int = 120
 
     # Request and connection limits

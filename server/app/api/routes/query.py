@@ -112,7 +112,8 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         answer = await llm.generate_text(
             system_instruction=(
                 "You are CortexWiki. Answer only from the provided knowledge base context. "
-                "If the context is insufficient, say so plainly. Do not invent facts."
+                "If the context is insufficient, say so plainly. Do not invent facts.\n"
+                "At the very end of your response, output exactly 3 suggested follow-up questions formatted like this: [SUGGEST: question 1 | question 2 | question 3]"
             ),
             prompt=prompt_content,
             temperature=0.2,
@@ -142,7 +143,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         else None
     )
 
-    final_answer = clean_text(answer)
+    final_answer = answer.strip()
     assistant_msg_id = uuid.uuid4().hex
     await mongo.save_chat_message(current_user["id"], payload.wiki_id, assistant_msg_id, "assistant", final_answer, "complete", debug)
 

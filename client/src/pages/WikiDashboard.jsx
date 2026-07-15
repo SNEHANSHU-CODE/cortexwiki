@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import NotePrintTemplate from "../components/NotePrintTemplate";
+import MCQModal from "../components/MCQModal";
 import MarkdownContent from "../components/MarkdownContent";
 import IngestPanel from "../components/IngestPanel";
 import {
@@ -206,6 +207,7 @@ function WikiCard({ wiki, isActive, onSelect, pendingDeleteId, onRequestDelete, 
 function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
   const printRef = useRef(null);
   const [isNativePrinting, setIsNativePrinting] = useState(false);
+  const [showMCQ, setShowMCQ] = useState(false);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -282,6 +284,9 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
         </div>
         {hasNote && (
           <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" className="ws-btn ws-btn--primary" style={{ fontSize: "0.8rem" }} onClick={() => setShowMCQ(true)}>
+              Quiz Me
+            </button>
             <button type="button" className="ws-btn ws-btn--ghost" style={{ fontSize: "0.8rem" }} onClick={handlePrint}>
               Download PDF
             </button>
@@ -317,6 +322,10 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
           </div>
         )}
       </div>
+
+      {showMCQ && (
+        <MCQModal wikiId={wiki?.id} onClose={() => setShowMCQ(false)} />
+      )}
     </div>
   );
 }

@@ -51,6 +51,11 @@ export async function fetchWikiDetail(wikiId) {
   return data;
 }
 
+export async function generateMCQ(wikiId) {
+  const { data } = await httpClient.post(`/api/wikis/${wikiId}/mcq`);
+  return data;
+}
+
 export async function fetchCreateWiki(payload) {
   const { data } = await httpClient.post("/api/wikis", payload);
   return data;

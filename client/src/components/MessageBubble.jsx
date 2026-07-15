@@ -70,7 +70,7 @@ function ConfidenceBar({ value }) {
 
 // ── Message bubble ─────────────────────────────────────────────────────────
 
-function MessageBubble({ message, onRetry, wikiId }) {
+function MessageBubble({ message, onRetry, wikiId, onSuggest }) {
   const isUser      = message.role === "user";
   const isStreaming = message.status === "streaming";
   const isError     = message.status === "error";
@@ -156,7 +156,31 @@ function MessageBubble({ message, onRetry, wikiId }) {
           <p className="message-plain">{message.content}</p>
         ) : message.content ? (
           <>
-            <MarkdownContent content={message.content} />
+            <MarkdownContent content={message.content.replace(/\[SUGGEST:([\s\S]*?)\]/g, "")} />
+            
+            {/* Suggestions */}
+            {!isStreaming && message.content.includes("[SUGGEST:") && (
+              <div className="message-suggestions" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem" }}>
+                {(() => {
+                  const match = message.content.match(/\[SUGGEST:([\s\S]*?)\]/);
+                  if (match && match[1]) {
+                    const questions = match[1].split("|").map(q => q.trim()).filter(Boolean);
+                    return questions.map((q, idx) => (
+                      <button
+                        key={idx}
+                        className="ws-btn ws-btn--ghost"
+                        style={{ fontSize: "0.75rem", borderRadius: "100px", padding: "0.25rem 0.75rem", border: "1px solid var(--ws-border)" }}
+                        onClick={() => onSuggest && onSuggest(q)}
+                      >
+                        {q}
+                      </button>
+                    ));
+                  }
+                  return null;
+                })()}
+              </div>
+            )}
+            
             {isStreaming && <span className="stream-cursor" aria-hidden="true" />}
           </>
         ) : (
