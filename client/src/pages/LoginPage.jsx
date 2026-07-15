@@ -135,7 +135,7 @@ function LoginPage() {
             </p>
           </div>
 
-          <form className="auth-form" onSubmit={handleSubmit} noValidate>
+          <form className="auth-form" onSubmit={handleSubmit}>
             <div className="auth-field">
               <label className="auth-field__label" htmlFor="email">Email</label>
               <input
@@ -145,7 +145,7 @@ function LoginPage() {
                 className="auth-field__input"
                 value={form.email}
                 onChange={handleChange}
-                autoComplete="email"
+                autoComplete="username"
                 placeholder="you@example.com"
                 disabled={submitting}
                 required

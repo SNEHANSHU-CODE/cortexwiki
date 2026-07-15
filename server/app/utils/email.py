@@ -40,13 +40,20 @@ async def send_otp_email(*, email: str, otp: str, name: str = "") -> None:
         "user_id":      settings.EMAILJS_PUBLIC_KEY,
         "template_params": {
             "to_email": email,
+            "email":    email,
             "to_name":  name or email.split("@")[0],
+            "name":     name or email.split("@")[0],
             "otp":      otp,
         },
     }
+    
+    if settings.EMAILJS_PRIVATE_KEY:
+        payload["accessToken"] = settings.EMAILJS_PRIVATE_KEY
 
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.post(EMAILJS_API_URL, json=payload)
+        if not response.is_success:
+            logger.error("EmailJS API failed: %s %s", response.status_code, response.text)
         response.raise_for_status()
 
     logger.info("OTP email sent via EmailJS to %s", email)

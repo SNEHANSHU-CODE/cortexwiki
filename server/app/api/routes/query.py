@@ -8,6 +8,7 @@ from app.services.graph_service import get_graph_service
 from app.services.llm import get_llm_service
 from app.utils.errors import AppError
 from app.utils.text import clean_text
+import uuid
 
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -54,6 +55,10 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     mongo = get_mongo_manager()
     llm = get_llm_service()
     graph_service = get_graph_service()
+
+    # Save user message
+    user_msg_id = uuid.uuid4().hex
+    await mongo.save_chat_message(current_user["id"], payload.wiki_id, user_msg_id, "user", payload.question)
 
     query_embedding = await llm.embed_text(payload.question)
 
@@ -137,8 +142,12 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         else None
     )
 
+    final_answer = clean_text(answer)
+    assistant_msg_id = uuid.uuid4().hex
+    await mongo.save_chat_message(current_user["id"], payload.wiki_id, assistant_msg_id, "assistant", final_answer, "complete", debug)
+
     return QueryData(
-        answer=clean_text(answer),
+        answer=final_answer,
         strategy="knowledge_base",
         confidence=confidence,
         is_grounded=True,
@@ -146,6 +155,29 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         debug=debug,
     )
 
+
+@router.get("/history")
+async def get_history(wiki_id: str, current_user: dict = Depends(get_current_user)):
+    from bson import ObjectId
+    if not ObjectId.is_valid(wiki_id):
+        raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+    await _validate_wiki(wiki_id, current_user["id"])
+    
+    mongo = get_mongo_manager()
+    history = await mongo.get_chat_history(current_user["id"], wiki_id)
+    return {"messages": history}
+
+
+@router.delete("/history", status_code=204)
+async def delete_history(wiki_id: str, current_user: dict = Depends(get_current_user)):
+    from bson import ObjectId
+    if not ObjectId.is_valid(wiki_id):
+        raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
+    await _validate_wiki(wiki_id, current_user["id"])
+    
+    mongo = get_mongo_manager()
+    await mongo.delete_chat_history(current_user["id"], wiki_id)
+    return None
 
 def _build_fallback_answer(*, wiki_pages: list[dict], graph_context: list[str]) -> str:
     parts: list[str] = []

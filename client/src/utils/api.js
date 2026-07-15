@@ -125,6 +125,15 @@ export async function queryKnowledge(payload, config = {}) {
   return data;
 }
 
+export async function fetchChatHistory(wikiId) {
+  const { data } = await httpClient.get("/api/query/history", { params: { wiki_id: wikiId } });
+  return data;
+}
+
+export async function deleteChatHistory(wikiId) {
+  await httpClient.delete("/api/query/history", { params: { wiki_id: wikiId } });
+}
+
 // ── Graph ─────────────────────────────────────────────────────────────────
 export async function fetchKnowledgeGraph(wikiId, topic = "", config = {}) {
   const { data } = await httpClient.get("/api/graph", {

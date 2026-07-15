@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     EMAILJS_SERVICE_ID: str | None = None
     EMAILJS_TEMPLATE_ID: str | None = None
     EMAILJS_PUBLIC_KEY: str | None = None
+    EMAILJS_PRIVATE_KEY: str | None = None
 
     # Dynamic LLM Routing Preferences
     LLM_PROVIDER_INGESTION: str = "gemini"

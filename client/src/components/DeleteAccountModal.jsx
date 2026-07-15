@@ -94,7 +94,7 @@ function DeleteAccountModal({ onClose, onLogout }) {
         </p>
 
         {/* ── Password form ── */}
-        <form className="dam-form" onSubmit={handleDelete} noValidate>
+        <form className="dam-form" onSubmit={handleDelete}>
           <div className="dam-field">
             <label className="dam-field__label" htmlFor="dam-password">
               Confirm with your password
@@ -110,6 +110,8 @@ function DeleteAccountModal({ onClose, onLogout }) {
                 placeholder="••••••••"
                 disabled={deleting}
                 autoComplete="current-password"
+                required
+                minLength={8}
               />
               <button
                 type="button"

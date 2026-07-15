@@ -24,7 +24,8 @@ class MongoManager:
             "raw_data": {},
             "wiki_pages": {},
             "agent_logs": {},
-            "wikis": {},          # new
+            "wikis": {},
+            "chat_messages": {},
         }
 
     async def connect(self) -> None:
@@ -98,6 +99,8 @@ class MongoManager:
         await self._safe_create_index(self.database.raw_data, [("wiki_id", ASCENDING), ("user_id", ASCENDING), ("source_url", ASCENDING)], unique=True)
         await self._safe_create_index(self.database.agent_logs, [("user_id", ASCENDING), ("wiki_id", ASCENDING), ("event_type", ASCENDING), ("created_at", ASCENDING)])
         await self._safe_create_index(self.database.wiki_pages, [("wiki_id", ASCENDING), ("source_url", ASCENDING)])
+        await self._safe_create_index(self.database.chat_messages, [("wiki_id", ASCENDING), ("created_at", ASCENDING)])
+        await self._safe_create_index(self.database.chat_messages, [("user_id", ASCENDING)])
 
     def _copy(self, document: dict | None) -> dict | None:
         return copy.deepcopy(document) if document else None
@@ -202,6 +205,24 @@ class MongoManager:
         if user_id in self._memory["users"]:
             self._memory["users"][user_id]["last_login_at"] = now
             self._memory["users"][user_id]["updated_at"] = now
+
+    async def update_user(self, user_id: str, update_data: dict) -> None:
+        if not update_data:
+            return
+        update_data["updated_at"] = datetime.now(UTC)
+        if self.database is not None:
+            from bson import ObjectId
+            try:
+                await self.database.users.update_one(
+                    {"_id": ObjectId(user_id)},
+                    {"$set": update_data}
+                )
+            except Exception:
+                return
+            return
+        if user_id in self._memory["users"]:
+            for k, v in update_data.items():
+                self._memory["users"][user_id][k] = v
 
     async def get_user_token_usage(self, user_id: str) -> tuple[int, int]:
         """Get (daily_input_tokens_used, daily_output_tokens_used) for a user, resetting if date has changed."""
@@ -451,8 +472,8 @@ class MongoManager:
                         # Cascade delete all wiki data
                         await self.database.wiki_pages.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
                         await self.database.raw_data.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
-                        # Also remove agent logs \u2014 must succeed or the whole transaction rolls back
                         await self.database.agent_logs.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
+                        await self.database.chat_messages.delete_many({"wiki_id": wiki_id, "user_id": user_id}, session=session)
             except Exception:
                 return False
             return True
@@ -460,8 +481,8 @@ class MongoManager:
             del self._memory["wikis"][wiki_id]
             self._memory["wiki_pages"] = {k: v for k, v in self._memory["wiki_pages"].items() if v.get("wiki_id") != wiki_id}
             self._memory["raw_data"] = {k: v for k, v in self._memory["raw_data"].items() if v.get("wiki_id") != wiki_id}
-            # Remove in-memory agent_logs for this wiki
             self._memory["agent_logs"] = {k: v for k, v in self._memory["agent_logs"].items() if v.get("wiki_id") != wiki_id}
+            self._memory["chat_messages"] = {k: v for k, v in self._memory["chat_messages"].items() if v.get("wiki_id") != wiki_id}
             return True
         return False
 
@@ -890,6 +911,41 @@ class MongoManager:
         ]
         return [self._copy(p) for p in pages[:limit]]
 
+    async def save_chat_message(self, user_id: str, wiki_id: str, message_id: str, role: str, content: str, status: str = "complete", metadata: dict | None = None) -> None:
+        doc = {
+            "id": message_id,
+            "user_id": user_id,
+            "wiki_id": wiki_id,
+            "role": role,
+            "content": content,
+            "status": status,
+            "metadata": metadata,
+            "created_at": datetime.now(UTC),
+        }
+        if self.database is not None:
+            await self.database.chat_messages.insert_one(doc)
+            return
+        self._memory["chat_messages"][message_id] = doc
+
+    async def get_chat_history(self, user_id: str, wiki_id: str, limit: int = 50) -> list[dict]:
+        if self.database is not None:
+            cursor = self.database.chat_messages.find(
+                {"wiki_id": wiki_id, "user_id": user_id},
+                {"_id": 0}
+            ).sort("created_at", ASCENDING).limit(limit)
+            return await cursor.to_list(length=limit)
+        
+        msgs = [m for m in self._memory["chat_messages"].values() if m.get("wiki_id") == wiki_id and m.get("user_id") == user_id]
+        msgs.sort(key=lambda x: x.get("created_at", datetime.min))
+        return msgs[-limit:]
+
+    async def delete_chat_history(self, user_id: str, wiki_id: str) -> None:
+        if self.database is not None:
+            await self.database.chat_messages.delete_many({"wiki_id": wiki_id, "user_id": user_id})
+            return
+        self._memory["chat_messages"] = {k: v for k, v in self._memory["chat_messages"].items() if not (v.get("wiki_id") == wiki_id and v.get("user_id") == user_id)}
+
+
     async def delete_user_data(self, user_id: str) -> None:
         """Hard delete all data associated with a user across all collections."""
         if self.database is not None:
@@ -900,11 +956,12 @@ class MongoManager:
             await self.database.wiki_pages.delete_many({"user_id": user_id})
             await self.database.raw_data.delete_many({"user_id": user_id})
             await self.database.agent_logs.delete_many({"user_id": user_id})
+            await self.database.chat_messages.delete_many({"user_id": user_id})
             return
 
         # Memory fallback deletion
         self._memory["users"].pop(user_id, None)
-        for coll in ["refresh_tokens", "wikis", "wiki_pages", "raw_data", "agent_logs"]:
+        for coll in ["refresh_tokens", "wikis", "wiki_pages", "raw_data", "agent_logs", "chat_messages"]:
             self._memory[coll] = {k: v for k, v in self._memory[coll].items() if v.get("user_id") != user_id}
 
 

@@ -12,6 +12,9 @@ const chatSlice = createSlice({
   name: "chat",
   initialState,
   reducers: {
+    setMessages(state, action) {
+      state.messages = action.payload;
+    },
     addUserMessage(state, action) {
       state.messages.push(action.payload);
       state.error = null;
@@ -105,6 +108,7 @@ const chatSlice = createSlice({
 });
 
 export const {
+  setMessages,
   addUserMessage,
   appendAssistantChunk,
   clearChatError,

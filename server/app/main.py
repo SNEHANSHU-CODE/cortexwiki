@@ -385,6 +385,13 @@ async def handle_query(sid, data):
         logger.warning("Query rate limited for user %s sid=%s", user["id"], sid)
         return
 
+    import uuid
+    from app.db.mongo import get_mongo_manager
+
+    # Save user message
+    user_msg_id = uuid.uuid4().hex
+    await get_mongo_manager().save_chat_message(user["id"], wiki_id, user_msg_id, "user", question)
+
     await sio.emit("query:started", {"requestId": request_id, "transport": "socket"}, to=sid)
 
     try:
@@ -486,6 +493,9 @@ async def handle_query(sid, data):
             },
             to=sid,
         )
+        
+        # Save assistant message
+        await mongo.save_chat_message(user["id"], wiki_id, request_id, "assistant", answer, "complete")
 
     except Exception as exc:
         await sio.emit(

@@ -2,11 +2,13 @@ import { startTransition, useCallback, useEffect, useRef, useState } from "react
 import { useDispatch, useSelector } from "react-redux";
 import MessageBubble from "../components/MessageBubble";
 import { createChatStreamSession } from "../services/chatStream";
+import { fetchChatHistory, deleteChatHistory } from "../utils/api";
 import {
   addUserMessage,
   appendAssistantChunk,
   clearChatError,
   clearMessages,
+  setMessages,
   failAssistantMessage,
   finishAssistantMessage,
   setChatError,
@@ -101,6 +103,29 @@ function ChatPage({ wikiId }) {
     return () => window.removeEventListener("app-logout", handleLogout);
   }, []);
 
+  // ── History ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!wikiId) return;
+    fetchChatHistory(wikiId)
+      .then((data) => {
+        if (data?.messages) {
+          dispatch(setMessages(data.messages));
+        }
+      })
+      .catch((err) => console.error("Failed to load chat history:", err));
+  }, [wikiId, dispatch]);
+
+  const handleClearHistory = async () => {
+    if (!window.confirm("Are you sure you want to delete all chat history for this wiki?")) return;
+    try {
+      await deleteChatHistory(wikiId);
+      dispatch(clearMessages());
+    } catch (err) {
+      console.error("Failed to delete history:", err);
+      alert("Failed to delete chat history.");
+    }
+  };
+
   // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({
@@ -175,7 +200,7 @@ function ChatPage({ wikiId }) {
             type="button"
             className="ws-btn ws-btn--ghost"
             style={{ fontSize: "0.72rem", padding: "0.2rem 0.6rem" }}
-            onClick={() => dispatch(clearMessages())}
+            onClick={handleClearHistory}
             disabled={messages.length === 0}
           >
             Clear

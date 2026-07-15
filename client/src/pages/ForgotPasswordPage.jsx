@@ -147,7 +147,7 @@ function ForgotPasswordPage() {
                 </p>
               </div>
 
-              <form className="auth-form" onSubmit={handleEmailSubmit} noValidate>
+              <form className="auth-form" onSubmit={handleEmailSubmit}>
                 <div className="auth-field">
                   <label className="auth-field__label" htmlFor="fp-email">Email address</label>
                   <input
@@ -223,7 +223,7 @@ function ForgotPasswordPage() {
                 </p>
               </div>
 
-              <form className="auth-form" onSubmit={handlePasswordReset} noValidate>
+              <form className="auth-form" onSubmit={handlePasswordReset}>
                 <div className="auth-field auth-field--pw">
                   <label className="auth-field__label" htmlFor="fp-new-password">
                     New password <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(min 8 chars)</span>

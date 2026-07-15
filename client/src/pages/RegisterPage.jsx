@@ -176,7 +176,7 @@ function RegisterPage() {
                 </p>
               </div>
 
-              <form className="auth-form" onSubmit={handleFormSubmit} noValidate>
+              <form className="auth-form" onSubmit={handleFormSubmit}>
                 <div className="auth-field">
                   <label className="auth-field__label" htmlFor="full_name">Full name</label>
                   <input
@@ -203,7 +203,7 @@ function RegisterPage() {
                     className="auth-field__input"
                     value={form.username}
                     onChange={handleChange}
-                    autoComplete="username"
+                    autoComplete="nickname"
                     placeholder="janesmith"
                     disabled={submitting}
                     minLength={3}
@@ -220,7 +220,7 @@ function RegisterPage() {
                     className="auth-field__input"
                     value={form.email}
                     onChange={handleChange}
-                    autoComplete="email"
+                    autoComplete="username"
                     placeholder="you@example.com"
                     disabled={submitting}
                     required
