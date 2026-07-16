@@ -12,8 +12,10 @@ import {
   deleteWiki,
   loadWikiDetail,
   loadWikis,
+  renameWiki,
   setActiveWiki,
   setRightView,
+  togglePublicWikiStatus,
 } from "../redux/slices/wikiSlice";
 import { clearMessages } from "../redux/slices/chatSlice";
 import ChatPage from "./ChatPage";
@@ -135,6 +137,93 @@ function CreateWikiModal({ open, onClose, onSubmit, busy }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function ShareWikiModal({ open, onClose, activeWiki, onToggleShare }) {
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const shareUrl = activeWiki?.is_public 
+    ? `${window.location.origin}/share/${activeWiki.slug}`
+    : "";
+
+  return (
+    <div
+      className="cw-modal"
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Share wiki"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="cw-modal__panel" style={{ maxWidth: "450px" }}>
+        <div className="cw-modal__header">
+          <h2>Share Wiki</h2>
+          <button type="button" className="cw-icon-btn" onClick={onClose} aria-label="Close">
+            X
+          </button>
+        </div>
+        <div style={{ padding: "1.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+            <div style={{ paddingRight: "1rem" }}>
+              <div style={{ fontWeight: 600, color: "var(--ws-text)", marginBottom: "0.25rem" }}>Publish to Web</div>
+              <div style={{ fontSize: "0.85rem", color: "var(--ws-text-mute)", lineHeight: "1.4" }}>Anyone on the internet with the link can view this wiki.</div>
+            </div>
+            <label className="cl-switch" style={{ margin: 0, flexShrink: 0 }}>
+              <input 
+                type="checkbox" 
+                checked={activeWiki?.is_public || false}
+                onChange={onToggleShare}
+              />
+              <span></span>
+            </label>
+          </div>
+
+          {activeWiki?.is_public && (
+            <div style={{ marginTop: "1.5rem", display: "flex", alignItems: "center", background: "var(--ws-bg)", border: "1px solid var(--ws-border)", borderRadius: "8px", padding: "0.4rem 0.4rem 0.4rem 0.75rem" }}>
+              <input
+                type="text"
+                readOnly
+                value={shareUrl}
+                style={{ flex: 1, background: "transparent", border: "none", color: "var(--ws-text-mute)", fontSize: "0.85rem", outline: "none", padding: 0 }}
+                onFocus={(e) => e.target.select()}
+              />
+              <button
+                type="button"
+                className="ws-btn ws-btn--primary"
+                style={{ padding: "0.4rem 0.75rem", fontSize: "0.8rem", height: "auto", minHeight: "0" }}
+                onClick={(e) => {
+                  navigator.clipboard.writeText(shareUrl);
+                  const orig = e.currentTarget.innerText;
+                  e.currentTarget.innerText = "Copied!";
+                  setTimeout(() => { if (e.target) e.target.innerText = orig; }, 2000);
+                }}
+              >
+                Copy Link
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="cw-modal__actions" style={{ padding: "1.25rem 1.5rem", borderTop: "1px solid var(--ws-border)", marginTop: 0, background: "rgba(0,0,0,0.15)" }}>
+          <button type="button" className="ws-btn ws-btn--ghost" onClick={onClose} style={{ marginLeft: "auto" }}>
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -335,6 +424,7 @@ function WikiDashboard() {
   const { wikis, activeWikiId, activeWiki, listStatus, createStatus, detailStatus, error, rightView } = useSelector((s) => s.wiki);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [pendingDeleteId, setPending] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -389,6 +479,15 @@ function WikiDashboard() {
     if (activeWikiId) void dispatch(loadWikiDetail(activeWikiId));
   };
 
+  const handleToggleShare = () => {
+    if (!activeWiki) return;
+    dispatch(togglePublicWikiStatus({ wikiId: activeWiki.id, isPublic: !activeWiki.is_public }));
+  };
+
+  const shareUrl = activeWiki?.is_public 
+    ? `${window.location.origin}/share/${activeWiki.slug}`
+    : "";
+
   const showBack = rightView === "chat" || rightView === "graph";
 
   return (
@@ -403,6 +502,9 @@ function WikiDashboard() {
             <>
               <span className="cw-rightbar__title">{activeWiki?.name}</span>
               <div className="cw-rightbar__actions">
+                <button type="button" className={`ws-btn ${activeWiki?.is_public ? 'ws-btn--primary' : 'ws-btn--ghost'}`} onClick={() => setIsShareModalOpen(true)}>
+                  Share: {activeWiki?.is_public ? "ON" : "OFF"}
+                </button>
                 {showBack && (
                   <button type="button" className="ws-btn ws-btn--ghost" onClick={() => dispatch(setRightView("note"))}>
                     Back
@@ -482,6 +584,12 @@ function WikiDashboard() {
         onClose={() => setIsCreateOpen(false)}
         onSubmit={handleCreateWiki}
         busy={createStatus === "loading"}
+      />
+      <ShareWikiModal
+        open={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        activeWiki={activeWiki}
+        onToggleShare={handleToggleShare}
       />
 
       {drawerOpen && drawerItem && <NoteDrawer item={drawerItem} onClose={() => setDrawerOpen(false)} />}

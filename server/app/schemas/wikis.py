@@ -9,6 +9,7 @@ class WikiCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=500)
 
+
     @field_validator("name", mode="before")
     @classmethod
     def strip_name(cls, value):
@@ -53,7 +54,11 @@ class WikiResponse(BaseModel):
     name: str
     description: str
     master_note: str
+    is_public: bool
+    slug: str | None
     source_count: int
+    visits: int = 0
+    likes: int = 0
     created_at: datetime
     updated_at: datetime
     last_ingested_at: datetime | None = None
@@ -67,7 +72,11 @@ class WikiSummaryResponse(BaseModel):
     name: str
     description: str
     master_note_excerpt: str = ""
+    is_public: bool
+    slug: str | None
     source_count: int
+    visits: int = 0
+    likes: int = 0
     created_at: datetime
     updated_at: datetime
     last_ingested_at: datetime | None = None

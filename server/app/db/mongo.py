@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime
 
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import ASCENDING
+from pymongo import ASCENDING, DESCENDING, TEXT
 
 from app.core.config import settings
 from app.utils.logging import get_logger
@@ -93,6 +93,11 @@ class MongoManager:
         await self._safe_create_index(self.database.refresh_tokens, [("user_id", ASCENDING)])
         await self._safe_create_index(self.database.refresh_tokens, [("expires_at", ASCENDING)], expireAfterSeconds=0)
         await self._safe_create_index(self.database.wikis, [("user_id", ASCENDING), ("created_at", ASCENDING)])
+        await self._safe_create_index(self.database.wikis, [("slug", ASCENDING)], unique=True, sparse=True)
+        await self._safe_create_index(self.database.wikis, [("is_public", ASCENDING), ("created_at", DESCENDING)])
+        await self._safe_create_index(self.database.wikis, [("is_public", ASCENDING), ("visits", DESCENDING)])
+        await self._safe_create_index(self.database.wikis, [("is_public", ASCENDING), ("likes", DESCENDING)])
+        await self._safe_create_index(self.database.wikis, [("name", TEXT), ("description", TEXT)], name="wiki_text_search")
         await self._safe_create_index(self.database.wiki_pages, [("user_id", ASCENDING), ("wiki_id", ASCENDING), ("slug", ASCENDING)], unique=True)
         await self._safe_create_index(self.database.wiki_pages, [("user_id", ASCENDING), ("wiki_id", ASCENDING), ("source_url", ASCENDING)])
         await self._safe_create_index(self.database.raw_data, [("user_id", ASCENDING), ("wiki_id", ASCENDING), ("created_at", ASCENDING)])
@@ -367,17 +372,35 @@ class MongoManager:
 
     # ── Wikis ─────────────────────────────────────────────────────────────────
 
+    async def _generate_unique_wiki_slug(self) -> str:
+        """Generates a guaranteed collision-free 8-character hex slug."""
+        import secrets
+        if self.database is None:
+            return secrets.token_hex(4)
+        
+        while True:
+            candidate = secrets.token_hex(4)
+            exists = await self.database.wikis.find_one({"slug": candidate}, {"_id": 1})
+            if not exists:
+                return candidate
+
     async def create_wiki(self, payload: dict) -> dict:
         now = datetime.now(UTC)
         name = payload["name"].strip()
         if not name:
             raise ValueError("Wiki name is required.")
+        slug = await self._generate_unique_wiki_slug()
+
         document = {
             "user_id": payload["user_id"],
             "name": name,
             "description": payload.get("description", "").strip(),
             "master_note": "",          # compounds over time as sources are added
+            "is_public": False,
+            "slug": slug,
             "source_count": 0,
+            "visits": 0,
+            "likes": 0,
             "version": 1,
             "created_at": now,
             "updated_at": now,
@@ -403,6 +426,126 @@ class MongoManager:
         if wiki and wiki["user_id"] == user_id:
             return self._copy(wiki)
         return None
+
+    async def get_public_wiki_by_slug(self, slug: str) -> dict | None:
+        """Fetch a wiki strictly if it is marked as public, using its slug. Does not auto-increment visits."""
+        if self.database is not None:
+            try:
+                doc = await self.database.wikis.find_one({"slug": slug, "is_public": True})
+            except Exception:
+                return None
+            if not doc:
+                return None
+            return self._normalize(doc)
+        
+        for w in self._memory["wikis"].values():
+            if w.get("slug") == slug and w.get("is_public") is True:
+                return self._copy(w)
+        return None
+
+    async def increment_public_wiki_visits(self, slug: str) -> dict | None:
+        """Increment the visits counter for a public wiki."""
+        if self.database is not None:
+            try:
+                from pymongo import ReturnDocument
+                doc = await self.database.wikis.find_one_and_update(
+                    {"slug": slug, "is_public": True},
+                    {"$inc": {"visits": 1}},
+                    return_document=ReturnDocument.AFTER
+                )
+            except Exception:
+                return None
+            if not doc:
+                return None
+            return self._normalize(doc)
+        
+        for w in self._memory["wikis"].values():
+            if w.get("slug") == slug and w.get("is_public") is True:
+                w["visits"] = w.get("visits", 0) + 1
+                return self._copy(w)
+        return None
+
+    async def increment_public_wiki_likes(self, slug: str) -> dict | None:
+        """Increment the likes counter for a public wiki."""
+        if self.database is not None:
+            try:
+                from pymongo import ReturnDocument
+                doc = await self.database.wikis.find_one_and_update(
+                    {"slug": slug, "is_public": True},
+                    {"$inc": {"likes": 1}},
+                    return_document=ReturnDocument.AFTER
+                )
+            except Exception:
+                return None
+            if not doc:
+                return None
+            return self._normalize(doc)
+        
+        for w in self._memory["wikis"].values():
+            if w.get("slug") == slug and w.get("is_public") is True:
+                w["likes"] = w.get("likes", 0) + 1
+                return self._copy(w)
+        return None
+
+
+    async def search_public_wikis(self, search: str = "", skip: int = 0, limit: int = 20, sort_by: str = "newest") -> tuple[list[dict], int]:
+        """Returns paginated public wikis matching the search query, ordered by sort_by, and the total count."""
+        if self.database is not None:
+            match_query = {"is_public": True}
+            project_stage = {}
+            sort_stage = {"created_at": -1}
+            
+            if search.strip():
+                match_query["$text"] = {"$search": search.strip()}
+                if sort_by == "relevant":
+                    project_stage["score"] = {"$meta": "textScore"}
+                    sort_stage = {"score": {"$meta": "textScore"}}
+
+            if sort_by == "popular":
+                sort_stage = {"visits": -1}
+            elif sort_by == "likes":
+                sort_stage = {"likes": -1}
+            elif sort_by == "newest":
+                sort_stage = {"created_at": -1}
+            
+            pipeline = [
+                {"$match": match_query},
+                {"$sort": sort_stage},
+                {"$skip": skip},
+                {"$limit": limit},
+                {
+                    "$addFields": {
+                        "master_note_excerpt": {
+                            "$cond": {
+                                "if": {"$gt": [{"$strLenCP": {"$ifNull": ["$master_note", ""]}}, 0]},
+                                "then": {"$substrCP": ["$master_note", 0, 200]},
+                                "else": "",
+                            }
+                        }
+                    }
+                }
+            ]
+            
+            # Combine dynamic projection
+            project_base = {"master_note": 0}
+            if project_stage:
+                project_base.update(project_stage)
+            pipeline.append({"$project": project_base})
+            
+            total = await self.database.wikis.count_documents(match_query)
+            cursor = self.database.wikis.aggregate(pipeline)
+            items = [self._normalize(w) for w in await cursor.to_list(length=limit)]
+            return items, total
+            
+        # In-memory fallback
+        items = [self._copy(w) for w in self._memory["wikis"].values() if w.get("is_public") is True]
+        if search.strip():
+            query = search.strip().lower()
+            items = [w for w in items if query in w["name"].lower() or query in w["description"].lower()]
+        
+        items.sort(key=lambda x: x["created_at"], reverse=True)
+        total = len(items)
+        return items[skip:skip+limit], total
 
     async def list_wikis(self, user_id: str, limit: int = 100) -> list[dict]:
         if self.database is not None:
@@ -456,6 +599,36 @@ class MongoManager:
         wiki = self._memory["wikis"].get(wiki_id)
         if wiki and wiki["user_id"] == user_id:
             wiki.update(update_fields)
+            return self._copy(wiki)
+        return None
+
+    async def update_wiki_public_status(self, wiki_id: str, user_id: str, is_public: bool) -> dict | None:
+        """Toggle the public status of a wiki."""
+        now = datetime.now(UTC)
+        if self.database is not None:
+            from bson import ObjectId
+            
+            # Check if wiki has a slug, if not generate one
+            wiki_doc = await self.database.wikis.find_one({"_id": ObjectId(wiki_id), "user_id": user_id})
+            if not wiki_doc:
+                return None
+                
+            update_data = {"is_public": is_public, "updated_at": now}
+            
+            # If turning public and no slug exists, generate one on the fly
+            if is_public and not wiki_doc.get("slug"):
+                update_data["slug"] = await self._generate_unique_wiki_slug()
+                
+            await self.database.wikis.update_one(
+                {"_id": ObjectId(wiki_id), "user_id": user_id},
+                {"$set": update_data, "$inc": {"version": 1}},
+            )
+            return await self.get_wiki(wiki_id, user_id)
+        
+        wiki = self._memory["wikis"].get(wiki_id)
+        if wiki and wiki["user_id"] == user_id:
+            wiki["is_public"] = is_public
+            wiki["updated_at"] = now
             return self._copy(wiki)
         return None
 

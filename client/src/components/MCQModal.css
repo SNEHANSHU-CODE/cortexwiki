@@ -2,9 +2,7 @@
 .mcq-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, 0.65);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -13,14 +11,14 @@
 }
 
 .mcq-modal-content {
-  background: var(--ws-bg-elevated);
-  border: 1px solid var(--ws-border);
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
   border-radius: 24px;
   width: 90%;
   max-width: 650px;
   min-height: 400px;
-  padding: 2rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--ws-border);
+  padding: 2.5rem;
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -49,25 +47,22 @@
 .mcq-header h2 {
   margin: 0;
   font-size: 1.5rem;
-  font-weight: 700;
-  background: linear-gradient(to right, var(--ws-text-base), var(--ws-text-mute));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+  color: var(--text);
 }
 
 .mcq-progress-wrapper {
   flex-grow: 1;
   margin: 0 1.5rem;
   height: 6px;
-  background: var(--ws-bg-base);
-  border-radius: 999px;
+  background: var(--surface-strong);
+  border-radius: 99px;
   overflow: hidden;
 }
 
 .mcq-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #10b981, #3b82f6);
-  border-radius: 999px;
+  background: var(--accent);
   transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -82,10 +77,9 @@
 
 .mcq-question-text {
   font-size: 1.25rem;
-  font-weight: 600;
   line-height: 1.5;
-  color: var(--ws-text-base);
-  margin: 0;
+  color: var(--text);
+  margin: 0 0 1.5rem;
 }
 
 /* Options */
@@ -96,18 +90,18 @@
 }
 
 .mcq-option {
-  background: var(--ws-bg-base);
-  border: 2px solid var(--ws-border);
-  border-radius: 16px;
-  padding: 1.25rem 1.5rem;
-  font-size: 1.1rem;
-  color: var(--ws-text-base);
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
-  gap: 1rem;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  font-size: 1rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .mcq-option-letter {
@@ -122,18 +116,12 @@
   font-weight: 700;
   color: var(--ws-text-mute);
   transition: all 0.2s;
+  margin-right: 1rem;
 }
 
 .mcq-option:hover:not(:disabled) {
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.05);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.mcq-option:hover:not(:disabled) .mcq-option-letter {
-  background: #3b82f6;
-  color: #fff;
+  background: var(--surface-border);
+  border-color: var(--surface-border-strong);
 }
 
 .mcq-option:disabled {
@@ -188,7 +176,7 @@
 .mcq-score-live {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--ws-text-mute);
+  color: var(--text-muted);
 }
 
 .mcq-next-btn {
@@ -230,24 +218,34 @@
 }
 
 .mcq-results p {
-  font-size: 1.25rem;
-  color: var(--ws-text-mute);
+  font-size: 0.9rem;
+  color: var(--text-muted);
   margin: 0;
 }
 
 .mcq-results-btn {
   padding: 0.75rem 2rem;
-  border-radius: 999px;
-  border: 1px solid var(--ws-border);
-  background: var(--ws-bg-base);
-  color: var(--ws-text-base);
+  border-radius: 99px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 1.05rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .mcq-results-btn:hover {
-  background: var(--ws-bg-elevated);
-  border-color: #3b82f6;
-  color: #3b82f6;
+  background: var(--surface-border);
+}
+
+.mcq-results-btn--primary {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+}
+
+.mcq-results-btn--primary:hover {
+  background: var(--accent-strong);
+  color: #ffffff;
 }

@@ -14,7 +14,7 @@ Routes:
   DELETE /api/wikis/:id      → delete wiki + all its data (cascade)
 """
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, Query
 
 from app.api.deps import get_current_user, validate_wiki_id
 from app.db.mongo import get_mongo_manager
@@ -40,7 +40,11 @@ def _to_wiki_response(wiki: dict) -> WikiResponse:
         name=wiki["name"],
         description=wiki.get("description", ""),
         master_note=wiki.get("master_note", ""),
+        is_public=wiki.get("is_public", False),
+        slug=wiki.get("slug"),
         source_count=wiki.get("source_count", 0),
+        visits=wiki.get("visits", 0),
+        likes=wiki.get("likes", 0),
         created_at=wiki["created_at"],
         updated_at=wiki["updated_at"],
         last_ingested_at=wiki.get("last_ingested_at"),
@@ -54,7 +58,11 @@ def _to_wiki_summary_response(wiki: dict) -> WikiSummaryResponse:
         name=wiki["name"],
         description=wiki.get("description", ""),
         master_note_excerpt=wiki.get("master_note_excerpt", wiki.get("master_note", "")[:300]),
+        is_public=wiki.get("is_public", False),
+        slug=wiki.get("slug"),
         source_count=wiki.get("source_count", 0),
+        visits=wiki.get("visits", 0),
+        likes=wiki.get("likes", 0),
         created_at=wiki["created_at"],
         updated_at=wiki["updated_at"],
         last_ingested_at=wiki.get("last_ingested_at"),
@@ -81,6 +89,61 @@ async def list_wikis(current_user: dict = Depends(get_current_user)):
         wikis=[_to_wiki_summary_response(w) for w in wikis],
         total=len(wikis),
     )
+
+
+from pydantic import BaseModel
+class WikiPublicToggleRequest(BaseModel):
+    is_public: bool
+
+
+@router.patch("/{wiki_id}/public", response_model=WikiResponse)
+async def toggle_wiki_public(
+    wiki_id: str,
+    payload: WikiPublicToggleRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await validate_wiki_id(wiki_id)
+    wiki = await get_mongo_manager().update_wiki_public_status(wiki_id, current_user["id"], payload.is_public)
+    if not wiki:
+        raise AppError(status_code=404, code="wiki_not_found", message="Wiki not found.")
+    return _to_wiki_response(wiki)
+
+
+@router.get("/public", response_model=WikiListResponse)
+async def search_public_wikis(
+    search: str = Query("", description="Search term for public wikis"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+    sort_by: str = Query("newest", description="Sorting criteria (newest, popular, likes, relevant)")
+):
+    wikis, total = await get_mongo_manager().search_public_wikis(search=search, skip=skip, limit=limit, sort_by=sort_by)
+    return WikiListResponse(
+        wikis=[_to_wiki_summary_response(w) for w in wikis],
+        total=total,
+    )
+
+
+@router.get("/public/{slug}", response_model=WikiResponse)
+async def get_public_wiki_by_slug(slug: str):
+    wiki = await get_mongo_manager().get_public_wiki_by_slug(slug)
+    if not wiki:
+        raise AppError(status_code=404, code="wiki_not_found", message="Public wiki not found.")
+    return _to_wiki_response(wiki)
+
+
+@router.post("/public/{slug}/like", response_model=WikiResponse)
+async def like_public_wiki_by_slug(slug: str):
+    wiki = await get_mongo_manager().increment_public_wiki_likes(slug)
+    if not wiki:
+        raise AppError(status_code=404, code="wiki_not_found", message="Public wiki not found.")
+    return _to_wiki_response(wiki)
+
+@router.post("/public/{slug}/visit", response_model=WikiResponse)
+async def visit_public_wiki_by_slug(slug: str):
+    wiki = await get_mongo_manager().increment_public_wiki_visits(slug)
+    if not wiki:
+        raise AppError(status_code=404, code="wiki_not_found", message="Public wiki not found.")
+    return _to_wiki_response(wiki)
 
 
 @router.get("/{wiki_id}", response_model=WikiResponse)
@@ -182,8 +245,13 @@ async def generate_mcq(
     if not text:
         raise AppError(status_code=400, code="no_content", message="Wiki has no content to quiz.")
 
+    import random
     char_limit = settings.QUIZ_MAX_INPUT_TOKENS * 4
-    truncated_text = text[:char_limit]
+    if len(text) > char_limit:
+        start_idx = random.randint(0, len(text) - char_limit)
+        truncated_text = text[start_idx : start_idx + char_limit]
+    else:
+        truncated_text = text
 
     prompt = (
         f"Generate 5 high-quality Multiple Choice Questions based on this text:\n\n{truncated_text}\n\n"

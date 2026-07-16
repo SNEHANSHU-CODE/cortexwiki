@@ -69,7 +69,7 @@ function Navbar({
           <nav className="cw-navbar__links" aria-label="Primary navigation">
             {links.map((item) =>
               item.href ? (
-                <a key={item.label} href={item.href} className="cw-navbar__link">
+                <a key={item.label} href={item.href} className={item.className || "cw-navbar__link"}>
                   {item.label}
                 </a>
               ) : (
@@ -77,8 +77,11 @@ function Navbar({
                   key={item.label}
                   to={item.to}
                   className={({ isActive }) =>
-                    `cw-navbar__link${isActive ? " cw-navbar__link--active" : ""}`
+                    item.className
+                      ? `${item.className} ${isActive ? 'active' : ''}`
+                      : `cw-navbar__link${isActive ? " cw-navbar__link--active" : ""}`
                   }
+                  style={item.style}
                 >
                   {item.label}
                 </NavLink>

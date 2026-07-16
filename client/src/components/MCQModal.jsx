@@ -17,29 +17,32 @@ export default function MCQModal({ wikiId, onClose }) {
   const isMounted = useRef(true);
   const fetchFired = useRef(false);
 
+  const fetchQuiz = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await generateMCQ(wikiId);
+      if (isMounted.current) {
+        setMcqs(data.mcqs || []);
+      }
+    } catch (err) {
+      if (isMounted.current) {
+        setError(err.response?.data?.message || err.message || "Failed to generate quiz");
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
+    }
+  };
+
   useEffect(() => {
     isMounted.current = true;
     if (fetchFired.current) return;
     fetchFired.current = true;
 
-    async function loadMCQ() {
-      try {
-        setLoading(true);
-        const data = await generateMCQ(wikiId);
-        if (isMounted.current) {
-          setMcqs(data.mcqs || []);
-        }
-      } catch (err) {
-        if (isMounted.current) {
-          setError(err.response?.data?.message || err.message || "Failed to generate quiz");
-        }
-      } finally {
-        if (isMounted.current) {
-          setLoading(false);
-        }
-      }
-    }
-    loadMCQ();
+    fetchQuiz();
+    
     return () => {
       isMounted.current = false;
     };
@@ -61,6 +64,14 @@ export default function MCQModal({ wikiId, onClose }) {
     } else {
       setIsFinished(true);
     }
+  };
+
+  const handleLoadAnother = () => {
+    setIsFinished(false);
+    setCurrentIndex(0);
+    setSelectedOption(null);
+    setScore(0);
+    fetchQuiz();
   };
 
   const renderContent = () => {
@@ -102,7 +113,10 @@ export default function MCQModal({ wikiId, onClose }) {
               ? "Perfect score! You've mastered this topic." 
               : "Great effort! Keep studying to get a perfect score."}
           </p>
-          <button className="mcq-results-btn" onClick={onClose}>Finish</button>
+          <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
+            <button className="mcq-results-btn mcq-results-btn--primary" onClick={handleLoadAnother}>Play Again</button>
+            <button className="mcq-results-btn" onClick={onClose}>Finish</button>
+          </div>
         </div>
       );
     }

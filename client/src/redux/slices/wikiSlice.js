@@ -5,6 +5,7 @@ import {
   fetchUpdateWiki,
   fetchWikiDetail,
   fetchWikis,
+  toggleWikiPublic,
 } from "../../utils/api";
 import { buildErrorMessage } from "../../utils/sliceUtils";
 
@@ -33,6 +34,11 @@ export const loadWikiDetail = createAsyncThunk("wiki/loadWikiDetail", async (wik
 export const renameWiki = createAsyncThunk("wiki/renameWiki", async ({ wikiId, name, description }, { rejectWithValue }) => {
   try { return await fetchUpdateWiki(wikiId, { name, description }); }
   catch (e) { return rejectWithValue(buildErrorMessage(e, "Unable to update wiki.")); }
+});
+
+export const togglePublicWikiStatus = createAsyncThunk("wiki/togglePublic", async ({ wikiId, isPublic }, { rejectWithValue }) => {
+  try { return await toggleWikiPublic(wikiId, isPublic); }
+  catch (e) { return rejectWithValue(buildErrorMessage(e, "Unable to change public status.")); }
 });
 
 const initialState = {
@@ -110,7 +116,12 @@ const wikiSlice = createSlice({
         s.wikis = s.wikis.map((w) => w.id === a.payload.id ? { ...w, ...a.payload } : w);
         if (s.activeWikiId === a.payload.id) s.activeWiki = { ...(s.activeWiki ?? {}), ...a.payload };
       })
-      .addCase(renameWiki.rejected, (s, a) => { s.error = a.payload; });
+      .addCase(renameWiki.rejected, (s, a) => { s.error = a.payload; })
+
+      .addCase(togglePublicWikiStatus.fulfilled, (s, a) => {
+        s.wikis = s.wikis.map((w) => w.id === a.payload.id ? { ...w, ...a.payload } : w);
+        if (s.activeWikiId === a.payload.id) s.activeWiki = { ...(s.activeWiki ?? {}), ...a.payload };
+      });
   },
 });
 

@@ -147,3 +147,31 @@ export async function fetchKnowledgeGraph(wikiId, topic = "", config = {}) {
   });
   return data;
 }
+
+// ── Public Directory & Share ──────────────────────────────────────────────
+export async function toggleWikiPublic(wikiId, isPublic) {
+  const { data } = await httpClient.patch(`/api/wikis/${wikiId}/public`, { is_public: isPublic });
+  return data;
+}
+
+export async function fetchPublicWikis(search = "", skip = 0, limit = 20, sortBy = "newest") {
+  const { data } = await httpClient.get("/api/wikis/public", {
+    params: { search, skip, limit, sort_by: sortBy },
+  });
+  return data;
+}
+
+export async function fetchPublicWikiBySlug(slug) {
+  const { data } = await httpClient.get(`/api/wikis/public/${slug}`);
+  return data;
+}
+
+export async function likePublicWiki(slug) {
+  const { data } = await httpClient.post(`/api/wikis/public/${slug}/like`);
+  return data;
+}
+
+export async function recordPublicWikiVisit(slug) {
+  const { data } = await httpClient.post(`/api/wikis/public/${slug}/visit`);
+  return data;
+}

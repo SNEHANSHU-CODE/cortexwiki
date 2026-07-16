@@ -14,7 +14,9 @@
   left: 0;
   width: 100%;
   background: #ffffff;
-  z-index: 999999;
+  z-index: -9999;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* When printing, the browser extracts the node. We style it nicely */
@@ -27,6 +29,8 @@
   .native-print-overlay {
     position: relative !important;
     display: block !important;
+    opacity: 1 !important;
+    z-index: 999999 !important;
   }
 
   /* Provide basic A4 margin config */

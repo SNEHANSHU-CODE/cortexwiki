@@ -24,18 +24,24 @@ const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const WikiDashboard = lazy(() => import("./pages/WikiDashboard"));
+const DirectoryPage = lazy(() => import("./pages/DirectoryPage"));
+const PublicWikiPage = lazy(() => import("./pages/PublicWikiPage"));
 const PrivacyPolicy = lazy(() => import("./components/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./components/TermsOfService"));
 const ContactPage = lazy(() => import("./components/ContactPage"));
 
 const FOOTER_ROUTES = new Set(["/", "/login", "/register", "/forgot-password", "/privacy", "/terms", "/contact"]);
-const WORKSPACE_LINKS = [{ to: "/wiki", label: "Wiki" }];
+const WORKSPACE_LINKS = [
+  { to: "/wiki", label: "Dashboard" },
+  { to: "/directory", label: "Explore Directory", className: "ws-btn ws-btn--primary", style: { marginLeft: '0.5rem', padding: '0.3rem 0.75rem', fontSize: '0.85rem' } },
+];
 
 const LANDING_LINKS = [
   { href: "#features", label: "Features" },
   { href: "#pipeline", label: "How it works" },
   { href: "#graph", label: "Graph" },
   { href: "#confidence", label: "Confidence" },
+  { to: "/directory", label: "Explore Directory", className: "ws-btn ws-btn--primary" },
 ];
 
 function AppRouter() {
@@ -130,6 +136,8 @@ function AppRouter() {
               />
             </Route>
 
+            <Route path="/directory" element={<Suspense fallback={<PageSpinner />}><DirectoryPage /></Suspense>} />
+            <Route path="/share/:slug" element={<Suspense fallback={<PageSpinner />}><PublicWikiPage /></Suspense>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </ErrorBoundary>
