@@ -659,7 +659,7 @@ class MongoManager:
             return True
         return False
 
-    async def update_wiki_master_note(self, wiki_id: str, user_id: str, master_note: str) -> None:
+    async def update_wiki_master_note(self, wiki_id: str, user_id: str, master_note: str, previous_note: str = "", page_id: str = "") -> None:
         """Update the compounded master note and increment source count.
         
         BUG FIX #6: Truncate master_note if it exceeds max length.
@@ -676,10 +676,22 @@ class MongoManager:
             from bson import ObjectId
             try:
                 # Use atomic update to modify master_note and bump source_count + version
+                update_doc = {
+                    "$set": {"master_note": truncated_note, "updated_at": now, "last_ingested_at": now},
+                    "$inc": {"source_count": 1, "version": 1}
+                }
+                
+                if page_id:
+                    update_doc["$push"] = {
+                        "master_note_versions": {
+                            "$each": [{"note": previous_note, "page_id": page_id, "created_at": now}],
+                            "$slice": -5
+                        }
+                    }
+
                 await self.database.wikis.update_one(
                     {"_id": ObjectId(wiki_id), "user_id": user_id},
-                    {"$set": {"master_note": truncated_note, "updated_at": now, "last_ingested_at": now},
-                     "$inc": {"source_count": 1, "version": 1}},
+                    update_doc,
                 )
             except Exception:
                 pass
@@ -805,6 +817,38 @@ class MongoManager:
         if wiki and wiki["user_id"] == user_id:
             wiki["master_note"] = truncated_note
             wiki["updated_at"] = now
+
+    async def rollback_ingestions(self, wiki_id: str, user_id: str, steps: int = 1) -> list[str]:
+        """Roll back the master note by the specified number of steps. Returns list of page_ids to delete."""
+        if self.database is not None:
+            from bson import ObjectId
+            wiki = await self.database.wikis.find_one({"_id": ObjectId(wiki_id), "user_id": user_id})
+            if not wiki:
+                return []
+            
+            versions = wiki.get("master_note_versions", [])
+            if not versions or steps < 1:
+                return []
+                
+            steps = min(steps, len(versions))
+            page_ids_to_delete = []
+            
+            for _ in range(steps):
+                last_version = versions.pop()
+                page_ids_to_delete.append(last_version.get("page_id"))
+                
+            previous_note = last_version.get("note", "")
+            
+            now = datetime.now(UTC)
+            await self.database.wikis.update_one(
+                {"_id": ObjectId(wiki_id), "user_id": user_id},
+                {
+                    "$set": {"master_note": previous_note, "master_note_versions": versions, "updated_at": now},
+                    "$inc": {"version": 1}
+                }
+            )
+            return [pid for pid in page_ids_to_delete if pid]
+        return []
 
     # ── Raw Data ──────────────────────────────────────────────────────────────
 

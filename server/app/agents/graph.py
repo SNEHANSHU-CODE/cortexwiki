@@ -137,7 +137,20 @@ class QueryAgentGraph:
         )
 
         builder.add_edge("internet_search", "hallucination_guard")
-        builder.add_edge("hallucination_guard", "answer")
+        
+        def _route_after_guard(state: AgentState) -> str:
+            if not state.get("is_grounded", False) and state.get("allow_internet", False) and not state.get("internet_results"):
+                return "internet_search"
+            return "answer"
+
+        builder.add_conditional_edges(
+            "hallucination_guard",
+            _route_after_guard,
+            {
+                "internet_search": "internet_search",
+                "answer": "answer",
+            },
+        )
         builder.add_edge("answer", END)
 
         return builder.compile()

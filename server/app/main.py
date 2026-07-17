@@ -465,7 +465,7 @@ async def handle_query(sid, data):
                         {"requestId": request_id, "chunk": chunk, "content": "".join(answer_chunks)},
                         to=sid,
                     )
-            answer = clean_text("".join(answer_chunks))
+            answer = "".join(answer_chunks).strip()
         else:
             answer = "No LLM configured."
 

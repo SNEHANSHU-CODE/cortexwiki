@@ -33,7 +33,7 @@ const ContactPage = lazy(() => import("./components/ContactPage"));
 const FOOTER_ROUTES = new Set(["/", "/login", "/register", "/forgot-password", "/privacy", "/terms", "/contact"]);
 const WORKSPACE_LINKS = [
   { to: "/wiki", label: "Dashboard" },
-  { to: "/directory", label: "Explore Directory", className: "ws-btn ws-btn--primary", style: { marginLeft: '0.5rem', padding: '0.3rem 0.75rem', fontSize: '0.85rem' } },
+  { to: "/directory", label: "Explore Directory", className: "cw-btn cw-btn--primary", style: { marginLeft: '0.5rem', padding: '0.3rem 0.75rem', fontSize: '0.85rem' } },
 ];
 
 const LANDING_LINKS = [
@@ -41,7 +41,7 @@ const LANDING_LINKS = [
   { href: "#pipeline", label: "How it works" },
   { href: "#graph", label: "Graph" },
   { href: "#confidence", label: "Confidence" },
-  { to: "/directory", label: "Explore Directory", className: "ws-btn ws-btn--primary" },
+  { to: "/directory", label: "Explore Directory", className: "cw-btn cw-btn--primary" },
 ];
 
 function AppRouter() {

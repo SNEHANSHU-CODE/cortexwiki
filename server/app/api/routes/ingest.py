@@ -345,67 +345,41 @@ async def get_wiki_page_by_url(
         "source_url": page.get("source_url", ""),
     }
 
-async def _rebuild_master_note(uid: str, wid: str, pid: str):
-    mongo = get_mongo_manager()
-    llm = get_llm_service()
-    try:
-        remaining_pages = await mongo.list_wiki_pages(uid, wiki_id=wid, limit=200)
-        if not remaining_pages:
-            await mongo.set_wiki_master_note(wid, uid, "")
-        else:
-            remaining_pages.sort(key=lambda p: p["created_at"])
-            master_note = ""
-            for p in remaining_pages:
-                master_note = await llm.merge_notes(
-                    existing_note=master_note,
-                    new_summary=p["summary"],
-                    new_title=p["title"],
-                )
-            await mongo.set_wiki_master_note(wid, uid, master_note)
-    except Exception as exc:
-        logger.exception("Failed to rebuild master note after page deletion: page_id=%s", pid)
-
-@router.delete("/pages/{page_id}", status_code=204)
-async def delete_wiki_page(
-    page_id: str,
-    background_tasks: BackgroundTasks,
+@router.post("/{wiki_id}/undo", status_code=200)
+async def rollback_wiki_ingestion(
+    wiki_id: str,
+    steps: int = 1,
     current_user: dict = Depends(get_current_user),
 ):
-    from bson import ObjectId
+    # BUG FIX #5: Validate wiki_id format
+    await validate_wiki_id(wiki_id)
     
-    if not ObjectId.is_valid(page_id):
-        raise AppError(status_code=400, code="invalid_page_id", message="Invalid page_id format.")
-        
     mongo = get_mongo_manager()
     graph_service = get_graph_service()
-    llm = get_llm_service()
     redis_store = get_redis_store()
-    
-    page = await mongo.get_wiki_page(page_id, current_user["id"])
-    if not page:
-        raise AppError(status_code=404, code="page_not_found", message="Page not found.")
-        
-    wiki_id = page["wiki_id"]
     
     wiki_lock = await redis_store.acquire_wiki_ingest_lock(wiki_id)
     
     async with wiki_lock:
-        deleted_page = await mongo.delete_wiki_page(page_id, current_user["id"])
-        if not deleted_page:
-            raise AppError(status_code=404, code="page_not_found", message="Page not found.")
+        page_ids_to_delete = await mongo.rollback_ingestions(wiki_id, current_user["id"], steps)
+        if not page_ids_to_delete:
+            raise AppError(status_code=400, code="no_undo_history", message="No recent ingestions to undo.")
             
-        try:
-            await graph_service.delete_page_graph(
-                user_id=current_user["id"],
-                wiki_id=wiki_id,
-                page_id=page_id,
-            )
-        except Exception as exc:
-            logger.warning("Failed to delete page graph from Neo4j: page_id=%s, error=%s", page_id, str(exc))
+        for page_id in page_ids_to_delete:
+            # Delete the associated material
+            deleted_page = await mongo.delete_wiki_page(page_id, current_user["id"])
             
-        background_tasks.add_task(_rebuild_master_note, current_user["id"], wiki_id, page_id)
-            
-    return Response(status_code=204)
+            if deleted_page:
+                try:
+                    await graph_service.delete_page_graph(
+                        user_id=current_user["id"],
+                        wiki_id=wiki_id,
+                        page_id=page_id,
+                    )
+                except Exception as exc:
+                    get_logger("api.routes.ingest").error("Failed to cleanup graph for rollback: %s", str(exc))
+                    
+    return {"status": "success", "message": f"Successfully rolled back {steps} versions."}
 
 
 

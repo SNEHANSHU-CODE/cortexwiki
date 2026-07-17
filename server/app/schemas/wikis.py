@@ -46,6 +46,12 @@ class WikiUpdateRequest(BaseModel):
         return value
 
 
+class MasterNoteVersion(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    note: str
+    page_id: str | None = None
+    created_at: datetime | None = None
+
 class WikiResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -54,6 +60,7 @@ class WikiResponse(BaseModel):
     name: str
     description: str
     master_note: str
+    master_note_versions: list[MasterNoteVersion] = Field(default_factory=list)
     is_public: bool
     slug: str | None
     source_count: int
@@ -62,6 +69,7 @@ class WikiResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_ingested_at: datetime | None = None
+    version_count: int = 1
 
 
 class WikiSummaryResponse(BaseModel):
@@ -80,6 +88,7 @@ class WikiSummaryResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_ingested_at: datetime | None = None
+    version_count: int = 1
 
 
 class WikiListResponse(BaseModel):

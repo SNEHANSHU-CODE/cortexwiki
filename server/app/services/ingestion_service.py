@@ -203,8 +203,8 @@ class IngestionService:
                         message="Graph sync and rollback both failed. Please contact support.",
                     ) from rollback_exc
 
-            # Update wiki master note + source count
-            await self.mongo.update_wiki_master_note(wiki_id, user_id, master_note)
+            # Update wiki master note + source count, tracking version
+            await self.mongo.update_wiki_master_note(wiki_id, user_id, master_note, previous_note=existing_note, page_id=wiki_page["id"])
             logger.info("Updated master_note for wiki_id=%s", wiki_id)
 
             await self.mongo.create_agent_log({

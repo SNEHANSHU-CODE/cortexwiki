@@ -33,8 +33,8 @@ from app.utils.logging import get_logger
 router = APIRouter(prefix="/wikis", tags=["wikis"])
 
 
-def _to_wiki_response(wiki: dict) -> WikiResponse:
-    return WikiResponse(
+def _to_wiki_response(wiki: dict, include_versions: bool = False) -> WikiResponse:
+    response_kwargs = dict(
         id=wiki["id"],
         user_id=wiki["user_id"],
         name=wiki["name"],
@@ -48,7 +48,12 @@ def _to_wiki_response(wiki: dict) -> WikiResponse:
         created_at=wiki["created_at"],
         updated_at=wiki["updated_at"],
         last_ingested_at=wiki.get("last_ingested_at"),
+        version_count=wiki.get("source_count", 0),
     )
+    if include_versions:
+        response_kwargs["master_note_versions"] = wiki.get("master_note_versions", [])
+    
+    return WikiResponse(**response_kwargs)
 
 
 def _to_wiki_summary_response(wiki: dict) -> WikiSummaryResponse:
@@ -66,6 +71,7 @@ def _to_wiki_summary_response(wiki: dict) -> WikiSummaryResponse:
         created_at=wiki["created_at"],
         updated_at=wiki["updated_at"],
         last_ingested_at=wiki.get("last_ingested_at"),
+        version_count=len(wiki.get("master_note_versions", [])) + 1,
     )
 
 
@@ -157,7 +163,7 @@ async def get_wiki(
     wiki = await get_mongo_manager().get_wiki(wiki_id, current_user["id"])
     if not wiki:
         raise AppError(status_code=404, code="wiki_not_found", message="Wiki not found.")
-    return _to_wiki_response(wiki)
+    return _to_wiki_response(wiki, include_versions=True)
 
 
 @router.patch("/{wiki_id}", response_model=WikiResponse)

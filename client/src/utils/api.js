@@ -113,8 +113,9 @@ export async function fetchIngestionHistory(wikiId) {
   return data;
 }
 
-export async function fetchDeleteIngestedPage(pageId) {
-  await httpClient.delete(`/api/ingest/pages/${pageId}`);
+export async function fetchUndoIngestion(wikiId, steps = 1) {
+  const { data } = await httpClient.post(`/api/ingest/${wikiId}/undo`, null, { params: { steps } });
+  return data;
 }
 
 export async function fetchPageByUrl(wikiId, url) {

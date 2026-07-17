@@ -18,6 +18,7 @@ import {
   togglePublicWikiStatus,
 } from "../redux/slices/wikiSlice";
 import { clearMessages } from "../redux/slices/chatSlice";
+import { loadIngestionHistory, undoIngestion } from "../redux/slices/ingestSlice";
 import ChatPage from "./ChatPage";
 import GraphPage from "./GraphPage";
 import { NoteDrawer } from "./IngestPage";
@@ -294,15 +295,55 @@ function WikiCard({ wiki, isActive, onSelect, pendingDeleteId, onRequestDelete, 
 }
 
 function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
+  const dispatch = useDispatch();
   const printRef = useRef(null);
   const [isNativePrinting, setIsNativePrinting] = useState(false);
   const [showMCQ, setShowMCQ] = useState(false);
+  const [selectedVersionNum, setSelectedVersionNum] = useState(null);
+  const [isRollingBack, setIsRollingBack] = useState(false);
+  const [rollbackModalOpen, setRollbackModalOpen] = useState(false);
   const isMounted = useRef(true);
 
   useEffect(() => {
     isMounted.current = true;
     return () => { isMounted.current = false; };
   }, []);
+
+  // Reset version selection when wiki changes or when a new version is created
+  useEffect(() => {
+    setSelectedVersionNum(null);
+  }, [wiki?.id, wiki?.version_count]);
+
+  const versions = useMemo(() => {
+    if (!wiki) return [];
+    const latest = {
+      version: wiki.version_count || 0,
+      note: wiki.master_note,
+      isLatest: true,
+      stepsToRevert: 0,
+    };
+    
+    const pastVersions = (wiki.master_note_versions || []).map((v, i) => {
+      const num = (wiki.version_count || 0) - (wiki.master_note_versions.length) + i;
+      return {
+        version: num,
+        note: v.note,
+        isLatest: false,
+        stepsToRevert: (wiki.master_note_versions.length - i),
+      };
+    }).filter(v => v.version > 0);
+    
+    if (latest.version === 0) {
+      return [];
+    }
+    
+    return [...pastVersions, latest].reverse();
+  }, [wiki]);
+
+  const activeVersionObj = useMemo(() => {
+    if (!selectedVersionNum) return versions[0] || null;
+    return versions.find(v => v.version === parseInt(selectedVersionNum, 10)) || versions[0] || null;
+  }, [versions, selectedVersionNum]);
 
   const handlePrint = async () => {
     const safeTitle = `${wiki?.name || "Wiki"}-Note`.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -340,8 +381,29 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
     );
   }
 
-  const rawNote = wiki?.master_note || "";
-  const hasNote = rawNote.trim().length > 0;
+  const executeRollback = async () => {
+    if (!activeVersionObj || activeVersionObj.isLatest || isRollingBack) return;
+    setIsRollingBack(true);
+    setRollbackModalOpen(false);
+    try {
+      await dispatch(undoIngestion({ wikiId: wiki.id, steps: activeVersionObj.stepsToRevert })).unwrap();
+      await dispatch(loadWikiDetail(wiki.id));
+      await dispatch(loadIngestionHistory(wiki.id));
+      setSelectedVersionNum(null);
+    } catch (err) {
+      alert(err.message || "Failed to rollback.");
+    } finally {
+      if (isMounted.current) setIsRollingBack(false);
+    }
+  };
+
+  const handleRollback = () => {
+    if (!activeVersionObj || activeVersionObj.isLatest || isRollingBack) return;
+    setRollbackModalOpen(true);
+  };
+
+  const rawNote = activeVersionObj?.note || "";
+  const hasNote = Boolean(rawNote.trim());
   const formattedNote = hasNote
     ? (rawNote.includes("\n")
         ? rawNote
@@ -366,6 +428,38 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
           <span className="ws-eyebrow">Master note</span>
           <div className="cw-note-meta">
             <span>{wiki?.source_count ?? 0} sources</span>
+            <span className="cw-note-meta__sep">-</span>
+            {versions.length > 0 ? (
+              <select 
+                style={{ 
+                  appearance: "none",
+                  backgroundColor: "var(--surface)",
+                  border: "1px solid var(--surface-border)",
+                  borderRadius: "999px",
+                  color: "var(--accent)",
+                  padding: "0.15rem 1.4rem 0.15rem 0.75rem",
+                  fontSize: "0.75rem",
+                  fontWeight: "700",
+                  cursor: "pointer",
+                  outline: "none",
+                  backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230f62fe' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 0.4rem center",
+                  backgroundSize: "10px",
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.05)"
+                }}
+                value={selectedVersionNum || (wiki?.version_count || 0)}
+                onChange={(e) => setSelectedVersionNum(e.target.value)}
+              >
+                {versions.map(v => (
+                  <option key={v.version} value={v.version} style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text)" }}>
+                    v{v.version} {v.isLatest ? "(Latest)" : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              wiki?.version_count > 0 ? <span>v{wiki.version_count}</span> : null
+            )}
             {wiki?.description && <span className="cw-note-meta__sep">-</span>}
             {wiki?.description && <span>{wiki.description}</span>}
             {detailStatus === "loading" && <span className="cw-note-meta__loading">Refreshing...</span>}
@@ -401,6 +495,20 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
       <div className="cw-note-content">
         {hasNote ? (
           <div className="cw-note-paper">
+            {!activeVersionObj?.isLatest && (
+              <div style={{ padding: "1rem", backgroundColor: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "8px", marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "#f87171", fontSize: "0.9rem" }}>
+                  <strong>Read-Only Preview:</strong> You are viewing an older version (v{activeVersionObj.version}).
+                </span>
+                <button 
+                  className="ws-btn ws-btn--danger" 
+                  onClick={handleRollback}
+                  disabled={isRollingBack}
+                >
+                  {isRollingBack ? "Rolling back..." : "Rollback to this version"}
+                </button>
+              </div>
+            )}
             <MarkdownContent content={formattedNote} />
           </div>
         ) : (
@@ -411,6 +519,37 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
           </div>
         )}
       </div>
+
+      {rollbackModalOpen && createPortal(
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 9999
+        }}>
+          <div style={{
+            background: "var(--bg)", border: "1px solid var(--surface-border)",
+            padding: "1.5rem", borderRadius: "8px", maxWidth: "400px", width: "90%",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)"
+          }}>
+            <h3 style={{ margin: "0 0 1rem 0", color: "var(--text)" }}>⚠️ Warning</h3>
+            <p style={{ margin: "0 0 1.5rem 0", color: "var(--text-soft)", fontSize: "0.9rem", lineHeight: "1.5" }}>
+              Are you sure you want to rollback to v{activeVersionObj?.version}? This will permanently delete all ingestions that occurred after this version.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+              <button type="button" className="ws-btn ws-btn--ghost" onClick={() => setRollbackModalOpen(false)}>Cancel</button>
+              <button 
+                type="button" 
+                className="ws-btn ws-btn--primary" 
+                style={{ background: "#ef4444", borderColor: "#ef4444", color: "white" }} 
+                onClick={executeRollback}
+              >
+                Rollback
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {showMCQ && (
         <MCQModal wikiId={wiki?.id} onClose={() => setShowMCQ(false)} />

@@ -81,7 +81,7 @@ class AnswerAgent:
             answer_chunks.append(chunk)
             yield {"type": "chunk", "delta": chunk}
 
-        state["answer"] = clean_text("".join(answer_chunks))
+        state["answer"] = "".join(answer_chunks).strip()
         state["trace"].append({"agent": "answer_agent", "strategy": state["strategy"], "streamed": True})
 
         yield {
@@ -106,7 +106,7 @@ class AnswerAgent:
             temperature=0.2,
             max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS_CHAT,
         )
-        return clean_text(answer) or "I found evidence, but not enough clear detail to answer confidently."
+        return answer.strip() if answer else "I found evidence, but not enough clear detail to answer confidently."
 
     async def _stream_answer_text(self, state: dict):
         if not state["is_grounded"]:

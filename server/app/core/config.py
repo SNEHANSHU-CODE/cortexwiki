@@ -66,6 +66,7 @@ class Settings(BaseSettings):
 
     # Groq — primary LLM
     GROQ_API_KEY: str | None = None
+    GROQ_SECONDARY_API_KEY: str | None = None
     GROQ_MODEL_CHAT: str = "openai/gpt-oss-20b"
     GROQ_MODEL_INGESTION: str = "groq/compound-mini"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   clearIngestionState,
@@ -482,6 +483,9 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
               : sourceType === "web"
               ? "Add multiple web pages, then click 'Ingest all' to process them together."
               : "Select a PDF file (max 16MB), add it, and click 'Ingest all' to upload and extract text."}
+            <br />
+            <br />
+            💡 <strong>Tip:</strong> Add all your sources at once to reduce LLM token usage!
           </p>
         )}
 
@@ -649,15 +653,18 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
             )}
           </h2>
         </div>
-        <button
-          type="button"
-          className="ws-btn ws-btn--ghost"
-          style={{ fontSize: "0.72rem" }}
-          onClick={() => wikiId && void dispatch(loadIngestionHistory(wikiId))}
-          disabled={isDisabled || historyStatus === "loading"}
-        >
-          {historyStatus === "loading" ? "…" : "Refresh"}
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+
+          <button
+            type="button"
+            className="ws-btn ws-btn--ghost"
+            style={{ fontSize: "0.72rem" }}
+            onClick={() => wikiId && void dispatch(loadIngestionHistory(wikiId))}
+            disabled={isDisabled || historyStatus === "loading"}
+          >
+            {historyStatus === "loading" ? "…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {/* History body */}
@@ -707,6 +714,8 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
         onClose={() => setFallbackOpen(false)}
         isSubmitting={submitStatus === "loading"}
       />
+
+
     </>
   );
 }

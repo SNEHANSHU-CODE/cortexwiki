@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { fetchIngestionHistory, ingestWeb, ingestYouTube, submitFallbackIngest, ingestPDF } from "../../utils/api";
+import { fetchIngestionHistory, ingestWeb, ingestYouTube, submitFallbackIngest, ingestPDF, fetchUndoIngestion } from "../../utils/api";
 import { buildErrorMessage } from "../../utils/sliceUtils";
 
 export const loadIngestionHistory = createAsyncThunk(
@@ -25,6 +25,17 @@ export const submitIngestion = createAsyncThunk(
         : await ingestWeb(url, wikiId);
     } catch (e) { return rejectWithValue(buildErrorMessage(e, "Unable to ingest that source.")); }
   },
+);
+
+export const undoIngestion = createAsyncThunk(
+  "ingest/undo",
+  async ({ wikiId, steps = 1 }, { rejectWithValue }) => {
+    try {
+      return await fetchUndoIngestion(wikiId, steps);
+    } catch (e) {
+      return rejectWithValue(buildErrorMessage(e, "Unable to undo the last ingestion."));
+    }
+  }
 );
 
 const initialState = {
@@ -64,7 +75,14 @@ const ingestSlice = createSlice({
           ...s.items.filter((i) => i.id !== r.id),
         ];
       })
-      .addCase(submitIngestion.rejected, (s, a) => { s.submitStatus = "failed"; s.error = a.payload; });
+      .addCase(submitIngestion.rejected, (s, a) => { s.submitStatus = "failed"; s.error = a.payload; })
+      
+      .addCase(undoIngestion.pending, (s) => { s.submitStatus = "loading"; s.error = null; })
+      .addCase(undoIngestion.fulfilled, (s, a) => {
+        s.submitStatus = "succeeded";
+        s.successMessage = a.payload.message || "Successfully rolled back.";
+      })
+      .addCase(undoIngestion.rejected, (s, a) => { s.submitStatus = "failed"; s.error = a.payload; });
   },
 });
 

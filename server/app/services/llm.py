@@ -129,6 +129,7 @@ class LLMService:
         temperature: float = 0.3,
         max_output_tokens: int = settings.LLM_MAX_OUTPUT_TOKENS,
         primary_provider: str = "groq",
+        use_secondary_key: bool = False,
     ) -> str:
         user_id = user_id_ctx.get()
         if user_id:
@@ -138,13 +139,14 @@ class LLMService:
 
         for provider in providers:
             if provider == "groq" and settings.GROQ_API_KEY:
-                model_name = settings.GROQ_MODEL_CHAT if primary_provider == "groq" else settings.GROQ_MODEL_INGESTION
+                model_to_use = settings.GROQ_MODEL_CHAT if primary_provider == "groq" else settings.GROQ_MODEL_INGESTION
                 result = await self._groq_generate(
                     prompt=prompt,
                     system_instruction=system_instruction,
                     temperature=temperature,
                     max_output_tokens=max_output_tokens,
-                    model_name=model_name,
+                    model_name=model_to_use,
+                    use_secondary_key=use_secondary_key,
                 )
                 if result:
                     return result
@@ -534,6 +536,7 @@ class LLMService:
         temperature: float,
         max_output_tokens: int,
         model_name: str,
+        use_secondary_key: bool = False,
     ) -> str:
         messages = self._build_openai_messages(prompt, system_instruction)
         payload = {
@@ -550,10 +553,14 @@ class LLMService:
         try:
             from app.core.http import get_http_client
             client = get_http_client()
+            api_key = settings.GROQ_SECONDARY_API_KEY if use_secondary_key else settings.GROQ_API_KEY
+            if not api_key:
+                api_key = settings.GROQ_API_KEY
+
             response = await client.post(
                 _GROQ_CHAT_URL,
                 json=payload,
-                headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                headers={"Authorization": f"Bearer {api_key}"},
                 timeout=settings.LLM_REQUEST_TIMEOUT,
             )
             response.raise_for_status()
