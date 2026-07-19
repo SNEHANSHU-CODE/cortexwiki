@@ -119,7 +119,7 @@ class AnswerAgent:
             system_instruction=_SYSTEM_INSTRUCTION,
             prompt=self._build_prompt(state),
             temperature=0.2,
-            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
+            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS_CHAT,
         ):
             if chunk:
                 yield chunk

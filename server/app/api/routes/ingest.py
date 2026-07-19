@@ -108,6 +108,7 @@ async def ingest_youtube(payload: YouTubeIngestRequest, current_user: dict = Dep
         source_type=source["source_type"],
         source_url=source["source_url"],
         raw_content=source["content"],
+        batch_id=payload.batch_id,
     )
     return _build_ingest_response(result)
 
@@ -140,6 +141,7 @@ async def ingest_web(payload: WebIngestRequest, current_user: dict = Depends(get
         source_type=source["source_type"],
         source_url=source["source_url"],
         raw_content=source["content"],
+        batch_id=payload.batch_id,
     )
     return _build_ingest_response(result)
 
@@ -181,6 +183,7 @@ async def ingest_fallback(
         source_type=payload.type,
         source_url=str(payload.url),
         raw_content=payload.content,
+        batch_id=payload.batch_id,
     )
     return _build_ingest_response(result)
 
@@ -189,6 +192,7 @@ async def ingest_fallback(
 async def ingest_pdf(
     file: UploadFile = File(...),
     wiki_id: str = Form(...),
+    batch_id: str | None = Form(None),  # Optional batch grouping ID
     current_user: dict = Depends(get_current_user),
     response: Response = None,
     _content_length: None = Depends(verify_content_length),
@@ -292,6 +296,7 @@ async def ingest_pdf(
         source_type="pdf",
         source_url=source_url,
         raw_content=extracted_text,
+        batch_id=batch_id,
     )
     return _build_ingest_response(result)
 
@@ -348,7 +353,7 @@ async def get_wiki_page_by_url(
 @router.post("/{wiki_id}/undo", status_code=200)
 async def rollback_wiki_ingestion(
     wiki_id: str,
-    steps: int = 1,
+    steps: int = Query(default=1, ge=1, le=10),
     current_user: dict = Depends(get_current_user),
 ):
     # BUG FIX #5: Validate wiki_id format
@@ -392,6 +397,7 @@ async def _ingest_source(
     source_type: str,
     source_url: str,
     raw_content: str,
+    batch_id: str | None = None,
 ) -> dict:
     from app.services.ingestion_service import get_ingestion_service
     return await get_ingestion_service().ingest_source(
@@ -401,4 +407,5 @@ async def _ingest_source(
         source_type=source_type,
         source_url=source_url,
         raw_content=raw_content,
+        batch_id=batch_id,
     )

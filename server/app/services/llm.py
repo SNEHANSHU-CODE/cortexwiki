@@ -174,6 +174,39 @@ class LLMService:
         # was here previously has been removed to prevent double-counting.
         return result
 
+
+    async def _record_stream_tokens(
+        self,
+        user_id: str | None,
+        prompt: str,
+        system_instruction: str | None,
+        accumulated: list,
+    ) -> None:
+        """BUG-11 FIX: Extracted from three duplicate 12-line blocks in stream_text.
+        Records token usage to LangSmith run tree and MongoDB. Safe to call on both
+        success and partial-failure paths — accumulated contains only what was yielded."""
+        prompt_tokens = self.estimate_tokens(prompt) + (
+            self.estimate_tokens(system_instruction) if system_instruction else 0
+        )
+        completion_tokens = self.estimate_tokens("".join(accumulated))
+        run_tree = get_current_run_tree()
+        if run_tree:
+            run_tree.metadata.update({
+                "token_usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                }
+            })
+        if user_id:
+            try:
+                from app.db.mongo import get_mongo_manager
+                await get_mongo_manager().increment_user_token_usage(
+                    user_id, prompt_tokens, completion_tokens
+                )
+            except Exception:
+                pass
+
     @traceable(run_type="chain", name="CortexWiki Stream Text")
     async def stream_text(
         self,
@@ -208,20 +241,7 @@ class LLMService:
                             accumulated.append(chunk)
                         yield chunk
                     if groq_ok:
-                        prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                        completion_tokens = self.estimate_tokens("".join(accumulated))
-                        run_tree = get_current_run_tree()
-                        if run_tree:
-                            run_tree.metadata.update({
-                                "token_usage": {
-                                    "prompt_tokens": prompt_tokens,
-                                    "completion_tokens": completion_tokens,
-                                    "total_tokens": prompt_tokens + completion_tokens
-                                }
-                            })
-                        if user_id:
-                            from app.db.mongo import get_mongo_manager
-                            await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+                        await self._record_stream_tokens(user_id, prompt, system_instruction, accumulated)
                         return
 
                 elif provider == "gemini" and settings.GEMINI_API_KEY:
@@ -237,20 +257,7 @@ class LLMService:
                             accumulated.append(chunk)
                         yield chunk
                     if gemini_ok:
-                        prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-                        completion_tokens = self.estimate_tokens("".join(accumulated))
-                        run_tree = get_current_run_tree()
-                        if run_tree:
-                            run_tree.metadata.update({
-                                "token_usage": {
-                                    "prompt_tokens": prompt_tokens,
-                                    "completion_tokens": completion_tokens,
-                                    "total_tokens": prompt_tokens + completion_tokens
-                                }
-                            })
-                        if user_id:
-                            from app.db.mongo import get_mongo_manager
-                            await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+                        await self._record_stream_tokens(user_id, prompt, system_instruction, accumulated)
                         return
 
             if not settings.GROQ_API_KEY and not settings.GEMINI_API_KEY:
@@ -265,38 +272,9 @@ class LLMService:
                     message="All AI providers are currently unavailable or overloaded. Please try again later.",
                 )
                 
-            prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-            completion_tokens = self.estimate_tokens("".join(accumulated))
-            run_tree = get_current_run_tree()
-            if run_tree:
-                run_tree.metadata.update({
-                    "token_usage": {
-                        "prompt_tokens": prompt_tokens,
-                        "completion_tokens": completion_tokens,
-                        "total_tokens": prompt_tokens + completion_tokens
-                    }
-                })
-            if user_id:
-                from app.db.mongo import get_mongo_manager
-                await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
+            await self._record_stream_tokens(user_id, prompt, system_instruction, accumulated)
         except Exception as exc:
-            prompt_tokens = self.estimate_tokens(prompt) + (self.estimate_tokens(system_instruction) if system_instruction else 0)
-            completion_tokens = self.estimate_tokens("".join(accumulated))
-            run_tree = get_current_run_tree()
-            if run_tree:
-                run_tree.metadata.update({
-                    "token_usage": {
-                        "prompt_tokens": prompt_tokens,
-                        "completion_tokens": completion_tokens,
-                        "total_tokens": prompt_tokens + completion_tokens
-                    }
-                })
-            if user_id:
-                try:
-                    from app.db.mongo import get_mongo_manager
-                    await get_mongo_manager().increment_user_token_usage(user_id, prompt_tokens, completion_tokens)
-                except Exception:
-                    pass
+            await self._record_stream_tokens(user_id, prompt, system_instruction, accumulated)
             raise exc
 
     @traceable(run_type="embedding", name="CortexWiki Embed Text")

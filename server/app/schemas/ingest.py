@@ -8,6 +8,7 @@ class YouTubeIngestRequest(BaseModel):
 
     url: HttpUrl
     wiki_id: str
+    batch_id: str | None = None  # Groups sources ingested in the same UI batch
 
 
 class WebIngestRequest(BaseModel):
@@ -15,6 +16,7 @@ class WebIngestRequest(BaseModel):
 
     url: HttpUrl
     wiki_id: str
+    batch_id: str | None = None  # Groups sources ingested in the same UI batch
 
 
 class IngestData(BaseModel):
@@ -50,3 +52,4 @@ class FallbackIngestRequest(BaseModel):
     wiki_id: str
     content: str = Field(..., max_length=500000)
     type: str  # "youtube" or "web"
+    batch_id: str | None = None  # Groups sources ingested in the same UI batch

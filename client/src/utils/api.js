@@ -72,36 +72,40 @@ export async function fetchDeleteWiki(wikiId) {
 }
 
 // ── Ingest ────────────────────────────────────────────────────────────────
-export async function ingestYouTube(url, wikiId) {
+export async function ingestYouTube(url, wikiId, batchId) {
   const { data } = await httpClient.post("/api/ingest/youtube", {
     url,
     wiki_id: wikiId,
+    batch_id: batchId ?? null,
   });
   return data;
 }
 
-export async function ingestWeb(url, wikiId) {
+export async function ingestWeb(url, wikiId, batchId) {
   const { data } = await httpClient.post("/api/ingest/web", {
     url,
     wiki_id: wikiId,
+    batch_id: batchId ?? null,
   });
   return data;
 }
 
-export async function ingestPDF(file, wikiId) {
+export async function ingestPDF(file, wikiId, batchId) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("wiki_id", wikiId);
+  if (batchId) formData.append("batch_id", batchId); // Only append if present — avoids sending "null"
   const { data } = await httpClient.post("/api/ingest/pdf", formData);
   return data;
 }
 
-export async function submitFallbackIngest({ url, wikiId, content, type }) {
+export async function submitFallbackIngest({ url, wikiId, content, type, batchId }) {
   const { data } = await httpClient.post("/api/ingest/fallback", {
     url,
     wiki_id: wikiId,
     content,
     type,
+    batch_id: batchId ?? null,
   });
   return data;
 }

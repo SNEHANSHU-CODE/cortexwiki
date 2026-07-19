@@ -392,110 +392,67 @@ async def handle_query(sid, data):
     user_msg_id = uuid.uuid4().hex
     await get_mongo_manager().save_chat_message(user["id"], wiki_id, user_msg_id, "user", question)
 
-    await sio.emit("query:started", {"requestId": request_id, "transport": "socket"}, to=sid)
+    from app.agents.graph import get_query_agent_graph
+    from app.db.mongo import get_mongo_manager
 
-    try:
-        from app.db.mongo import get_mongo_manager
-        from app.services.graph_service import get_graph_service
-        from app.services.llm import get_llm_service
-        from app.utils.text import clean_text
+    mongo = get_mongo_manager()
 
-        mongo = get_mongo_manager()
-        llm = get_llm_service()
-        graph_service = get_graph_service()
-
-        query_embedding = await llm.embed_text(question)
-        wiki_pages = await mongo.search_wiki_pages(
-            user_id=user["id"],
-            wiki_id=wiki_id,
-            query=question,
-            query_embedding=query_embedding,
-            limit=settings.QUERY_RESULT_LIMIT,
-        )
-        related_concepts = await graph_service.get_related_concepts(
-            user_id=user["id"],
-            wiki_id=wiki_id,
-            query=question,
-            limit=8,
-        )
-
-        context_blocks = [
-            {
-                "title": p["title"],
-                "source_url": p["source_url"],
-                "summary": p.get("summary", ""),
-                "concepts": p.get("concepts", []),
-            }
-            for p in wiki_pages
-        ]
-        graph_context = [
-            f'{item["source"]} {item["relationship"]} {item["target"]}'
-            for item in related_concepts
-        ]
-
-        if not wiki_pages and not related_concepts:
-            answer = "I do not have enough ingested knowledge to answer that yet. Add a source first, then ask again."
-        elif settings.GROQ_API_KEY or settings.GEMINI_API_KEY:
-            answer_chunks = []
-            
-            char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
-            truncated_context = str(context_blocks)[:char_limit]
-            
-            prompt_content = (
-                f"<user_question>{question}</user_question>\n\n"
-                f"<context>\nKnowledge base pages:\n{truncated_context}\n\n"
-                f"Graph relationships:\n{graph_context}\n</context>\n\n"
-                "Write a concise, grounded answer."
-            )
-
-            async for chunk in llm.stream_text(
-                system_instruction=(
-                    "You are CortexWiki. Answer only from the provided knowledge base context. "
-                    "If the context is insufficient, say so plainly. Do not invent facts.\n"
-                    "At the very end of your response, output exactly 3 suggested follow-up questions formatted like this: [SUGGEST: question 1 | question 2 | question 3]"
-                ),
-                prompt=prompt_content,
-                temperature=0.2,
-                max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS_CHAT,
-            ):
-                if chunk:
-                    answer_chunks.append(chunk)
-                    await sio.emit(
-                        "query:token",
-                        {"requestId": request_id, "chunk": chunk, "content": "".join(answer_chunks)},
-                        to=sid,
-                    )
-            answer = "".join(answer_chunks).strip()
-        else:
-            answer = "No LLM configured."
-
-        sources = [
-            {"title": p["title"], "url": p["source_url"], "source_type": p.get("source_type", "wiki_page")}
-            for p in wiki_pages
-        ]
-        confidence = round(min(0.96, max(0.18, 0.4 + (0.1 * len(wiki_pages)) + (0.03 * len(related_concepts)))), 2)
-
+    # BUG-01 FIX: Wire agent graph to socket handler.
+    # Previously this block manually called embed_text/search/stream_text inline.
+    # graph.stream() yields typed dicts: {type: "start"}, {type: "chunk", delta: str},
+    # {type: "complete", data: {...}} — each routed to its correct socket emission.
+    if allow_internet:
         await sio.emit(
-            "query:complete",
-            {
-                "requestId": request_id,
-                "content": answer,
-                "metadata": {
-                    "answer": answer,
-                    "confidence": confidence,
-                    "strategy": "hybrid_search" if wiki_pages and related_concepts else "knowledge_base",
-                    "is_grounded": bool(wiki_pages),
-                    "sources": sources,
-                    "debug": {
-                        "wiki_results": [p["title"] for p in wiki_pages],
-                        "related_concepts": graph_context,
-                    } if debug else None,
-                },
-            },
+            "query:thinking",
+            {"requestId": request_id, "message": "Searching the web…"},
             to=sid,
         )
-        
-        # Save assistant message
+
+    answer = ""
+    try:
+        async for event in get_query_agent_graph().stream(
+            user_id=user["id"],
+            wiki_id=wiki_id,
+            question=question,
+            debug=debug,
+            allow_internet=allow_internet,
+        ):
+            event_type = event.get("type")
+
+            if event_type == "start":
+                # Graph preprocessing complete — signal UI that streaming is beginning
+                await sio.emit(
+                    "query:started",
+                    {"requestId": request_id, "transport": "socket", **event["data"]},
+                    to=sid,
+                )
+
+            elif event_type == "chunk":
+                # delta is a plain string produced by answer_agent._stream_answer_text
+                delta = event["delta"]
+                answer += delta
+                await sio.emit(
+                    "query:token",
+                    {"requestId": request_id, "chunk": delta, "content": answer},
+                    to=sid,
+                )
+
+            elif event_type == "complete":
+                # Preserve socket contract: {requestId, content, metadata}
+                # ChatPage.jsx L74: onComplete: ({ requestId, content, metadata }) =>
+                # event["data"] = {answer, confidence, strategy, is_grounded, sources, debug}
+                answer = event["data"]["answer"]
+                await sio.emit(
+                    "query:complete",
+                    {
+                        "requestId": request_id,
+                        "content": answer,          # string — required by ChatPage.jsx
+                        "metadata": event["data"],  # full graph payload, not spread
+                    },
+                    to=sid,
+                )
+
+        # Save assistant message after graph completes cleanly
         await mongo.save_chat_message(user["id"], wiki_id, request_id, "assistant", answer, "complete")
 
     except Exception as exc:

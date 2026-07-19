@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
@@ -144,8 +145,11 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     )
 
     final_answer = answer.strip()
+    # Strip the [SUGGEST: ...] tag before persisting — the tag is for the live response only,
+    # not for the stored history shown on chat reload.
+    clean_for_db = re.sub(r"\[SUGGEST:.*?\]", "", final_answer, flags=re.DOTALL).strip()
     assistant_msg_id = uuid.uuid4().hex
-    await mongo.save_chat_message(current_user["id"], payload.wiki_id, assistant_msg_id, "assistant", final_answer, "complete", debug)
+    await mongo.save_chat_message(current_user["id"], payload.wiki_id, assistant_msg_id, "assistant", clean_for_db, "complete", debug)
 
     return QueryData(
         answer=final_answer,

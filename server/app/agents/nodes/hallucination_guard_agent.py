@@ -52,8 +52,8 @@ class HallucinationGuardAgent:
                 result = json.loads(clean_json)
                 is_grounded = bool(result.get("is_supported", False))
             except Exception as e:
-                logger.warning(f"Guard LLM failed, defaulting to True if context exists. Error: {str(e)}")
-                is_grounded = True
+                logger.warning(f"Guard LLM failed, defaulting to False to prevent hallucination. Error: {str(e)}")
+                is_grounded = False
         else:
             is_grounded = False
 

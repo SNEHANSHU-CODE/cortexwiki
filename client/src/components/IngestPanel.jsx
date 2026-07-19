@@ -243,6 +243,9 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
     
     let successCount = 0;
     const sourcesToProcess = [...pendingSources];
+    // One shared ID for the entire batch — the backend uses this to group
+    // all sources into a single version entry so rollback undoes the whole batch.
+    const batchId = crypto.randomUUID();
     
     for (let i = 0; i < sourcesToProcess.length; i++) {
       if (!isMounted.current || wikiIdRef.current !== startWikiId) break;
@@ -257,7 +260,8 @@ function IngestPanel({ wikiId, onIngestSuccess }) {
         sourceType: currentSource.type,
         url: currentSource.url,
         wikiId: startWikiId,
-        file: currentSource.file
+        file: currentSource.file,
+        batchId,
       }));
       
       if (!isMounted.current || wikiIdRef.current !== startWikiId) break;

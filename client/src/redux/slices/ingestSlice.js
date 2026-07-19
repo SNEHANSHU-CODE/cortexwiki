@@ -12,17 +12,17 @@ export const loadIngestionHistory = createAsyncThunk(
 
 export const submitIngestion = createAsyncThunk(
   "ingest/submit",
-  async ({ sourceType, url, wikiId, content, file }, { rejectWithValue }) => {
+  async ({ sourceType, url, wikiId, content, file, batchId }, { rejectWithValue }) => {
     try {
       if (sourceType === "pdf") {
-        return await ingestPDF(file, wikiId);
+        return await ingestPDF(file, wikiId, batchId);
       }
       if (content) {
-        return await submitFallbackIngest({ url, wikiId, content, type: sourceType });
+        return await submitFallbackIngest({ url, wikiId, content, type: sourceType, batchId });
       }
       return sourceType === "youtube"
-        ? await ingestYouTube(url, wikiId)
-        : await ingestWeb(url, wikiId);
+        ? await ingestYouTube(url, wikiId, batchId)
+        : await ingestWeb(url, wikiId, batchId);
     } catch (e) { return rejectWithValue(buildErrorMessage(e, "Unable to ingest that source.")); }
   },
 );

@@ -48,7 +48,7 @@ def _to_wiki_response(wiki: dict, include_versions: bool = False) -> WikiRespons
         created_at=wiki["created_at"],
         updated_at=wiki["updated_at"],
         last_ingested_at=wiki.get("last_ingested_at"),
-        version_count=wiki.get("source_count", 0),
+        version_count=len(wiki.get("master_note_versions", [])) + 1,  # BUG-04 FIX: unified with summary endpoint formula
     )
     if include_versions:
         response_kwargs["master_note_versions"] = wiki.get("master_note_versions", [])
@@ -237,12 +237,34 @@ async def delete_wiki(
 
     return Response(status_code=204)
 
+def _validate_mcq_items(raw: list) -> list:
+    """Filter out any MCQ items that are missing required fields or have an out-of-range answer.
+    Ensures MCQModal.jsx never receives malformed data that would cause a runtime crash.
+    """
+    validated = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        q = item.get("q")
+        options = item.get("options")
+        answer = item.get("answer")
+        if (
+            isinstance(q, str) and q.strip()
+            and isinstance(options, list) and len(options) >= 2
+            and isinstance(answer, int) and 0 <= answer < len(options)
+        ):
+            validated.append(item)
+    return validated
+
+
 @router.post("/{wiki_id}/mcq")
 async def generate_mcq(
     wiki_id: str,
     current_user: dict = Depends(get_current_user),
     mongo=Depends(get_mongo_manager),
 ):
+    # BUG-07 FIX: Validate wiki_id format before hitting the DB — consistent with all other endpoints
+    await validate_wiki_id(wiki_id)
     wiki = await mongo.get_wiki(wiki_id, current_user["id"])
     if not wiki:
         raise AppError(status_code=404, code="wiki_not_found", message="Wiki not found.")
@@ -326,8 +348,15 @@ async def generate_mcq(
         result = match.group(0)
     
     try:
-        mcqs = json.loads(result.strip())
+        raw_mcqs = json.loads(result.strip())
+        if not isinstance(raw_mcqs, list):
+            raise ValueError("LLM returned non-list MCQ payload")
+        mcqs = _validate_mcq_items(raw_mcqs)
+        if not mcqs:
+            raise AppError(status_code=500, code="llm_error", message="Failed to generate valid multiple choice questions.")
         return {"mcqs": mcqs}
-    except json.JSONDecodeError:
+    except AppError:
+        raise
+    except (json.JSONDecodeError, ValueError):
         raise AppError(status_code=500, code="llm_error", message="Failed to generate multiple choice questions.")
 

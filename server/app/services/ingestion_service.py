@@ -40,6 +40,7 @@ class IngestionService:
         source_type: str,
         source_url: str,
         raw_content: str,
+        batch_id: str | None = None,
     ) -> dict:
         """
         Ingest a source with proper locking, validation, limits, and atomic error handling.
@@ -203,8 +204,8 @@ class IngestionService:
                         message="Graph sync and rollback both failed. Please contact support.",
                     ) from rollback_exc
 
-            # Update wiki master note + source count, tracking version
-            await self.mongo.update_wiki_master_note(wiki_id, user_id, master_note, previous_note=existing_note, page_id=wiki_page["id"])
+            # Update wiki master note + source count, tracking version (batch-aware)
+            await self.mongo.update_wiki_master_note(wiki_id, user_id, master_note, previous_note=existing_note, page_id=wiki_page["id"], batch_id=batch_id)
             logger.info("Updated master_note for wiki_id=%s", wiki_id)
 
             await self.mongo.create_agent_log({

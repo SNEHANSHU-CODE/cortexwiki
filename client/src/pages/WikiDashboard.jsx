@@ -316,27 +316,35 @@ function MasterNote({ wiki, detailStatus, onOpenDrawer }) {
 
   const versions = useMemo(() => {
     if (!wiki) return [];
+    // Do not show any versions for a wiki that has never been ingested
+    if (!wiki.master_note || wiki.source_count === 0) return [];
+
+    // The DB always stores the pre-ingestion state as `note` inside master_note_versions.
+    // For the very first batch ingestion the previous state is "" (empty wiki), which must
+    // live in the DB so rollback can find the page_ids to delete — but it should never
+    // appear as a selectable version in the UI (there is no meaningful content to display).
+    // Filter it out BEFORE numbering so: 1st ingestion → v1, 2nd → v2, etc.
+    const visiblePastVersions = (wiki.master_note_versions || [])
+      .map((v, i) => ({
+        rawNote: v.note,
+        stepsToRevert: (wiki.master_note_versions.length - i),
+      }))
+      .filter(v => v.rawNote?.trim());   // drop empty-note snapshots from display
+
     const latest = {
-      version: wiki.version_count || 0,
+      version: visiblePastVersions.length + 1,
       note: wiki.master_note,
       isLatest: true,
       stepsToRevert: 0,
     };
-    
-    const pastVersions = (wiki.master_note_versions || []).map((v, i) => {
-      const num = (wiki.version_count || 0) - (wiki.master_note_versions.length) + i;
-      return {
-        version: num,
-        note: v.note,
-        isLatest: false,
-        stepsToRevert: (wiki.master_note_versions.length - i),
-      };
-    }).filter(v => v.version > 0);
-    
-    if (latest.version === 0) {
-      return [];
-    }
-    
+
+    const pastVersions = visiblePastVersions.map((v, i) => ({
+      version: i + 1,
+      note: v.rawNote,
+      isLatest: false,
+      stepsToRevert: v.stepsToRevert,
+    }));
+
     return [...pastVersions, latest].reverse();
   }, [wiki]);
 

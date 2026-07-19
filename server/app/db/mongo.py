@@ -659,35 +659,65 @@ class MongoManager:
             return True
         return False
 
-    async def update_wiki_master_note(self, wiki_id: str, user_id: str, master_note: str, previous_note: str = "", page_id: str = "") -> None:
+    async def update_wiki_master_note(self, wiki_id: str, user_id: str, master_note: str, previous_note: str = "", page_id: str = "", batch_id: str | None = None) -> None:
         """Update the compounded master note and increment source count.
-        
+
         BUG FIX #6: Truncate master_note if it exceeds max length.
+        Batch-aware: if batch_id matches last_batch_id, appends page_id to the last
+        version entry instead of creating a new one. This ensures that ingesting N
+        sources in one UI batch creates exactly ONE version entry, so a single
+        rollback undoes the entire batch atomically.
         """
         from app.core.config import settings
-        
+
         # Truncate master note if it exceeds max length
         truncated_note = master_note
         if len(master_note) > settings.MASTER_NOTE_MAX_LENGTH:
             truncated_note = master_note[:settings.MASTER_NOTE_MAX_LENGTH - 3].rsplit(" ", 1)[0] + "..."
-        
+
         now = datetime.now(UTC)
         if self.database is not None:
             from bson import ObjectId
             try:
-                # Use atomic update to modify master_note and bump source_count + version
-                update_doc = {
-                    "$set": {"master_note": truncated_note, "updated_at": now, "last_ingested_at": now},
-                    "$inc": {"source_count": 1, "version": 1}
-                }
-                
-                if page_id:
-                    update_doc["$push"] = {
-                        "master_note_versions": {
-                            "$each": [{"note": previous_note, "page_id": page_id, "created_at": now}],
-                            "$slice": -5
-                        }
+                wiki = await self.database.wikis.find_one(
+                    {"_id": ObjectId(wiki_id), "user_id": user_id},
+                    {"last_batch_id": 1, "master_note_versions": 1},
+                )
+                last_batch_id = wiki.get("last_batch_id") if wiki else None
+                same_batch = bool(batch_id and last_batch_id == batch_id)
+                versions = (wiki.get("master_note_versions") or []) if wiki else []
+
+                if same_batch and page_id and versions:
+                    # ── SAME BATCH: append page_id to the last version entry ──
+                    # Do NOT bump version — this source belongs to the same UI batch.
+                    idx = len(versions) - 1
+                    update_doc = {
+                        "$set": {
+                            "master_note": truncated_note,
+                            "updated_at": now,
+                            "last_ingested_at": now,
+                        },
+                        "$inc": {"source_count": 1},
+                        "$push": {f"master_note_versions.{idx}.page_ids": page_id},
                     }
+                else:
+                    # ── NEW BATCH (or no batch): push a new version entry ──
+                    update_doc = {
+                        "$set": {
+                            "master_note": truncated_note,
+                            "updated_at": now,
+                            "last_ingested_at": now,
+                            "last_batch_id": batch_id,   # None for single-source ingests
+                        },
+                        "$inc": {"source_count": 1, "version": 1},
+                    }
+                    if page_id:
+                        update_doc["$push"] = {
+                            "master_note_versions": {
+                                "$each": [{"note": previous_note, "page_ids": [page_id], "created_at": now}],
+                                "$slice": -5,
+                            }
+                        }
 
                 await self.database.wikis.update_one(
                     {"_id": ObjectId(wiki_id), "user_id": user_id},
@@ -819,32 +849,47 @@ class MongoManager:
             wiki["updated_at"] = now
 
     async def rollback_ingestions(self, wiki_id: str, user_id: str, steps: int = 1) -> list[str]:
-        """Roll back the master note by the specified number of steps. Returns list of page_ids to delete."""
+        """Roll back the master note by the specified number of steps. Returns list of page_ids to delete.
+
+        Backwards-compatible: handles both the new batch format {page_ids: [...]} and
+        the legacy format {page_id: "..."} so existing wiki data requires no migration.
+        """
         if self.database is not None:
             from bson import ObjectId
             wiki = await self.database.wikis.find_one({"_id": ObjectId(wiki_id), "user_id": user_id})
             if not wiki:
                 return []
-            
+
             versions = wiki.get("master_note_versions", [])
             if not versions or steps < 1:
                 return []
-                
+
             steps = min(steps, len(versions))
             page_ids_to_delete = []
-            
+
             for _ in range(steps):
                 last_version = versions.pop()
-                page_ids_to_delete.append(last_version.get("page_id"))
-                
+                # New format: page_ids is a list (batch ingestion)
+                batch_ids = last_version.get("page_ids") or []
+                if batch_ids:
+                    page_ids_to_delete.extend(batch_ids)
+                elif last_version.get("page_id"):
+                    # Legacy format: single page_id string — fall back gracefully
+                    page_ids_to_delete.append(last_version["page_id"])
+
             previous_note = last_version.get("note", "")
-            
+
+            # Compute safe decrement — never let source_count go below 0
+            pages_to_remove = len(page_ids_to_delete)
+            current_count = wiki.get("source_count", 0)
+            safe_decrement = -min(pages_to_remove, current_count)
+
             now = datetime.now(UTC)
             await self.database.wikis.update_one(
                 {"_id": ObjectId(wiki_id), "user_id": user_id},
                 {
-                    "$set": {"master_note": previous_note, "master_note_versions": versions, "updated_at": now},
-                    "$inc": {"version": 1}
+                    "$set": {"master_note": previous_note, "master_note_versions": versions, "last_batch_id": None, "updated_at": now},
+                    "$inc": {"version": 1, "source_count": safe_decrement},
                 }
             )
             return [pid for pid in page_ids_to_delete if pid]
