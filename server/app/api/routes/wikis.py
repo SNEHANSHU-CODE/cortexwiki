@@ -71,7 +71,7 @@ def _to_wiki_summary_response(wiki: dict) -> WikiSummaryResponse:
         created_at=wiki["created_at"],
         updated_at=wiki["updated_at"],
         last_ingested_at=wiki.get("last_ingested_at"),
-        version_count=len(wiki.get("master_note_versions", [])) + 1,
+        version_count=wiki.get("version_count", len(wiki.get("master_note_versions", [])) + 1),
     )
 
 

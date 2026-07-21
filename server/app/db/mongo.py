@@ -521,13 +521,15 @@ class MongoManager:
                                 "then": {"$substrCP": ["$master_note", 0, 200]},
                                 "else": "",
                             }
-                        }
+                        },
+                        # Pre-compute version_count here so we can drop the heavy array in $project
+                        "version_count": {"$add": [{"$size": {"$ifNull": ["$master_note_versions", []]}}, 1]}
                     }
                 }
             ]
             
-            # Combine dynamic projection
-            project_base = {"master_note": 0}
+            # Combine dynamic projection — exclude both master_note and master_note_versions
+            project_base = {"master_note": 0, "master_note_versions": 0}
             if project_stage:
                 project_base.update(project_stage)
             pipeline.append({"$project": project_base})
@@ -545,6 +547,11 @@ class MongoManager:
         
         items.sort(key=lambda x: x["created_at"], reverse=True)
         total = len(items)
+        # Mirror the MongoDB pipeline: inject version_count then strip the heavy fields
+        for item in items:
+            item["version_count"] = len(item.get("master_note_versions", [])) + 1
+            item.pop("master_note", None)
+            item.pop("master_note_versions", None)
         return items[skip:skip+limit], total
 
     async def list_wikis(self, user_id: str, limit: int = 100) -> list[dict]:
@@ -562,20 +569,25 @@ class MongoManager:
                                 "then": {"$substrCP": ["$master_note", 0, 200]},
                                 "else": "",
                             }
-                        }
+                        },
+                        # Pre-compute version_count here so we can drop the heavy array in $project
+                        "version_count": {"$add": [{"$size": {"$ifNull": ["$master_note_versions", []]}}, 1]}
                     }
                 },
-                # Exclude the full master_note from the list response — use the excerpt only
-                {"$project": {"master_note": 0}},
+                # Exclude master_note and master_note_versions from the list response — use excerpt and count only
+                {"$project": {"master_note": 0, "master_note_versions": 0}},
             ]
             cursor = self.database.wikis.aggregate(pipeline)
             return [self._normalize(w) for w in await cursor.to_list(length=limit)]
         items = [self._copy(w) for w in self._memory["wikis"].values() if w["user_id"] == user_id]
         items.sort(key=lambda x: x["created_at"], reverse=True)
-        # Inject excerpt for in-memory fallback
+        # Mirror the MongoDB pipeline: inject excerpt and version_count, then strip the heavy fields
         for item in items:
             note = item.get("master_note") or ""
             item["master_note_excerpt"] = note[:200]
+            item["version_count"] = len(item.get("master_note_versions", [])) + 1
+            item.pop("master_note", None)
+            item.pop("master_note_versions", None)
         return items[:limit]
 
     async def update_wiki(self, wiki_id: str, user_id: str, payload: dict) -> dict | None:

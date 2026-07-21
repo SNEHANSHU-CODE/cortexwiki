@@ -47,21 +47,27 @@ function DirectoryPage() {
   }, [search, sortBy]);
 
   const handleNext = () => {
-    if (skip + limit < total) {
-      const nextSkip = skip + limit;
-      setSkip(nextSkip);
-      loadWikis(search, nextSkip, sortBy);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    setSkip((prevSkip) => {
+      if (prevSkip + limit < total) {
+        const nextSkip = prevSkip + limit;
+        loadWikis(search, nextSkip, sortBy);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return nextSkip;
+      }
+      return prevSkip;
+    });
   };
 
   const handlePrev = () => {
-    if (skip > 0) {
-      const prevSkip = Math.max(0, skip - limit);
-      setSkip(prevSkip);
-      loadWikis(search, prevSkip, sortBy);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    setSkip((prevSkip) => {
+      if (prevSkip > 0) {
+        const newSkip = Math.max(0, prevSkip - limit);
+        loadWikis(search, newSkip, sortBy);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return newSkip;
+      }
+      return prevSkip;
+    });
   };
 
   return (
