@@ -76,7 +76,16 @@ const wikiSlice = createSlice({
       .addCase(loadWikis.pending,   (s) => { s.listStatus = "loading"; s.error = null; })
       .addCase(loadWikis.fulfilled, (s, a) => {
         s.listStatus = "succeeded";
-        s.wikis = a.payload;
+        // BUG-M1 FIX: Merge incoming summary list while preserving master_note for any
+        // wiki whose full detail was already fetched by a concurrent loadWikiDetail call.
+        // Without this, a stale list response (summaries without master_note) could overwrite
+        // the detail-loaded entry in s.wikis, causing the master note to briefly disappear.
+        s.wikis = a.payload.map((incoming) => {
+          const existing = s.wikis.find((e) => e.id === incoming.id);
+          return existing?.master_note
+            ? { ...incoming, master_note: existing.master_note }
+            : incoming;
+        });
         // If active wiki was deleted externally, clear it
         if (s.activeWikiId && !s.wikis.some((w) => w.id === s.activeWikiId)) {
           s.activeWikiId = null; s.activeWiki = null; s.rightView = "note";

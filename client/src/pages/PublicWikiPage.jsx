@@ -13,7 +13,12 @@ function PublicWikiPage() {
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState(null);
   const [localLikes, setLocalLikes] = useState(0);
-  const [hasLiked, setHasLiked] = useState(() => localStorage.getItem(`liked_${slug}`) === "true");
+  const [hasLiked, setHasLiked] = useState(false);
+
+  // BUG-M3 FIX: Sync hasLiked from localStorage whenever the slug changes (handles in-place rerenders)
+  useEffect(() => {
+    setHasLiked(localStorage.getItem(`liked_${slug}`) === "true");
+  }, [slug]);
   const [isNativePrinting, setIsNativePrinting] = useState(false);
   const printRef = useRef(null);
   const isMounted = useRef(true);

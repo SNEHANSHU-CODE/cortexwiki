@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from app.core.config import settings
 from app.utils.logging import get_logger
@@ -148,9 +149,11 @@ class AnswerAgent:
             for result in state.get("internet_results", [])
         ]
 
-        wiki_context = str(wiki_context_raw)[:char_limit]
-        graph_context = str(graph_context_raw)[:char_limit]
-        internet_context = str(internet_context_raw)[:char_limit]
+        # BUG-M4 FIX: Use json.dumps instead of str() — avoids Python repr (single-quoted dicts)
+        # and produces valid JSON that LLMs are trained on. Truncate after serialisation.
+        wiki_context = json.dumps(wiki_context_raw, ensure_ascii=False)[:char_limit]
+        graph_context = json.dumps(graph_context_raw, ensure_ascii=False)[:char_limit]
+        internet_context = json.dumps(internet_context_raw, ensure_ascii=False)[:char_limit]
 
         prompt = (
             f"Question: {state['question']}\n\n"

@@ -153,6 +153,8 @@ async def otp_send(payload: OtpSendRequest):
 
     email = payload.email.lower().strip()
 
+    existing = None  # BUG-C1 FIX: guard against UnboundLocalError if a future purpose skips both if-blocks
+
     if payload.purpose == "register":
         existing = await get_mongo_manager().get_user_by_email(email)
         if existing:

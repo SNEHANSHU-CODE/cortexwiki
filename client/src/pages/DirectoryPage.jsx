@@ -12,12 +12,15 @@ function DirectoryPage() {
   const [total, setTotal] = useState(0);
   const [skip, setSkip] = useState(0);
   const [status, setStatus] = useState("loading");
+  const [isRefreshing, setIsRefreshing] = useState(false); // BUG-H4 FIX: track in-flight refresh separately
   const limit = 20;
   const navigate = useNavigate();
 
   const loadWikis = async (query = "", currentSkip = 0, currentSort = "newest") => {
     try {
       setStatus("loading");
+      // BUG-H4 FIX: flag a refresh when stale results are already visible
+      if (wikis.length > 0) setIsRefreshing(true);
       const data = await fetchPublicWikis(query, currentSkip, limit, currentSort);
       setWikis(data.wikis || []);
       setTotal(data.total || 0);
@@ -25,6 +28,8 @@ function DirectoryPage() {
     } catch (err) {
       console.error("Failed to load public wikis", err);
       setStatus("failed");
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -143,6 +148,19 @@ function DirectoryPage() {
           </div>
         ) : (
           <>
+            {/* BUG-H4 FIX: overlay spinner while refreshing over stale results */}
+            {isRefreshing && (
+              <div style={{
+                position: "fixed", top: "50%", left: "50%",
+                transform: "translate(-50%, -50%)",
+                background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+                borderRadius: "12px", padding: "1.25rem 2rem",
+                color: "var(--ws-text-mute)", fontSize: "0.9rem",
+                zIndex: 100, pointerEvents: "none",
+              }}>
+                Updating…
+              </div>
+            )}
             <div className="cw-directory__grid">
               {wikis.map((wiki, index) => (
                 <article 

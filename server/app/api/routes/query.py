@@ -78,6 +78,12 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     )
 
     if not wiki_pages and not related_concepts:
+        # BUG-L4 FIX: Save assistant reply so history doesn't show a dangling unanswered message
+        no_knowledge_msg_id = uuid.uuid4().hex
+        await mongo.save_chat_message(
+            current_user["id"], payload.wiki_id, no_knowledge_msg_id,
+            "assistant", _NO_KNOWLEDGE_RESPONSE.answer, "complete", None
+        )
         if payload.debug:
             return _NO_KNOWLEDGE_RESPONSE.model_copy(
                 update={"debug": {"wiki_results": [], "related_concepts": []}}
@@ -134,6 +140,10 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         for page in wiki_pages
     ]
     confidence = round(min(0.96, max([p.get('score', 0.18) for p in wiki_pages], default=0.18)), 2)
+    # BUG-H1 FIX: Compute is_grounded from actual evidence rather than hardcoding True.
+    # The HTTP path doesn't run HallucinationGuardAgent, so use a conservative proxy:
+    # grounded if we have at least one wiki page or graph concept with content.
+    is_grounded = bool(wiki_pages or related_concepts)
     debug = (
         {
             "wiki_results": [page.get("title", "Untitled Source") for page in wiki_pages],
@@ -155,7 +165,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         answer=final_answer,
         strategy="knowledge_base",
         confidence=confidence,
-        is_grounded=True,
+        is_grounded=is_grounded,
         sources=sources,
         debug=debug,
     )

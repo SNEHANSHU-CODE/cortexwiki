@@ -81,6 +81,9 @@ const ingestSlice = createSlice({
       .addCase(undoIngestion.fulfilled, (s, a) => {
         s.submitStatus = "succeeded";
         s.successMessage = a.payload.message || "Successfully rolled back.";
+        // BUG-M7 FIX: Optimistically clear history items so users don't see a flash of
+        // deleted entries before the caller dispatches loadIngestionHistory to refetch.
+        s.items = [];
       })
       .addCase(undoIngestion.rejected, (s, a) => { s.submitStatus = "failed"; s.error = a.payload; });
   },

@@ -35,11 +35,12 @@ class PlannerAgent:
                 )
                 
                 # Parse JSON, handling potential markdown code blocks
+                # BUG-M6 FIX: Use regex instead of hardcoded offsets — handles trailing
+                # newlines/spaces after the closing fence that break [7:-3] / [3:-3] slicing.
+                import re as _re
                 clean_json = response.strip()
-                if clean_json.startswith("```json"):
-                    clean_json = clean_json[7:-3].strip()
-                elif clean_json.startswith("```"):
-                    clean_json = clean_json[3:-3].strip()
+                clean_json = _re.sub(r'^```(?:json)?\s*\n?', '', clean_json)
+                clean_json = _re.sub(r'\n?```\s*$', '', clean_json).strip()
                     
                 result = json.loads(clean_json)
                 needs_internet = bool(result.get("needs_internet", False))

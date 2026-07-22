@@ -89,11 +89,16 @@ async def create_wiki(
 
 
 @router.get("", response_model=WikiListResponse)
-async def list_wikis(current_user: dict = Depends(get_current_user)):
-    wikis = await get_mongo_manager().list_wikis(current_user["id"])
+async def list_wikis(
+    skip: int = Query(0, ge=0, description="Number of wikis to skip for pagination"),
+    limit: int = Query(100, ge=1, le=500, description="Max wikis to return"),
+    current_user: dict = Depends(get_current_user),
+):
+    # BUG-H2 FIX: Pass skip/limit through and unpack (results, total) tuple
+    wikis, total = await get_mongo_manager().list_wikis(current_user["id"], skip=skip, limit=limit)
     return WikiListResponse(
         wikis=[_to_wiki_summary_response(w) for w in wikis],
-        total=len(wikis),
+        total=total,
     )
 
 

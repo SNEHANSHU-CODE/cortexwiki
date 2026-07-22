@@ -270,13 +270,16 @@ async def ingest_pdf(
         raise AppError(
             status_code=400,
             code="ocr_failed",
-            message=f"OCR processing failed: {str(exc)}",
+            # BUG-L6 FIX: Avoid leaking library internals; OCRError message is already user-safe
+            message="OCR processing failed. The PDF may be scanned or contain unsupported content.",
         )
     except Exception as exc:
+        # BUG-L6 FIX: Log the raw exception server-side, return a safe generic message to the client
+        logger.exception("PDF extraction failed for wiki_id=%s filename=%s", wiki_id, filename)
         raise AppError(
             status_code=500,
             code="pdf_extraction_failed",
-            message=f"Could not extract text from PDF: {str(exc)}",
+            message="Could not extract text from the uploaded PDF. Please try a different file.",
         )
 
     title = filename.rsplit(".", 1)[0] if "." in filename else filename

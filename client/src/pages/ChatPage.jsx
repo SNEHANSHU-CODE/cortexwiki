@@ -129,7 +129,9 @@ function ChatPage({ wikiId }) {
       setShowConfirmClear(false);
     } catch (err) {
       console.error("Failed to delete history:", err);
-      alert("Failed to delete chat history.");
+      // BUG-M5 FIX: Use non-blocking error banner instead of native alert
+      dispatch(setChatError("Failed to delete chat history. Please try again."));
+      setShowConfirmClear(false);
     } finally {
       setIsClearing(false);
     }

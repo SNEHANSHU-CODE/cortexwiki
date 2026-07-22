@@ -554,11 +554,14 @@ class MongoManager:
             item.pop("master_note_versions", None)
         return items[skip:skip+limit], total
 
-    async def list_wikis(self, user_id: str, limit: int = 100) -> list[dict]:
+    async def list_wikis(self, user_id: str, skip: int = 0, limit: int = 100) -> tuple[list[dict], int]:
+        # BUG-H2 FIX: Accept skip for pagination and return total count alongside results
         if self.database is not None:
+            total = await self.database.wikis.count_documents({"user_id": user_id})
             pipeline = [
                 {"$match": {"user_id": user_id}},
                 {"$sort": {"created_at": -1}},
+                {"$skip": skip},
                 {"$limit": limit},
                 {
                     "$addFields": {
@@ -578,9 +581,11 @@ class MongoManager:
                 {"$project": {"master_note": 0, "master_note_versions": 0}},
             ]
             cursor = self.database.wikis.aggregate(pipeline)
-            return [self._normalize(w) for w in await cursor.to_list(length=limit)]
+            results = [self._normalize(w) for w in await cursor.to_list(length=limit)]
+            return results, total
         items = [self._copy(w) for w in self._memory["wikis"].values() if w["user_id"] == user_id]
         items.sort(key=lambda x: x["created_at"], reverse=True)
+        total = len(items)
         # Mirror the MongoDB pipeline: inject excerpt and version_count, then strip the heavy fields
         for item in items:
             note = item.get("master_note") or ""
@@ -588,7 +593,7 @@ class MongoManager:
             item["version_count"] = len(item.get("master_note_versions", [])) + 1
             item.pop("master_note", None)
             item.pop("master_note_versions", None)
-        return items[:limit]
+        return items[skip:skip+limit], total
 
     async def update_wiki(self, wiki_id: str, user_id: str, payload: dict) -> dict | None:
         now = datetime.now(UTC)

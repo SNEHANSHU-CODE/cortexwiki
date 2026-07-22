@@ -14,11 +14,11 @@ function tokenDelay(token) {
   // Now: calculate delay based on token length + random variance for natural feel
   // Token delay = base (10ms) + length factor (5ms per char) + random jitter (±5ms)
   if (!token) return 0;
-  const baseDelay = 10;  // Base 10ms per token
-  const lengthDelay = Math.min(token.length * 5, 60);  // 5ms per char, max 60ms
-  const jitter = (Math.random() - 0.5) * 10;  // ±5ms random variation
-  const totalDelay = Math.max(5, baseDelay + lengthDelay + jitter);
-  return Math.round(totalDelay);
+  // BUG-L5 FIX: Flat 15-25ms per token feels natural.
+  // Length-based scaling made long words/URLs lag noticeably.
+  const base = 15;
+  const jitter = Math.random() * 10;  // 0–10ms random variation
+  return Math.round(base + jitter);
 }
 
 function wait(ms) {

@@ -148,10 +148,10 @@ async def connect(sid, environ, auth):
                 "last_activity": time.time(),
             }
         
-        # Store user AND token for validation on each message
+        # Store only minimal safe user fields — never persist password_hash or token metadata
         await sio.save_session(sid, {
-            "user": user,
-            "token": token,  # BUG FIX #8: Store token for re-validation
+            "user": {"id": user.get("id"), "email": user.get("email")},
+            "token": token,
         })
         logger.info("Socket connected: sid=%s, user_id=%s, active_connections=%d", 
                     sid, user.get("id"), _active_socket_connections)
@@ -453,7 +453,9 @@ async def handle_query(sid, data):
                 )
 
         # Save assistant message after graph completes cleanly
-        await mongo.save_chat_message(user["id"], wiki_id, request_id, "assistant", answer, "complete")
+        # BUG-H3 FIX: Use server-generated ID — never use client-supplied request_id as DB key
+        assistant_msg_id = uuid.uuid4().hex
+        await mongo.save_chat_message(user["id"], wiki_id, assistant_msg_id, "assistant", answer, "complete")
 
     except Exception as exc:
         await sio.emit(

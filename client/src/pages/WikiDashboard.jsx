@@ -98,7 +98,11 @@ function CreateWikiModal({ open, onClose, onSubmit, busy }) {
         <div className="cw-modal__header">
           <h2>Create new wiki</h2>
           <button type="button" className="cw-icon-btn" onClick={onClose} aria-label="Close">
-            X
+            {/* BUG-L1 FIX: Use SVG icon for close button instead of text X */}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
         <form onSubmit={handleSubmit} className="cw-modal__form">
@@ -176,7 +180,11 @@ function ShareWikiModal({ open, onClose, activeWiki, onToggleShare }) {
         <div className="cw-modal__header">
           <h2>Share Wiki</h2>
           <button type="button" className="cw-icon-btn" onClick={onClose} aria-label="Close">
-            X
+            {/* BUG-L1 FIX: Use SVG icon for close button instead of text X */}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
         <div style={{ padding: "1.5rem" }}>
@@ -210,9 +218,12 @@ function ShareWikiModal({ open, onClose, activeWiki, onToggleShare }) {
                 style={{ padding: "0.4rem 0.75rem", fontSize: "0.8rem", height: "auto", minHeight: "0" }}
                 onClick={(e) => {
                   navigator.clipboard.writeText(shareUrl);
-                  const orig = e.currentTarget.innerText;
-                  e.currentTarget.innerText = "Copied!";
-                  setTimeout(() => { if (e.target) e.target.innerText = orig; }, 2000);
+                  // BUG-M2 FIX: e.target inside setTimeout could be the child node. 
+                  // Capture currentTarget (the button) before the timeout gap.
+                  const btn = e.currentTarget;
+                  const orig = btn.innerText;
+                  btn.innerText = "Copied!";
+                  setTimeout(() => { if (btn) btn.innerText = orig; }, 2000);
                 }}
               >
                 Copy Link
