@@ -427,3 +427,13 @@ html[data-theme='light'] .ws-field__input:focus {
 html[data-theme='light'] .ws-history-card__link:hover {
   color: #0842b3;
 }
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .ws-panel__header {
+    padding: 1rem 1.25rem;
+  }
+  .ws-panel__body {
+    padding: 1rem 1.25rem;
+  }
+}

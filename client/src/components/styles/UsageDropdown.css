@@ -318,6 +318,8 @@ html[data-theme='light'] .usage-dropdown__delete-btn:hover {
     left: 1rem;
     width: auto;
     border-radius: 16px;
+    max-height: calc(100vh - 90px); /* prevent overflow on short screens */
+    overflow-y: auto;
   }
 
   .usage-dropdown__header {

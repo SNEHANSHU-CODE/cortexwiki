@@ -124,7 +124,7 @@
 
 /* ── Left panel ───────────────────────────────────────────────────────── */
 .cw-dashboard__left {
-  width: 320px;
+  width: min(320px, 100%); /* prevent overflow on very narrow viewports */
   flex-shrink: 0;
   background: #111827;
   border-right: 1px solid rgba(148, 163, 184, 0.10);
@@ -179,6 +179,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0; /* required for ellipsis to work inside flexbox */
 }
 
 .cw-rightbar__actions {
@@ -590,7 +591,7 @@
 }
 
 /* ── Responsive ───────────────────────────────────────────────────────── */
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   .cw-dashboard {
     flex-direction: column;
     height: auto;
@@ -799,7 +800,7 @@
 }
 
 /* ── Responsive ───────────────────────────────────────────────────────── */
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   .graph-embed__body {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr auto;
@@ -1228,7 +1229,7 @@ html[data-theme='light'] .ws-field__textarea:focus {
   box-shadow: 0 0 0 3px rgba(15, 98, 254, 0.15);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   html[data-theme='light'] .cw-dashboard__left {
     border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   }

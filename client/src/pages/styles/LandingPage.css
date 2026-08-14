@@ -466,7 +466,7 @@ html[data-theme='light'] {
 .lp-footer-copy { font-size: 0.8rem; color: var(--muted); }
 
 /* ── Responsive ───────────────────────────────────────────────── */
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   .lp-hero-inner { grid-template-columns: 1fr; gap: 3rem; }
   .lp-features-grid { grid-template-columns: 1fr; }
   .lp-stats-inner { grid-template-columns: 1fr 1fr; }

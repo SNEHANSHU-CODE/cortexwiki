@@ -451,3 +451,21 @@ html[data-theme='light'] .cw-directory__page-btn:not(:disabled):hover {
   background: #0f172a;
   color: #ffffff;
 }
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .cw-directory__controls-wrapper {
+    padding: 0 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Force single column on very small phones where 320px minmax is too wide */
+  .cw-directory__grid {
+    grid-template-columns: 1fr;
+  }
+  .cw-directory__hero {
+    padding-top: 1rem;
+  }
+}
+
