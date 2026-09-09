@@ -28,6 +28,13 @@ from app.db.mongo import get_mongo_manager
 configure_logging(settings.LOG_LEVEL)
 logger = get_logger("app.main")
 
+# Suppress httpx's verbose "HTTP Request: ..." lines — these log the full URL including
+# ?key=... query params, which would expose API keys in plaintext in production logs.
+import logging as _logging
+_logging.getLogger("httpx").setLevel(_logging.WARNING)
+_logging.getLogger("httpcore").setLevel(_logging.WARNING)
+
+
 # BUG FIX #1: Track socket connections with timeout cleanup
 _active_socket_connections = 0
 _socket_connection_lock = asyncio.Lock()

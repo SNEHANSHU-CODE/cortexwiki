@@ -39,8 +39,15 @@ class AgentState(TypedDict):
     # Set by InternetSearchAgent (optional branch)
     internet_results: list[dict]
 
+    # Retry counter for the guard → internet_search loop.
+    # Capped at _MAX_GUARD_RETRIES to prevent GraphRecursionError when search returns 0 results.
+    # Using a counter (not a boolean) so the cap is enforced regardless of the failure reason.
+    guard_retry_count: int
+
     # Set by HallucinationGuardAgent
-    confidence: float
+    # IMPORTANT: renamed from "confidence" — the LLM-generated float is not a calibrated
+    # probability. Naming it explicitly prevents future code from routing on it by accident.
+    debug_confidence_uncalibrated: float
     is_grounded: bool
     guard: dict[str, Any]
 
@@ -138,8 +145,19 @@ class QueryAgentGraph:
 
         builder.add_edge("internet_search", "hallucination_guard")
         
+        # Maximum number of times the guard can send the graph back to internet_search.
+        # A counter (not a boolean flag) is used so the loop terminates regardless of
+        # *why* grounding failed — zero results, bad LLM parse, or weak snippets all
+        # end up routing to "answer" after this many attempts.
+        _MAX_GUARD_RETRIES = 1
+
         def _route_after_guard(state: AgentState) -> str:
-            if not state.get("is_grounded", False) and state.get("allow_internet", False) and not state.get("internet_results"):
+            retries = state.get("guard_retry_count", 0)
+            if (
+                not state.get("is_grounded", False)
+                and state.get("allow_internet", False)
+                and retries < _MAX_GUARD_RETRIES
+            ):
                 return "internet_search"
             return "answer"
 
@@ -175,9 +193,11 @@ class QueryAgentGraph:
             "wiki_pages": [],
             "related_concepts": [],
             "internet_results": [],
+            "guard_retry_count": 0,
             "guard": {},
-            "confidence": 0.0,
+            "debug_confidence_uncalibrated": 0.0,
             "is_grounded": False,
+
             "answer": "",
             "sources": [],
             "strategy": "knowledge_base",
@@ -251,12 +271,14 @@ class QueryAgentGraph:
     def _to_query_data(self, state: dict) -> QueryData:
         return QueryData(
             answer=state.get("answer", ""),
-            confidence=state.get("confidence", 0.0),
+            # Read from renamed internal state key; map to public API field "confidence"
+            confidence=state.get("debug_confidence_uncalibrated", 0.0),
             strategy=state.get("strategy", "knowledge_base"),
             is_grounded=state.get("is_grounded", False),
             sources=state.get("sources", []),
             debug=state.get("debug_payload") if state.get("debug") else None,
         )
+
 
 
 _query_agent_graph = QueryAgentGraph()

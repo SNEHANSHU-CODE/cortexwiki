@@ -89,13 +89,15 @@ class AnswerAgent:
             "type": "complete",
             "data": {
                 "answer": state["answer"],
-                "confidence": state["confidence"],
+                # Map internal renamed key → public field name for client-facing stream event
+                "confidence": state["debug_confidence_uncalibrated"],
                 "strategy": state["strategy"],
                 "is_grounded": state["is_grounded"],
                 "sources": state["sources"],
                 "debug": state["debug_payload"] if state.get("debug") else None,
             },
         }
+
 
     async def _generate_answer_text(self, state: dict) -> str:
         if not state["is_grounded"]:

@@ -88,10 +88,28 @@ class Settings(BaseSettings):
     # OCR.space API — for PDF image fallback
     OCR_SPACE_API_KEY: str | None = None
 
-
     # ScraperAPI — YouTube transcript fallback proxy
     SCRAPERAPI_KEY: str | None = None
     SCRAPERAPI_PROXY_URL: str = "http://proxy.scraperapi.com:8001"
+
+    # YouTube anti-bot bypass for yt-dlp (Whisper fallback path).
+    # These are optional but significantly improve reliability on server deployments.
+    #
+    # YT_PO_TOKEN — Proof-of-Origin token for the WEB or WEB_EMBEDDED client.
+    #   Format expected by yt-dlp extractor_args: "web.gvs+<base64url_token>"
+    #   Generate at: https://github.com/iv-org/youtube-po-token-generator
+    #   or https://extractus.github.io/yt-dlp-po-token-guide/
+    YT_PO_TOKEN: str | None = None
+    #
+    # YT_VISITOR_DATA — Signed visitor context string (pairs with PO token).
+    #   Obtained from the same tool that generates YT_PO_TOKEN.
+    YT_VISITOR_DATA: str | None = None
+    #
+    # YT_COOKIES_BASE64 — Netscape-format cookie file exported from a real YouTube
+    #   browser session, base64-encoded. Use 'Get cookies.txt LOCALLY' browser extension
+    #   then: base64 -w0 cookies.txt > cookies_b64.txt  and paste value here.
+    #   This is the most effective bot bypass — YouTube trusts established sessions.
+    YT_COOKIES_BASE64: str | None = None
 
     # EmailJS — server-side OTP email delivery
     # Get credentials from https://emailjs.com → account → API keys

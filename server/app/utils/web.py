@@ -120,76 +120,141 @@ async def _fetch_transcript_whisper_fallback(video_id: str) -> str:
     Fallback transcript provider.
     Downloads the lowest bitrate audio stream using yt-dlp to save bandwidth,
     uploads it to Groq Whisper API (whisper-large-v3-turbo), and returns the transcription.
+
+    Anti-bot hardening applied:
+    - Browser User-Agent to avoid datacenter fingerprinting.
+    - PO Token + visitor_data injection (set YT_PO_TOKEN + YT_VISITOR_DATA env vars).
+    - Optional Netscape cookie file from YT_COOKIES_BASE64 env var (most effective bypass).
+    - Fragment and connection retries for transient network failures.
+    - Format fallback chain: worstaudio -> bestaudio/audio -> any.
     """
     if not settings.GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY not configured for Whisper fallback")
 
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     temp_dir = tempfile.gettempdir()
-    # Unique template to avoid conflicts during concurrent runs
-    outtmpl = os.path.join(temp_dir, f"yt_audio_{video_id}_{uuid.uuid4().hex[:8]}.%(ext)s")
+    run_id = uuid.uuid4().hex[:8]
+    outtmpl = os.path.join(temp_dir, f"yt_audio_{video_id}_{run_id}.%(ext)s")
+    cookie_file: str | None = None
 
-    ydl_opts = {
-        "format": "worstaudio",
+    # ── Build cookies file from base64 env var (most effective anti-bot bypass) ──
+    if settings.YT_COOKIES_BASE64:
+        try:
+            import base64 as _base64
+            cookie_file = os.path.join(temp_dir, f"yt_cookies_{run_id}.txt")
+            cookie_bytes = _base64.b64decode(settings.YT_COOKIES_BASE64)
+            with open(cookie_file, "wb") as f:
+                f.write(cookie_bytes)
+            logger.debug("Wrote YouTube cookie file for yt-dlp (%d bytes)", len(cookie_bytes))
+        except Exception as exc:
+            logger.warning("Failed to decode YT_COOKIES_BASE64, proceeding without cookies: %s", exc)
+            cookie_file = None
+
+    ydl_opts: dict = {
+        # ── Format: try lowest quality first to minimise bandwidth and download time ──
+        # Falls back progressively if worstaudio isn't available.
+        "format": "worstaudio/bestaudio[abr<=64]/bestaudio/audio/best",
+
         "outtmpl": outtmpl,
         "quiet": True,
         "no_warnings": True,
+
+        # ── SSL: yt-dlp uses its own stack, not httpx/certifi ────────────────────
+        "nocheckcertificate": True,
+
+        # ── Browser impersonation headers ──────────────────────────────────────
+        # Prevents YouTube from fingerprinting the request as a headless datacenter client.
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+
+        # ── Retry configuration for transient failures ─────────────────────────
+        "retries": 3,            # retry info/manifest fetch up to 3 times
+        "fragment_retries": 3,   # retry individual audio fragment downloads 3 times
+        "socket_timeout": 30,    # bail out after 30s idle instead of hanging indefinitely
+
+        # ── Extractor args: PO Token + visitor data (YouTube bot bypass) ───────
+        # Set YT_PO_TOKEN="web.gvs+<base64url_token>" and YT_VISITOR_DATA="<visitor_data>"
+        # in your environment variables. yt-dlp passes these to YouTube's API to prove
+        # the request originated from a real browser session, bypassing bot-detection.
+        # Generate tokens at: https://github.com/iv-org/youtube-po-token-generator
+        **(
+            {"extractor_args": {
+                "youtube": {
+                    "po_token": [settings.YT_PO_TOKEN],
+                    **({"visitor_data": [settings.YT_VISITOR_DATA]} if settings.YT_VISITOR_DATA else {}),
+                }
+            }}
+            if settings.YT_PO_TOKEN else {}
+        ),
     }
 
+    # ── Optional: cookies from env var ────────────────────────────────────────
+    if cookie_file:
+        ydl_opts["cookiefile"] = cookie_file
+
+    # ── Optional: ScraperAPI proxy for datacenter IP bypass ───────────────────
     if settings.SCRAPERAPI_KEY:
         ydl_opts["proxy"] = settings.scraperapi_proxy_url
 
-    def _download():
+    def _download() -> str:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
             return ydl.prepare_filename(info)
 
-    downloaded_file = None
+    downloaded_file: str | None = None
     try:
-        logger.info(f"Downloading lowest bitrate audio for video {video_id} using yt-dlp...")
+        logger.info("Downloading lowest bitrate audio for video %s using yt-dlp...", video_id)
         downloaded_file = await asyncio.to_thread(_download)
-        logger.info(f"Audio downloaded to {downloaded_file} (size: {os.path.getsize(downloaded_file)} bytes)")
+        logger.info("Audio downloaded to %s (size: %d bytes)", downloaded_file, os.path.getsize(downloaded_file))
 
-        # Upload to Groq Whisper API
-        url = f"{settings.GROQ_BASE_URL}/audio/transcriptions"
-        headers = {
-            "Authorization": f"Bearer {settings.GROQ_API_KEY}"
-        }
-        
+        # ── Upload to Groq Whisper API ─────────────────────────────────────────
+        whisper_url = f"{settings.GROQ_BASE_URL}/audio/transcriptions"
+        headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}"}
         filename = os.path.basename(downloaded_file)
-        
-        logger.info(f"Uploading {filename} to Groq Whisper API (whisper-large-v3-turbo)...")
+
+        logger.info("Uploading %s to Groq Whisper API (whisper-large-v3-turbo)...", filename)
         verify_ssl = certifi.where() if settings.OUTBOUND_VERIFY_SSL else False
         async with httpx.AsyncClient(timeout=60.0, verify=verify_ssl) as client:
             with open(downloaded_file, "rb") as f:
-                files = {
-                    "file": (filename, f, "application/octet-stream")
-                }
-                data = {
-                    "model": "whisper-large-v3-turbo",
-                    "response_format": "json"
-                }
-                response = await client.post(url, headers=headers, files=files, data=data)
-                
+                response = await client.post(
+                    whisper_url,
+                    headers=headers,
+                    files={"file": (filename, f, "application/octet-stream")},
+                    data={"model": "whisper-large-v3-turbo", "response_format": "json"},
+                )
+
         response.raise_for_status()
         result_json = response.json()
         transcript = result_json.get("text", "")
         if not transcript or not transcript.strip():
             raise ValueError("Groq Whisper API returned empty transcription")
-            
-        logger.info(f"Whisper transcription completed successfully for video {video_id}.")
+
+        logger.info("Whisper transcription completed successfully for video %s.", video_id)
         return transcript.strip()
 
     finally:
+        # Clean up audio file
         if downloaded_file and os.path.exists(downloaded_file):
             try:
                 os.remove(downloaded_file)
-                logger.info(f"Successfully deleted temporary audio file: {downloaded_file}")
+                logger.debug("Deleted temporary audio file: %s", downloaded_file)
             except Exception as e:
-                logger.warning(f"Failed to delete temporary audio file {downloaded_file}: {e}")
-
+                logger.warning("Failed to delete temporary audio file %s: %s", downloaded_file, e)
+        # Clean up cookie file
+        if cookie_file and os.path.exists(cookie_file):
+            try:
+                os.remove(cookie_file)
+            except Exception:
+                pass
 
 # ── Public fetch function ─────────────────────────────────────────────────────
+
 
 async def fetch_youtube_content(url: str) -> dict:
     video_id = extract_youtube_video_id(url)
@@ -203,27 +268,8 @@ async def fetch_youtube_content(url: str) -> dict:
     transcript: str | None = None
     last_error: Exception | None = None
 
-    # 1. Try ScraperAPI + youtube-transcript-api (Primary)
-    if transcript is None and settings.SCRAPERAPI_KEY:
-        try:
-            logger.info(f"Attempting to fetch transcript for video {video_id} via ScraperAPI...")
-            transcript = await _fetch_transcript_scraperapi(video_id)
-            logger.info(f"Successfully fetched transcript via ScraperAPI for video {video_id}.")
-        except Exception as exc:
-            logger.warning(f"ScraperAPI transcript fetch failed for video {video_id}: {exc}")
-            last_error = exc
-
-    # 2. Try Groq Whisper with yt-dlp through proxy (Fallback 1)
-    if transcript is None:
-        try:
-            logger.info(f"Attempting to fetch transcript for video {video_id} via Groq Whisper API...")
-            transcript = await _fetch_transcript_whisper_fallback(video_id)
-            logger.info(f"Successfully fetched transcript via Groq Whisper for video {video_id}.")
-        except Exception as exc:
-            logger.warning(f"Groq Whisper transcription failed for video {video_id}: {exc}")
-            last_error = exc
-
-    # 3. Try Supadata (Fallback 2)
+    # 1. Try Supadata first — fastest and most reliable provider.
+    #    Supadata bypasses YouTube's anti-bot via its own residential proxy infrastructure.
     if transcript is None and settings.SUPADATA_API_KEY:
         try:
             logger.info(f"Attempting to fetch transcript for video {video_id} via Supadata...")
@@ -233,12 +279,26 @@ async def fetch_youtube_content(url: str) -> dict:
             logger.warning(f"Supadata transcript fetch failed for video {video_id}: {exc}")
             last_error = exc
 
+    # 2. Fallback: Groq Whisper via yt-dlp audio download.
+    #    Used for videos that have no auto-captions/subtitles (Supadata returns 404).
+    #    NOTE: ScraperAPI was previously used here via youtube-transcript-api but was
+    #    removed — YouTube's anti-bot fingerprints the proxy, causing consistent failures.
+    if transcript is None:
+        try:
+            logger.info(f"Attempting to fetch transcript for video {video_id} via Groq Whisper API...")
+            transcript = await _fetch_transcript_whisper_fallback(video_id)
+            logger.info(f"Successfully fetched transcript via Groq Whisper for video {video_id}.")
+        except Exception as exc:
+            logger.warning(f"Groq Whisper transcription failed for video {video_id}: {exc}")
+            last_error = exc
+
     if transcript is None:
         raise AppError(
             status_code=400,
             code="youtube_transcript_unavailable",
-            message="Unable to fetch YouTube transcript. Whisper, Supadata, and ScraperAPI all failed.",
+            message="Unable to fetch YouTube transcript. Supadata and Whisper both failed.",
         ) from last_error
+
 
     # Fetch video title from YouTube page (best-effort)
     title = f"YouTube Video {video_id}"

@@ -166,17 +166,39 @@ class IngestionService:
                 "raw_data_id": raw_record["id"],
             })
 
-            # ── SYNC GRAPH WITH ERROR HANDLING ──
-            try:
-                await self.graph_service.sync_page_graph(
-                    user_id=user_id,
-                    wiki_id=wiki_id,
+            # ── SYNC GRAPH + UPDATE MASTER NOTE IN PARALLEL ──────────────────
+            # Graph sync (Neo4j upsert) and master_note update are fully independent
+            # once wiki_page is created. Running them in parallel cuts ingestion time
+            # from ~37s sequential Neo4j blocking down to max(graph_sync, mongo_write).
+            import asyncio as _asyncio
+
+            async def _do_graph_sync():
+                try:
+                    await self.graph_service.sync_page_graph(
+                        user_id=user_id,
+                        wiki_id=wiki_id,
+                        page_id=wiki_page["id"],
+                        nodes=concept_nodes,
+                        edges=relationships,
+                    )
+                    logger.info("Graph synced successfully for page_id=%s", wiki_page["id"])
+                except Exception as exc:
+                    logger.error("Graph sync failed for page_id=%s: %s", wiki_page["id"], str(exc))
+                    raise
+
+            async def _do_master_note_update():
+                await self.mongo.update_wiki_master_note(
+                    wiki_id, user_id, master_note,
+                    previous_note=existing_note,
                     page_id=wiki_page["id"],
-                    nodes=concept_nodes,
-                    edges=relationships,
+                    batch_id=batch_id,
                 )
-                logger.info("Graph synced successfully for page_id=%s", wiki_page["id"])
+                logger.info("Updated master_note for wiki_id=%s", wiki_id)
+
+            try:
+                await _asyncio.gather(_do_graph_sync(), _do_master_note_update())
             except Exception as exc:
+                # If graph sync specifically failed, roll back the wiki page
                 logger.error("Graph sync failed for page_id=%s, rolling back: %s", wiki_page["id"], str(exc))
                 try:
                     rollback_success = await self.mongo.rollback_wiki_page(wiki_page["id"])
@@ -204,9 +226,6 @@ class IngestionService:
                         message="Graph sync and rollback both failed. Please contact support.",
                     ) from rollback_exc
 
-            # Update wiki master note + source count, tracking version (batch-aware)
-            await self.mongo.update_wiki_master_note(wiki_id, user_id, master_note, previous_note=existing_note, page_id=wiki_page["id"], batch_id=batch_id)
-            logger.info("Updated master_note for wiki_id=%s", wiki_id)
 
             await self.mongo.create_agent_log({
                 "user_id": user_id,
