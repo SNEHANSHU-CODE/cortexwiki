@@ -39,8 +39,6 @@ const refreshClient = axios.create({
 
 let boundStore = null;
 let refreshPromise = null;
-let lastRefreshAttempt = 0;  // BUG FIX #2: Track refresh timestamp to prevent loops
-const REFRESH_COOLDOWN_MS = 2000;  // BUG FIX #2: Cooldown between refresh attempts
 
 export function initializeHttpClient(store) {
   if (boundStore) {
@@ -74,36 +72,19 @@ export function initializeHttpClient(store) {
 
       try {
         originalRequest._retry = true;
-        
-        // BUG FIX #14: Prevent concurrent refresh attempts by multiple requests
-        // If already refreshing, wait for the existing refresh to complete
+
+        // If a refresh is already in-flight, queue behind it and share the result.
+        // The refreshSession() singleton guarantees exactly one HTTP refresh call at
+        // a time. The _retry flag above ensures no individual request is retried twice.
+        // No cooldown or retry counter is needed — the old cooldown was the root cause
+        // of duplicate refresh calls: it caused callers to sleep past the point where
+        // refreshPromise was cleared and then each fire an independent refresh.
         if (refreshPromise) {
           await refreshPromise;
-          // Retry original request with new token
           return await httpClient(originalRequest);
         }
-        
-        // BUG FIX #2: Limit retries to max 2 to prevent infinite loops
-        const retryCount = (originalRequest._retryCount || 0) + 1;
-        if (retryCount > 2) {
-          console.warn("Max retries exceeded for", originalRequest.url);
-          throw error;  // Give up after 2 retries
-        }
-        originalRequest._retryCount = retryCount;
-        
-        // BUG FIX #2: Add cooldown between refresh attempts to prevent thundering herd
-        const now = Date.now();
-        const timeSinceLastRefresh = now - lastRefreshAttempt;
-        if (timeSinceLastRefresh < REFRESH_COOLDOWN_MS) {
-          await new Promise(resolve => 
-            setTimeout(resolve, REFRESH_COOLDOWN_MS - timeSinceLastRefresh)
-          );
-        }
-        lastRefreshAttempt = Date.now();
-        
+
         await refreshSession();
-        
-        // Retry original request — access token will be added by the request interceptor
         return await httpClient(originalRequest);
       } catch (refreshError) {
         boundStore.dispatch(clearSession());
