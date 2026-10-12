@@ -30,7 +30,7 @@ class PlannerAgent:
                     prompt=f"User question: {question}",
                     system_instruction=_PLANNER_SYSTEM_PROMPT,
                     temperature=0.0,
-                    max_output_tokens=50,
+                    max_output_tokens=500,
                     use_secondary_key=True,
                 )
                 

@@ -49,8 +49,20 @@ function ConnPill({ state }) {
 function ChatPage({ wikiId }) {
   const [input, setInput] = useState("");
   const [debug, setDebug] = useState(false);
+  const [allowInternet, setAllowInternet] = useState(false);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+
+  // Debug checkbox is strictly for local developer use; hidden in production environments
+  const isLocalhost = Boolean(
+    typeof window !== "undefined" && (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname === "::1" ||
+      import.meta.env.DEV
+    )
+  );
+
   const dispatch          = useDispatch();
   const { accessToken }  = useSelector((s) => s.auth);
   const { messages, pendingMessageId, status, error, connectionState } =
@@ -163,7 +175,8 @@ function ChatPage({ wikiId }) {
 
     abortRef.current?.abort();
     abortRef.current      = new AbortController();
-    lastPromptRef.current = { question: trimmed, debug, requestId };
+    const effectiveDebug = isLocalhost ? debug : false;
+    lastPromptRef.current = { question: trimmed, debug: effectiveDebug, allow_internet: allowInternet, requestId };
 
     dispatch(clearChatError());
     dispatch(addUserMessage({ id: `${requestId}-user`, role: "user", content: trimmed, createdAt }));
@@ -172,7 +185,12 @@ function ChatPage({ wikiId }) {
     try {
       await sessionRef.current?.send({
         requestId,
-        payload: { question: trimmed, wiki_id: wikiId, debug },
+        payload: {
+          question: trimmed,
+          wiki_id: wikiId,
+          debug: effectiveDebug,
+          allow_internet: allowInternet,
+        },
         signal:  abortRef.current.signal,
       });
     } catch (err) {
@@ -186,7 +204,7 @@ function ChatPage({ wikiId }) {
       }));
       console.error("Chat error:", err);  // Log full error for debugging
     }
-  }, [debug, dispatch, pendingMessageId, wikiId]);
+  }, [allowInternet, debug, dispatch, isLocalhost, pendingMessageId, wikiId]);
 
   const handleSubmit = (e) => { e.preventDefault(); submitPrompt(input).catch(err => console.error("Chat submit failed:", err)); };
   const handleRetry  = () => { if (lastPromptRef.current?.question) void submitPrompt(lastPromptRef.current.question); };
@@ -216,14 +234,35 @@ function ChatPage({ wikiId }) {
           >
             Clear
           </button>
-          <label className="ws-checkbox" style={{ fontSize: "0.72rem" }}>
+          <label
+            className="ws-checkbox"
+            style={{
+              fontSize: "0.72rem",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.3rem",
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+            title="Enable live internet search if wiki evidence is insufficient"
+          >
             <input
               type="checkbox"
-              checked={debug}
-              onChange={(e) => setDebug(e.target.checked)}
+              checked={allowInternet}
+              onChange={(e) => setAllowInternet(e.target.checked)}
             />
-            Debug
+            <span>🌐 Web Search</span>
           </label>
+          {isLocalhost && (
+            <label className="ws-checkbox" style={{ fontSize: "0.72rem" }}>
+              <input
+                type="checkbox"
+                checked={debug}
+                onChange={(e) => setDebug(e.target.checked)}
+              />
+              Debug
+            </label>
+          )}
         </div>
       </div>
 

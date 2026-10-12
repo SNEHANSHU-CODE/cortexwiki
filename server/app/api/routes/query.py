@@ -46,10 +46,8 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     if not ObjectId.is_valid(payload.wiki_id):
         raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
 
-    # BUG FIX #13: Verify debug mode is disabled in production environment
-    # Check ENVIRONMENT setting instead of non-existent is_production property
-    if payload.debug and settings.ENVIRONMENT == "production":
-        raise AppError(status_code=400, code="debug_disabled", message="Debug mode not available in production.")
+    # In production, silently ignore debug metadata rather than rejecting the request with a 400 error.
+    debug_enabled = payload.debug and settings.ENVIRONMENT != "production"
 
     await _validate_wiki(payload.wiki_id, current_user["id"])
 
@@ -150,7 +148,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
             "related_concepts": graph_context,
             "context_pages": len(context_blocks),
         }
-        if payload.debug
+        if debug_enabled
         else None
     )
 

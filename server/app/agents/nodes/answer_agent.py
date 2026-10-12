@@ -132,7 +132,7 @@ class AnswerAgent:
         wiki_context_raw = [
             {
                 "title": page.get("title", "Untitled Source"),
-                "summary": page.get("summary", ""),
+                "content": (page.get("summary") or page.get("content", ""))[:4000],
                 "concepts": page.get("concepts", []),
                 "source_url": page.get("source_url", ""),
             }

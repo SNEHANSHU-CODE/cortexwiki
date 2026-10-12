@@ -232,7 +232,7 @@ export function createChatStreamSession({
           timestamp: new Date().toISOString(),
         });
         await streamFallbackResponse({ payload, signal, requestId, onStart, onToken, onComplete, onError, onConnectionChange });
-      }, 10_000);
+      }, 25_000);
       _emitWatchdogs.set(requestId, watchdog);
       return;
     }

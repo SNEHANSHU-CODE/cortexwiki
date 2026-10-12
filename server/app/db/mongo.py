@@ -32,25 +32,56 @@ class MongoManager:
         if not settings.MONGO_URI:
             logger.warning("MONGO_URI not set, using in-memory Mongo fallback")
             return
+
+        # Ensure reliable DNS resolution for mongodb+srv:// records on Windows/local networks.
+        # Home/office routers often fail to resolve SRV records (SERVFAIL/timeouts).
         try:
-            self.client = AsyncIOMotorClient(
-                settings.MONGO_URI,
-                serverSelectionTimeoutMS=5000,
-                maxPoolSize=settings.MONGO_MAX_POOL_SIZE,
-                minPoolSize=settings.MONGO_MIN_POOL_SIZE,
-            )
-            await self.client.admin.command("ping")
-            self.database = self.client[settings.MONGO_DB_NAME]
-            await self._ensure_indexes()
-            self.mode = "mongo"
-            logger.info("Connected to MongoDB")
+            import dns.resolver
+            default_res = dns.resolver.get_default_resolver()
+            for dns_ip in ("8.8.8.8", "1.1.1.1"):
+                if dns_ip not in default_res.nameservers:
+                    default_res.nameservers.append(dns_ip)
         except Exception:
-            if self.client is not None:
-                self.client.close()
-            self.client = None
-            self.database = None
-            self.mode = "memory"
-            logger.exception("MongoDB unavailable, using in-memory fallback")
+            pass
+
+        max_attempts = 3
+        delay = 1.0
+        for attempt in range(1, max_attempts + 1):
+            try:
+                self.client = AsyncIOMotorClient(
+                    settings.MONGO_URI,
+                    serverSelectionTimeoutMS=5000,
+                    maxPoolSize=settings.MONGO_MAX_POOL_SIZE,
+                    minPoolSize=settings.MONGO_MIN_POOL_SIZE,
+                )
+                await self.client.admin.command("ping")
+                self.database = self.client[settings.MONGO_DB_NAME]
+                await self._ensure_indexes()
+                self.mode = "mongo"
+                logger.info("Connected to MongoDB")
+                return
+            except Exception as exc:
+                if self.client is not None:
+                    self.client.close()
+                self.client = None
+                self.database = None
+                if attempt < max_attempts:
+                    logger.warning(
+                        "MongoDB connection attempt %d/%d failed: %s. Retrying in %.1fs...",
+                        attempt,
+                        max_attempts,
+                        exc,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                else:
+                    self.mode = "memory"
+                    logger.warning(
+                        "MongoDB unavailable after %d attempts (%s) — falling back to in-memory store",
+                        max_attempts,
+                        exc,
+                    )
 
     async def disconnect(self) -> None:
         if self.client is not None:

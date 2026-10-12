@@ -40,7 +40,7 @@ class RetrievalAgent:
                 prompt=f"Question: {question}",
                 system_instruction=_EXPANSION_PROMPT,
                 temperature=0.0,
-                max_output_tokens=50,
+                max_output_tokens=500,
                 use_secondary_key=True,
             )
             # BUG-M6 FIX: Use regex instead of hardcoded offsets — handles trailing
@@ -65,6 +65,21 @@ class RetrievalAgent:
             query_embedding=embedding,
             limit=settings.QUERY_RESULT_LIMIT,
         )
+
+        # Ingest the wiki's master synthesis note as a primary authoritative source
+        wiki = await self._mongo.get_wiki(wiki_id, state["user_id"])
+        master_note = (wiki.get("master_note") or "").strip() if wiki else ""
+        if master_note:
+            wiki_pages.insert(0, {
+                "id": f"master_note_{wiki_id}",
+                "title": f"{wiki.get('title') or 'Wiki'} (Master Synthesis)",
+                "summary": master_note[:4000],
+                "content": master_note,
+                "concepts": [],
+                "source_url": "",
+                "source_type": "master_note",
+            })
+
         related_concepts = await self._graph_service.get_related_concepts(
             user_id=state["user_id"],
             wiki_id=wiki_id,
