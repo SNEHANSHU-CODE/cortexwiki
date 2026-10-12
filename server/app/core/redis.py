@@ -40,21 +40,43 @@ class RedisTokenStore:
             logger.warning("REDIS_URL not set — using in-memory access token store")
             return
 
-        try:
-            self.client = Redis.from_url(
-                settings.REDIS_URL,
-                decode_responses=True,
-                max_connections=settings.REDIS_MAX_CONNECTIONS,
-            )
-            await self.client.ping()
-            self.mode = "redis"
-            logger.info("Connected to Redis token store")
-        except Exception:
-            if self.client is not None:
-                await self.client.aclose()
-            self.client = None
-            self.mode = "memory"
-            logger.exception("Redis unavailable — falling back to in-memory token store")
+        max_attempts = 3
+        delay = 1.0
+        for attempt in range(1, max_attempts + 1):
+            try:
+                self.client = Redis.from_url(
+                    settings.REDIS_URL,
+                    decode_responses=True,
+                    max_connections=settings.REDIS_MAX_CONNECTIONS,
+                )
+                await self.client.ping()
+                self.mode = "redis"
+                logger.info("Connected to Redis token store")
+                return
+            except Exception as exc:
+                if self.client is not None:
+                    try:
+                        await self.client.aclose()
+                    except Exception:
+                        pass
+                self.client = None
+                if attempt < max_attempts:
+                    logger.warning(
+                        "Redis connection attempt %d/%d failed: %s. Retrying in %.1fs...",
+                        attempt,
+                        max_attempts,
+                        exc,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                else:
+                    self.mode = "memory"
+                    logger.warning(
+                        "Redis unavailable after %d attempts (%s) — falling back to in-memory token store",
+                        max_attempts,
+                        exc,
+                    )
 
     async def close(self) -> None:
         if self.client is not None:

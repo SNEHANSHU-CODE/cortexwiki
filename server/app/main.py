@@ -713,16 +713,21 @@ async def lifespan(_app: FastAPI):
     await initialize_datastores()
     await initialize_redis()
     cleanup_task = asyncio.create_task(_cleanup_stale_socket_connections())
+    from app.db.graph import neo4j_health_check_task
+    neo4j_task = asyncio.create_task(neo4j_health_check_task())
     yield
     cleanup_task.cancel()
-    try:
-        await cleanup_task
-    except asyncio.CancelledError:
-        pass
+    neo4j_task.cancel()
+    for task in (cleanup_task, neo4j_task):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     from app.core.http import close_http_client
     await close_http_client()
     await close_redis()
     await close_datastores()
+
 
 
 def create_fastapi_app() -> FastAPI:
