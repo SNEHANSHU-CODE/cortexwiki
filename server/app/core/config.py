@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str | None = None
     GROQ_SECONDARY_API_KEY: str | None = None
     GROQ_MODEL_CHAT: str = "openai/gpt-oss-20b"
-    GROQ_MODEL_INGESTION: str = "groq/compound-mini"
+    GROQ_MODEL_INGESTION: str = "openai/gpt-oss-20b"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
     # Quiz Configuration
@@ -79,7 +79,7 @@ class Settings(BaseSettings):
 
     # Gemini — fallback LLM + embeddings
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
     # Supadata — YouTube transcript primary (bypasses datacenter IP blocks)
