@@ -74,7 +74,15 @@ class HallucinationGuardAgent:
                 clean_json = _re.sub(r'^```(?:json)?\s*\n?', '', clean_json)
                 clean_json = _re.sub(r'\n?```\s*$', '', clean_json).strip()
 
-                result = json.loads(clean_json)
+                try:
+                    result = json.loads(clean_json)
+                except Exception:
+                    # Match first valid JSON object if model outputs trailing commentary
+                    match = _re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', clean_json, _re.DOTALL)
+                    if match:
+                        result = json.loads(match.group(0))
+                    else:
+                        raise
                 is_grounded = bool(result.get("is_supported", False))
                 supporting_sources = result.get("supporting_sources", [])
                 debug_confidence = float(

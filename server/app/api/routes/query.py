@@ -41,7 +41,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     if not payload.wiki_id:
         raise AppError(status_code=400, code="wiki_id_required", message="wiki_id is required.")
 
-    # BUG FIX #27: Validate wiki_id format
+    # Validate wiki_id format
     from bson import ObjectId
     if not ObjectId.is_valid(payload.wiki_id):
         raise AppError(status_code=400, code="invalid_wiki_id", message="Invalid wiki ID format.")
@@ -51,122 +51,39 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
 
     await _validate_wiki(payload.wiki_id, current_user["id"])
 
+    # Set user context variable for token usage tracking
+    from app.services.llm import user_id_ctx
+    user_id_ctx.set(current_user["id"])
+
     mongo = get_mongo_manager()
-    llm = get_llm_service()
-    graph_service = get_graph_service()
 
     # Save user message
     user_msg_id = uuid.uuid4().hex
     await mongo.save_chat_message(current_user["id"], payload.wiki_id, user_msg_id, "user", payload.question)
 
-    query_embedding = await llm.embed_text(payload.question)
+    from app.agents.graph import get_query_agent_graph
+    agent_graph = get_query_agent_graph()
 
-    wiki_pages = await mongo.search_wiki_pages(
+    result = await agent_graph.run(
         user_id=current_user["id"],
         wiki_id=payload.wiki_id,
-        query=payload.question,
-        query_embedding=query_embedding,
-        limit=5,
-    )
-    related_concepts = await graph_service.get_related_concepts(
-        user_id=current_user["id"],
-        wiki_id=payload.wiki_id,
-        query=payload.question,
-        limit=8,
+        question=payload.question,
+        debug=debug_enabled,
+        allow_internet=payload.allow_internet,
     )
 
-    if not wiki_pages and not related_concepts:
-        # BUG-L4 FIX: Save assistant reply so history doesn't show a dangling unanswered message
-        no_knowledge_msg_id = uuid.uuid4().hex
-        await mongo.save_chat_message(
-            current_user["id"], payload.wiki_id, no_knowledge_msg_id,
-            "assistant", _NO_KNOWLEDGE_RESPONSE.answer, "complete", None
-        )
-        if payload.debug:
-            return _NO_KNOWLEDGE_RESPONSE.model_copy(
-                update={"debug": {"wiki_results": [], "related_concepts": []}}
-            )
-        return _NO_KNOWLEDGE_RESPONSE
-
-    context_blocks = [
-        {
-            # BUG FIX #15: Use .get() consistently to handle missing fields gracefully
-            "title": page.get("title", "Untitled Source"),
-            "source_url": page.get("source_url", ""),
-            "summary": page.get("summary", ""),
-            "concepts": page.get("concepts", []),
-        }
-        for page in wiki_pages
-    ]
-    graph_context = [
-        f'{item.get("source", "")} {item.get("relationship", "")} {item.get("target", "")}'
-        for item in related_concepts
-    ]
-
-    if settings_has_llm():
-        char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
-        truncated_context = str(context_blocks)[:char_limit]
-
-        prompt_content = (
-            f"Question: <user_question>{payload.question}</user_question>\n\n"
-            f"Knowledge base pages:\n{truncated_context}\n\n"
-            f"Graph relationships:\n{graph_context}\n\n"
-            "Write a concise, grounded answer."
-        )
-
-        answer = await llm.generate_text(
-            system_instruction=(
-                "You are CortexWiki. Answer only from the provided knowledge base context. "
-                "If the context is insufficient, say so plainly. Do not invent facts.\n"
-                "At the very end of your response, output exactly 3 suggested follow-up questions formatted like this: [SUGGEST: question 1 | question 2 | question 3]"
-            ),
-            prompt=prompt_content,
-            temperature=0.2,
-            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS_CHAT,
-            primary_provider=settings.LLM_PROVIDER_CHAT,
-        )
-    else:
-        answer = _build_fallback_answer(wiki_pages=wiki_pages, graph_context=graph_context)
-
-    sources = [
-        QuerySource(
-            # BUG FIX #15: Use .get() to handle missing fields
-            title=page.get("title", "Untitled Source"),
-            url=page.get("source_url", ""),
-            source_type=page.get("source_type", "wiki_page"),
-        )
-        for page in wiki_pages
-    ]
-    confidence = round(min(0.96, max([p.get('score', 0.18) for p in wiki_pages], default=0.18)), 2)
-    # BUG-H1 FIX: Compute is_grounded from actual evidence rather than hardcoding True.
-    # The HTTP path doesn't run HallucinationGuardAgent, so use a conservative proxy:
-    # grounded if we have at least one wiki page or graph concept with content.
-    is_grounded = bool(wiki_pages or related_concepts)
-    debug = (
-        {
-            "wiki_results": [page.get("title", "Untitled Source") for page in wiki_pages],
-            "related_concepts": graph_context,
-            "context_pages": len(context_blocks),
-        }
-        if debug_enabled
-        else None
-    )
-
-    final_answer = answer.strip()
-    # Strip the [SUGGEST: ...] tag before persisting — the tag is for the live response only,
-    # not for the stored history shown on chat reload.
-    clean_for_db = re.sub(r"\[SUGGEST:.*?\]", "", final_answer, flags=re.DOTALL).strip()
     assistant_msg_id = uuid.uuid4().hex
-    await mongo.save_chat_message(current_user["id"], payload.wiki_id, assistant_msg_id, "assistant", clean_for_db, "complete", debug)
-
-    return QueryData(
-        answer=final_answer,
-        strategy="knowledge_base",
-        confidence=confidence,
-        is_grounded=is_grounded,
-        sources=sources,
-        debug=debug,
+    await mongo.save_chat_message(
+        current_user["id"],
+        payload.wiki_id,
+        assistant_msg_id,
+        "assistant",
+        result.answer,
+        "complete",
+        result.debug,
     )
+
+    return result
 
 
 @router.get("/history")

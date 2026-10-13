@@ -70,10 +70,11 @@ class RetrievalAgent:
         wiki = await self._mongo.get_wiki(wiki_id, state["user_id"])
         master_note = (wiki.get("master_note") or "").strip() if wiki else ""
         if master_note:
+            wiki_title = wiki.get("title") or wiki.get("name") or "Wiki"
             wiki_pages.insert(0, {
                 "id": f"master_note_{wiki_id}",
-                "title": f"{wiki.get('title') or 'Wiki'} (Master Synthesis)",
-                "summary": master_note[:4000],
+                "title": f"{wiki_title} (Master Synthesis)",
+                "summary": master_note[:8000],
                 "content": master_note,
                 "concepts": [],
                 "source_url": "",

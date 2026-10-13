@@ -1,7 +1,25 @@
 import { io } from "socket.io-client";
 import { queryKnowledge } from "../utils/api";
+function resolveSocketUrl() {
+  const configured = import.meta.env.VITE_SOCKET_URL;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "";
 
-const SOCKET_URL         = import.meta.env.VITE_SOCKET_URL         || "";
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const isLocalhost = host === "localhost" || host === "127.0.0.1";
+    // If running in production (not localhost) and configured URL points to localhost,
+    // fallback to production API base URL so socket connects to Render instead of failing
+    if (!isLocalhost && configured && (configured.includes("localhost") || configured.includes("127.0.0.1"))) {
+      return apiBase && !apiBase.includes("localhost") ? apiBase.replace(/\/$/, "") : "";
+    }
+  }
+
+  if (configured && configured.trim()) return configured.trim().replace(/\/$/, "");
+  if (apiBase && apiBase.trim()) return apiBase.trim().replace(/\/$/, "");
+  return "";
+}
+
+const SOCKET_URL         = resolveSocketUrl();
 const OUTBOUND_EVENT     = import.meta.env.VITE_SOCKET_EMIT_EVENT   || "query:start";
 const START_EVENT        = import.meta.env.VITE_SOCKET_START_EVENT  || "query:started";
 const TOKEN_EVENT        = import.meta.env.VITE_SOCKET_TOKEN_EVENT  || "query:token";
