@@ -14,6 +14,7 @@ import {
   setChatError,
   setConnectionState,
   startAssistantMessage,
+  updateThinkingMessage,
 } from "../redux/slices/chatSlice";
 import "./styles/Chat.css";
 
@@ -81,6 +82,8 @@ function ChatPage({ wikiId }) {
       onConnectionChange: (s) => dispatch(setConnectionState(s)),
       onStart:    ({ requestId }) =>
         dispatch(startAssistantMessage({ id: requestId, createdAt: new Date().toISOString() })),
+      onThinking: ({ requestId, message: text }) =>
+        dispatch(updateThinkingMessage({ id: requestId, text })),
       onToken:    ({ requestId, chunk }) =>
         dispatch(appendAssistantChunk({ id: requestId, chunk })),
       onComplete: ({ requestId, content, metadata }) =>
@@ -180,6 +183,11 @@ function ChatPage({ wikiId }) {
 
     dispatch(clearChatError());
     dispatch(addUserMessage({ id: `${requestId}-user`, role: "user", content: trimmed, createdAt }));
+    dispatch(startAssistantMessage({
+      id: requestId,
+      createdAt,
+      thinkingText: allowInternet ? "Searching knowledge base & live web…" : "Analyzing knowledge base and writing answer…",
+    }));
     setInput("");
 
     try {

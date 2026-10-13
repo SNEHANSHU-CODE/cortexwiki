@@ -21,6 +21,9 @@ _NO_EVIDENCE_MESSAGE = (
 
 
 def _build_sources(state: dict) -> list[dict]:
+    if not state.get("is_grounded", False):
+        return []
+
     internal = [
         {
             "title": page.get("title", "Untitled Source"),
@@ -128,34 +131,32 @@ class AnswerAgent:
                 yield chunk
 
     def _build_prompt(self, state: dict) -> str:
-        char_limit = settings.LLM_MAX_INPUT_TOKENS_CHAT * 4
+        max_item_chars = 3000
         wiki_context_raw = [
             {
                 "title": page.get("title", "Untitled Source"),
-                "content": (page.get("summary") or page.get("content", ""))[:4000],
-                "concepts": page.get("concepts", []),
+                "content": clean_text((page.get("summary") or page.get("content", ""))[:max_item_chars]),
+                "concepts": page.get("concepts", [])[:5],
                 "source_url": page.get("source_url", ""),
             }
-            for page in state.get("wiki_pages", [])
+            for page in state.get("wiki_pages", [])[:5]
         ]
         graph_context_raw = [
             f'{item.get("source", "")} {item.get("relationship", "")} {item.get("target", "")}'
-            for item in state.get("related_concepts", [])
+            for item in state.get("related_concepts", [])[:8]
         ]
         internet_context_raw = [
             {
                 "title": result.get("title", "Untitled External Source"),
-                "description": result.get("description", ""),
+                "description": clean_text(result.get("description", "")[:1000]),
                 "url": result.get("url", ""),
             }
-            for result in state.get("internet_results", [])
+            for result in state.get("internet_results", [])[:5]
         ]
 
-        # BUG-M4 FIX: Use json.dumps instead of str() — avoids Python repr (single-quoted dicts)
-        # and produces valid JSON that LLMs are trained on. Truncate after serialisation.
-        wiki_context = json.dumps(wiki_context_raw, ensure_ascii=False)[:char_limit]
-        graph_context = json.dumps(graph_context_raw, ensure_ascii=False)[:char_limit]
-        internet_context = json.dumps(internet_context_raw, ensure_ascii=False)[:char_limit]
+        wiki_context = json.dumps(wiki_context_raw, ensure_ascii=False)
+        graph_context = json.dumps(graph_context_raw, ensure_ascii=False)
+        internet_context = json.dumps(internet_context_raw, ensure_ascii=False)
 
         prompt = (
             f"Question: {state['question']}\n\n"

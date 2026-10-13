@@ -21,7 +21,7 @@ const chatSlice = createSlice({
     },
 
     startAssistantMessage(state, action) {
-      const { id, createdAt } = action.payload;
+      const { id, createdAt, thinkingText } = action.payload;
       // BUG FIX #6: Guard against duplicate assistant message bubbles
       // Check if message with this ID already exists
       const existingMessage = state.messages.find((m) => m.id === id);
@@ -33,20 +33,28 @@ const chatSlice = createSlice({
           status: "streaming",
           createdAt,
           metadata: null,
+          thinkingText: thinkingText || null,
         });
         // Log duplicate prevention for debugging
         if (typeof console !== "undefined" && import.meta.env.DEV) {
           console.debug(`[ChatSlice] Created assistant message: ${id}`);
         }
       } else {
-        // Duplicate detected - log for debugging socket race conditions
-        if (typeof console !== "undefined" && import.meta.env.DEV) {
-          console.warn(`[ChatSlice] Duplicate assistant message prevented: ${id} (already exists with status: ${existingMessage.status})`);
+        if (thinkingText && !existingMessage.thinkingText) {
+          existingMessage.thinkingText = thinkingText;
         }
       }
       state.pendingMessageId = id;
       state.status = "streaming";
       state.error = null;
+    },
+
+    updateThinkingMessage(state, action) {
+      const { id, text } = action.payload;
+      const message = state.messages.find((m) => m.id === id);
+      if (message) {
+        message.thinkingText = text;
+      }
     },
 
     appendAssistantChunk(state, action) {
@@ -118,6 +126,7 @@ export const {
   setConnectionState,
   setChatError,
   startAssistantMessage,
+  updateThinkingMessage,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

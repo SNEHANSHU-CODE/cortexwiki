@@ -50,7 +50,14 @@ class RetrievalAgent:
             clean_json = _re.sub(r'^```(?:json)?\s*\n?', '', clean_json)
             clean_json = _re.sub(r'\n?```\s*$', '', clean_json).strip()
             
-            result = json.loads(clean_json)
+            try:
+                result = json.loads(clean_json)
+            except Exception:
+                match = _re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', clean_json, _re.DOTALL)
+                if match:
+                    result = json.loads(match.group(0))
+                else:
+                    raise
             expanded_question = result.get("expanded_query", question)
             logger.info("Expanded query: %s", expanded_question)
         except Exception as e:

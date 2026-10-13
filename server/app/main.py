@@ -416,6 +416,7 @@ async def handle_query(sid, data):
         )
 
     answer = ""
+    last_metadata = None
     try:
         async for event in get_query_agent_graph().stream(
             user_id=user["id"],
@@ -449,6 +450,7 @@ async def handle_query(sid, data):
                 # ChatPage.jsx L74: onComplete: ({ requestId, content, metadata }) =>
                 # event["data"] = {answer, confidence, strategy, is_grounded, sources, debug}
                 answer = event["data"]["answer"]
+                last_metadata = event["data"]
                 await sio.emit(
                     "query:complete",
                     {
@@ -462,7 +464,15 @@ async def handle_query(sid, data):
         # Save assistant message after graph completes cleanly
         # BUG-H3 FIX: Use server-generated ID — never use client-supplied request_id as DB key
         assistant_msg_id = uuid.uuid4().hex
-        await mongo.save_chat_message(user["id"], wiki_id, assistant_msg_id, "assistant", answer, "complete")
+        await mongo.save_chat_message(
+            user["id"],
+            wiki_id,
+            assistant_msg_id,
+            "assistant",
+            answer,
+            "complete",
+            metadata=last_metadata,
+        )
 
     except Exception as exc:
         await sio.emit(

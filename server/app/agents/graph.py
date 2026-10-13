@@ -28,6 +28,7 @@ class AgentState(TypedDict):
     wiki_id: str
     debug: bool
     allow_internet: bool
+    stream_mode: bool
 
     # Set by PlannerAgent
     plan: dict[str, Any]
@@ -119,6 +120,15 @@ class QueryAgentGraph:
         return await self._hallucination_guard.run(dict(state))
 
     async def _answer_node(self, state: AgentState) -> dict:
+        if state.get("stream_mode"):
+            # Skip non-streamed generation in stream mode to avoid duplicate LLM invocation
+            from app.agents.nodes.answer_agent import _build_sources
+            return {
+                "answer": "",
+                "sources": _build_sources(dict(state)),
+                "strategy": self._answer._derive_strategy(dict(state)),
+                "debug_payload": self._answer._build_debug_payload(dict(state)),
+            }
         return await self._answer.run(dict(state))
 
     def _build_graph(self):
@@ -181,6 +191,7 @@ class QueryAgentGraph:
         question: str,
         debug: bool,
         allow_internet: bool,
+        stream_mode: bool = False,
     ) -> dict:
         return {
             "user_id": user_id,
@@ -188,6 +199,7 @@ class QueryAgentGraph:
             "question": question.strip(),
             "debug": debug,
             "allow_internet": allow_internet,
+            "stream_mode": stream_mode,
             "trace": [],
             "plan": {},
             "wiki_pages": [],
@@ -228,6 +240,7 @@ class QueryAgentGraph:
                 question=question,
                 debug=debug,
                 allow_internet=allow_internet,
+                stream_mode=False,
             ),
             config=config,
         )
@@ -248,6 +261,7 @@ class QueryAgentGraph:
             question=question,
             debug=debug,
             allow_internet=allow_internet,
+            stream_mode=True,
         )
 
         config = {

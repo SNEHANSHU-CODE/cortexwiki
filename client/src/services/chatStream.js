@@ -25,6 +25,7 @@ const START_EVENT        = import.meta.env.VITE_SOCKET_START_EVENT  || "query:st
 const TOKEN_EVENT        = import.meta.env.VITE_SOCKET_TOKEN_EVENT  || "query:token";
 const COMPLETE_EVENT     = import.meta.env.VITE_SOCKET_COMPLETE_EVENT || "query:complete";
 const ERROR_EVENT        = import.meta.env.VITE_SOCKET_ERROR_EVENT  || "query:error";
+const THINKING_EVENT     = import.meta.env.VITE_SOCKET_THINKING_EVENT || "query:thinking";
 
 function tokenDelay(token) {
   // BUG FIX #9: Implement proper streaming delay for realistic token-by-token delivery
@@ -113,6 +114,7 @@ export function createChatStreamSession({
   onToken,
   onComplete,
   onError,
+  onThinking,
 }) {
   let socket = null;
   let heartbeatInterval = null;
@@ -158,8 +160,23 @@ export function createChatStreamSession({
       }, 30000);
     });
     
+    let activeStreamRequestId = null;
+
     socket.on("disconnect", () => {
       onConnectionChange?.("reconnecting");
+      if (activeStreamRequestId) {
+        const stuckId = activeStreamRequestId;
+        setTimeout(() => {
+          if (activeStreamRequestId === stuckId && !socket?.connected) {
+            onError?.({
+              message: "Connection lost while generating answer. Please try again.",
+              code: "STREAM_DISCONNECTED",
+              requestId: stuckId,
+            });
+            activeStreamRequestId = null;
+          }
+        }, 15000);
+      }
       // BUG FIX #3: Clear heartbeat on disconnect
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
@@ -171,7 +188,7 @@ export function createChatStreamSession({
         deadConnectionCheck = null;
       }
     });
-    
+
     socket.on("reconnect_attempt", () => onConnectionChange?.("reconnecting"));
     socket.on("connect_error",     () => {
       onConnectionChange?.("fallback");
@@ -185,6 +202,7 @@ export function createChatStreamSession({
     
     socket.on(START_EVENT, (data) => {
       // Clear watchdog — server acknowledged the request
+      activeStreamRequestId = data?.requestId;
       const watchdog = _emitWatchdogs.get(data?.requestId);
       if (watchdog) {
         clearTimeout(watchdog);
@@ -193,8 +211,15 @@ export function createChatStreamSession({
       onStart?.(data);
     });
     socket.on(TOKEN_EVENT,    (data) => onToken?.(data));
-    socket.on(COMPLETE_EVENT, (data) => onComplete?.(data));
-    socket.on(ERROR_EVENT,    (data) => onError?.(data));
+    socket.on(THINKING_EVENT, (data) => onThinking?.(data));
+    socket.on(COMPLETE_EVENT, (data) => {
+      activeStreamRequestId = null;
+      onComplete?.(data);
+    });
+    socket.on(ERROR_EVENT,    (data) => {
+      activeStreamRequestId = null;
+      onError?.(data);
+    });
 
     socket.connect();
   } else {

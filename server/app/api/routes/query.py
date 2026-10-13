@@ -73,6 +73,13 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
     )
 
     assistant_msg_id = uuid.uuid4().hex
+    metadata = {
+        "confidence": result.confidence,
+        "strategy": result.strategy,
+        "is_grounded": result.is_grounded,
+        "sources": [s.model_dump() for s in result.sources],
+        "debug": result.debug,
+    }
     await mongo.save_chat_message(
         current_user["id"],
         payload.wiki_id,
@@ -80,7 +87,7 @@ async def query(payload: QueryRequest, current_user: dict = Depends(get_current_
         "assistant",
         result.answer,
         "complete",
-        result.debug,
+        metadata=metadata,
     )
 
     return result

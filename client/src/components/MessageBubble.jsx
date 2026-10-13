@@ -185,6 +185,16 @@ function MessageBubble({ message, onRetry, wikiId, onSuggest }) {
           </>
         ) : (
           <div className="thinking-state" role="status" aria-label="CortexWiki is thinking…">
+            <div className="thinking-indicator">
+              <span className="thinking-dots" aria-hidden="true">
+                <span className="thinking-dot" />
+                <span className="thinking-dot" />
+                <span className="thinking-dot" />
+              </span>
+              <span className="thinking-label">
+                {message.thinkingText || "CortexWiki is analyzing knowledge base and writing answer…"}
+              </span>
+            </div>
             <span className="skeleton-line is-wide"  aria-hidden="true" />
             <span className="skeleton-line"          aria-hidden="true" />
             <span className="skeleton-line is-short" aria-hidden="true" />
@@ -216,18 +226,28 @@ function MessageBubble({ message, onRetry, wikiId, onSuggest }) {
             {/* Sources */}
             {metadata.sources?.length > 0 && (
               <nav className="message-sources" aria-label="Response sources">
-                {metadata.sources.map((src, idx) => (
-                  <a
-                    key={`${src.url}:${src.title}:${idx}`}
-                    href={src.url}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="source-pill"
-                    onClick={(e) => handleSourceClick(e, src)}
-                  >
-                    {src.title}
-                  </a>
-                ))}
+                {metadata.sources.map((src, idx) =>
+                  src.url ? (
+                    <a
+                      key={`${src.url}:${src.title}:${idx}`}
+                      href={src.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="source-pill"
+                      onClick={(e) => handleSourceClick(e, src)}
+                    >
+                      {src.title}
+                    </a>
+                  ) : (
+                    <span
+                      key={`${src.title}:${idx}`}
+                      className="source-pill source-pill--static"
+                      title="Synthesized master note"
+                    >
+                      {src.title}
+                    </span>
+                  )
+                )}
               </nav>
             )}
 
