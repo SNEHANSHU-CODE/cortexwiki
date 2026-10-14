@@ -50,7 +50,7 @@ function ConnPill({ state }) {
 function ChatPage({ wikiId }) {
   const [input, setInput] = useState("");
   const [debug, setDebug] = useState(false);
-  const [allowInternet, setAllowInternet] = useState(false);
+  const [allowInternet, setAllowInternet] = useState(true);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
 

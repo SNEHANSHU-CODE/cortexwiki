@@ -496,22 +496,27 @@ async def fetch_web_page_content(url: str) -> dict:
 
 # ── Web search ────────────────────────────────────────────────────────────────
 
-async def search_web(query: str, limit: int | None = None) -> list[dict]:
-    if not query.strip():
-        return []
+async def _search_duckduckgo(query: str, limit: int) -> list[dict]:
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://html.duckduckgo.com",
+        "Referer": "https://html.duckduckgo.com/",
+    }
+    data = {"q": query, "b": "", "kl": "us-en"}
 
-    result_limit = limit or settings.INTERNET_SEARCH_RESULT_LIMIT
-
-    try:
-        from app.core.http import get_http_client
-        client = get_http_client()
-        response = await client.post(
-            settings.INTERNET_SEARCH_ENDPOINT,
-            data={"q": query},
-        )
-        response.raise_for_status()
-    except httpx.HTTPError:
-        return []
+    verify_ssl = certifi.where() if settings.OUTBOUND_VERIFY_SSL else False
+    async with httpx.AsyncClient(timeout=4.0, verify=verify_ssl, follow_redirects=True) as client:
+        response = await client.post("https://html.duckduckgo.com/html/", data=data, headers=headers)
+        if response.status_code != 200:
+            logger.warning("DuckDuckGo returned status %d (challenge/block)", response.status_code)
+            return []
 
     soup = BeautifulSoup(response.text, "html.parser")
     results: list[dict] = []
@@ -522,11 +527,19 @@ async def search_web(query: str, limit: int | None = None) -> list[dict]:
         if not anchor or not anchor.get("href"):
             continue
 
+        raw_url = anchor["href"]
+        # Handle DuckDuckGo redirect wrappers if present (/l/?kh=-1&uddg=...)
+        if "uddg=" in raw_url:
+            from urllib.parse import unquote
+            parsed_uddg = parse_qs(urlparse(raw_url).query).get("uddg")
+            url = unquote(parsed_uddg[0]) if parsed_uddg else raw_url
+        else:
+            url = raw_url
+
         title = clean_text(anchor.get_text(" ", strip=True))
-        url = anchor["href"]
         description = clean_text(snippet.get_text(" ", strip=True) if snippet else "")
 
-        if not title or not url:
+        if not title or not url or not url.startswith("http"):
             continue
 
         results.append({
@@ -536,7 +549,141 @@ async def search_web(query: str, limit: int | None = None) -> list[dict]:
             "source_type": "internet",
         })
 
-        if len(results) >= result_limit:
+        if len(results) >= limit:
             break
 
     return results
+
+
+async def _search_wikipedia(query: str, limit: int) -> list[dict]:
+    """
+    Tier 2 Search Fallback: Wikipedia Official API.
+    Fast (~150ms), never blocks datacenter IPs, and provides reliable encyclopedic
+    grounding for entities, world leaders, definitions, and concepts.
+    """
+    url = "https://en.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": query,
+        "format": "json",
+        "srlimit": limit,
+        "utf8": "1",
+    }
+    headers = {
+        "User-Agent": "CortexWiki/1.0 (https://cortexwiki.vercel.app; support@cortexwiki.com)",
+    }
+
+    verify_ssl = certifi.where() if settings.OUTBOUND_VERIFY_SSL else False
+    async with httpx.AsyncClient(timeout=4.0, verify=verify_ssl, headers=headers) as client:
+        response = await client.get(url, params=params)
+        if response.status_code != 200:
+            logger.warning("Wikipedia search returned status %d", response.status_code)
+            return []
+
+        data = response.json()
+        search_items = data.get("query", {}).get("search", [])
+        results: list[dict] = []
+
+        for item in search_items:
+            title = clean_text(item.get("title", ""))
+            raw_snippet = item.get("snippet", "")
+            snippet = clean_text(BeautifulSoup(raw_snippet, "html.parser").get_text(" ", strip=True))
+            slug = title.replace(" ", "_")
+            wiki_url = f"https://en.wikipedia.org/wiki/{slug}"
+
+            if not title:
+                continue
+
+            results.append({
+                "title": title,
+                "url": wiki_url,
+                "description": snippet,
+                "source_type": "internet",
+            })
+
+            if len(results) >= limit:
+                break
+
+        return results
+
+
+async def _search_scraperapi(query: str, limit: int) -> list[dict]:
+    """Tier 3 Search Fallback: ScraperAPI Structured Google Search."""
+    if not settings.SCRAPERAPI_KEY:
+        return []
+
+    url = "https://api.scraperapi.com/structured/google/search"
+    params = {"api_key": settings.SCRAPERAPI_KEY, "query": query}
+    verify_ssl = certifi.where() if settings.OUTBOUND_VERIFY_SSL else False
+
+    async with httpx.AsyncClient(timeout=6.0, verify=verify_ssl) as client:
+        response = await client.get(url, params=params)
+        if response.status_code != 200:
+            return []
+
+        data = response.json()
+        results: list[dict] = []
+        for item in data.get("organic_results", []):
+            title = clean_text(item.get("title", ""))
+            link = item.get("link", "")
+            snippet = clean_text(item.get("snippet", ""))
+
+            if title and link:
+                results.append({
+                    "title": title,
+                    "url": link,
+                    "description": snippet,
+                    "source_type": "internet",
+                })
+            if len(results) >= limit:
+                break
+
+        return results
+
+
+async def search_web(query: str, limit: int | None = None) -> list[dict]:
+    """
+    Multi-tier resilient web search:
+    1. Primary: DuckDuckGo HTML with browser impersonation headers.
+    2. Fallback: Wikipedia Official API (fast, datacenter-safe, encyclopedic).
+    3. Fallback: ScraperAPI Structured Search (if configured).
+    """
+    trimmed = query.strip()
+    if not trimmed:
+        return []
+
+    result_limit = limit or settings.INTERNET_SEARCH_RESULT_LIMIT
+
+    # ── Tier 1: DuckDuckGo ────────────────────────────────────────────────────
+    try:
+        results = await _search_duckduckgo(trimmed, result_limit)
+        if results:
+            logger.info("DuckDuckGo search succeeded with %d results", len(results))
+            return results
+    except Exception as exc:
+        logger.warning("DuckDuckGo search attempt failed: %s", exc)
+
+    # ── Tier 2: Wikipedia Search API ──────────────────────────────────────────
+    try:
+        logger.info("Escalating web search to Tier 2 (Wikipedia Search API) for: %s", trimmed)
+        results = await _search_wikipedia(trimmed, result_limit)
+        if results:
+            logger.info("Wikipedia search succeeded with %d results", len(results))
+            return results
+    except Exception as exc:
+        logger.warning("Wikipedia search attempt failed: %s", exc)
+
+    # ── Tier 3: ScraperAPI Google Search ──────────────────────────────────────
+    if settings.SCRAPERAPI_KEY:
+        try:
+            logger.info("Escalating web search to Tier 3 (ScraperAPI) for: %s", trimmed)
+            results = await _search_scraperapi(trimmed, result_limit)
+            if results:
+                logger.info("ScraperAPI search succeeded with %d results", len(results))
+                return results
+        except Exception as exc:
+            logger.warning("ScraperAPI search attempt failed: %s", exc)
+
+    logger.warning("All web search tiers returned 0 results for query: %s", trimmed)
+    return []

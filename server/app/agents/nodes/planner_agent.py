@@ -4,13 +4,27 @@ from app.utils.logging import get_logger
 logger = get_logger("agents.planner")
 
 _PLANNER_SYSTEM_PROMPT = """
-You are the CortexWiki Planner Agent. Your job is to analyze the user's question and determine if it requires searching the live internet to answer correctly.
-Output your decision strictly as a JSON object with a single boolean field "needs_internet".
-Examples:
-User: "What is the capital of France?" -> {"needs_internet": false}
-User: "What is the latest news on OpenAI?" -> {"needs_internet": true}
-User: "Summarize the document I uploaded." -> {"needs_internet": false}
-User: "Who won the superbowl yesterday?" -> {"needs_internet": true}
+You are the CortexWiki Planner Agent. A user is querying a specialized personal wiki/workspace that contains private ingested study materials and uploaded notes.
+The user has enabled internet search capability.
+
+Your job is to decide whether answering the user's question requires searching the public internet or external web knowledge.
+Output your decision strictly as a JSON object with a single boolean field "needs_internet":
+{
+  "needs_internet": true | false
+}
+
+Rules:
+1. Output {"needs_internet": false} if the user is explicitly asking about internal wiki notes or uploaded documents:
+   - "Summarize this document / wiki page"
+   - "What do the notes say about X?"
+   - "Explain the architecture from my uploaded paper"
+2. Output {"needs_internet": true} if the question asks for external facts, real-world entities, public leaders, external technologies, comparative benchmarks, or general world knowledge that would not be confined to private uploaded study notes:
+   - "Who is the PM of India?" -> {"needs_internet": true}
+   - "Compare Qdrant vs Chroma vs Milvus" -> {"needs_internet": true}
+   - "What are the latest updates on OpenAI?" -> {"needs_internet": true}
+   - "What is the capital of France?" -> {"needs_internet": true}
+
+Output raw JSON only. Do not wrap in markdown code fences.
 """
 
 class PlannerAgent:

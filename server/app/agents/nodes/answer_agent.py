@@ -14,10 +14,16 @@ _SYSTEM_INSTRUCTION = (
     "If evidence is weak, say so plainly."
 )
 
-_NO_EVIDENCE_MESSAGE = (
-    "I do not have enough grounded evidence to answer that yet. "
-    "Ingest a source first or allow internet search."
-)
+def _get_no_evidence_message(state: dict) -> str:
+    if state.get("allow_internet", False):
+        return (
+            "I could not find enough grounded evidence in this wiki or through web search "
+            "to answer that question confidently. Ingest a relevant source or try refining your question."
+        )
+    return (
+        "I do not have enough grounded evidence in this wiki to answer that yet. "
+        "Ingest a source first or enable web search."
+    )
 
 
 def _build_sources(state: dict) -> list[dict]:
@@ -104,7 +110,7 @@ class AnswerAgent:
 
     async def _generate_answer_text(self, state: dict) -> str:
         if not state["is_grounded"]:
-            return _NO_EVIDENCE_MESSAGE
+            return _get_no_evidence_message(state)
 
         answer = await self._llm.generate_text(
             system_instruction=_SYSTEM_INSTRUCTION,
@@ -116,7 +122,8 @@ class AnswerAgent:
 
     async def _stream_answer_text(self, state: dict):
         if not state["is_grounded"]:
-            for chunk in chunk_words(_NO_EVIDENCE_MESSAGE):
+            msg = _get_no_evidence_message(state)
+            for chunk in chunk_words(msg):
                 yield chunk
                 await asyncio.sleep(settings.STREAM_CHUNK_DELAY_MS / 1000)
             return

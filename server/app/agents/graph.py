@@ -36,6 +36,7 @@ class AgentState(TypedDict):
     # Set by RetrievalAgent
     wiki_pages: list[dict]
     related_concepts: list[dict]
+    expanded_query: str
 
     # Set by InternetSearchAgent (optional branch)
     internet_results: list[dict]
@@ -204,6 +205,7 @@ class QueryAgentGraph:
             "plan": {},
             "wiki_pages": [],
             "related_concepts": [],
+            "expanded_query": "",
             "internet_results": [],
             "guard_retry_count": 0,
             "guard": {},

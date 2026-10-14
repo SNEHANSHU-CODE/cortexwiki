@@ -97,6 +97,7 @@ class RetrievalAgent:
 
         state["wiki_pages"] = wiki_pages
         state["related_concepts"] = related_concepts
+        state["expanded_query"] = expanded_question
         state["trace"].append(
             {
                 "agent": "retrieval_agent",
